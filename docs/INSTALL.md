@@ -37,7 +37,10 @@ For supported simple DNG files, the app writes:
 - preview-derived JPEG
 - recipe JSON sidecar
 
-To try the app without using a private photo, generate a synthetic DNG:
+To try the app without using a private photo, click `Create Sample DNG` inside
+the desktop app.
+
+You can also generate the same synthetic DNG from the command line:
 
 ```powershell
 python scripts\create_sample_dng.py

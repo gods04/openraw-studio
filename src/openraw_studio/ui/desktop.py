@@ -9,10 +9,11 @@ import subprocess
 import sys
 from typing import Any
 
-from openraw_studio.pipeline.errors import PipelineError
+from openraw_studio.pipeline.errors import BackendUnavailableError, PipelineError, SourceFileError
 from openraw_studio.pipeline.interfaces import PipelineRequest
 from openraw_studio.pipeline.local import LocalPhotoPipeline
 from openraw_studio.raw.native.preview import render_preview_image
+from openraw_studio.raw.native.synthetic import write_synthetic_dng
 
 
 def _format_exposure_label(value: float) -> str:
@@ -37,6 +38,31 @@ def _format_result_summary(result: Any) -> str:
     if recipe_path := result.diagnostics.get("recipe_path"):
         lines.append(f"Recipe: {recipe_path}")
     return "\n".join(lines)
+
+
+def _default_sample_path(home: Path | None = None) -> Path:
+    root = home or Path.home()
+    return root / "Pictures" / "OpenRAW Studio Samples" / "openraw-synthetic.DNG"
+
+
+def _friendly_error_message(error: BaseException) -> str:
+    message = str(error)
+    if isinstance(error, SourceFileError):
+        if "Unsupported RAW extension" in message:
+            return "This file type is not supported yet. OpenRAW Studio V0.1 is DNG-first."
+        if "Source file does not exist" in message:
+            return "The selected photo could not be found. It may have been moved or deleted."
+    if isinstance(error, BackendUnavailableError):
+        if "only uncompressed strips are supported" in message:
+            return "This DNG uses a structure that OpenRAW Native does not support yet. Try the built-in sample DNG for the current V0.1 path."
+        if "currently starts with DNG files" in message:
+            return "OpenRAW Native currently processes DNG files first. Broader camera RAW formats are still on the roadmap."
+        return "OpenRAW Native could not render this photo yet. A recipe may still have been written in the output folder."
+    if isinstance(error, OSError):
+        return "OpenRAW Studio could not read or write one of the selected files. Check the folder permissions and try again."
+    if isinstance(error, ValueError):
+        return message
+    return message or "OpenRAW Studio could not finish processing this photo."
 
 
 def _open_in_system(path: Path) -> None:
@@ -112,6 +138,9 @@ def launch_desktop_app() -> None:
             ttk_module.Label(controls, text="PHOTO", style="Muted.TLabel").pack(anchor="w")
             ttk_module.Label(controls, textvariable=self.source_var, style="Panel.TLabel", wraplength=260).pack(anchor="w", pady=(8, 14))
             ttk_module.Button(controls, text="Import RAW", style="Secondary.TButton", command=self._choose_source).pack(fill="x")
+            ttk_module.Button(controls, text="Create Sample DNG", style="Secondary.TButton", command=self._create_sample_source).pack(
+                fill="x", pady=(8, 0)
+            )
 
             ttk_module.Label(controls, text="OUTPUT", style="Muted.TLabel").pack(anchor="w", pady=(28, 0))
             ttk_module.Label(controls, textvariable=self.output_var, style="Panel.TLabel", wraplength=260).pack(anchor="w", pady=(8, 14))
@@ -183,12 +212,24 @@ def launch_desktop_app() -> None:
             )
             if not selected:
                 return
-            self.source_path = Path(selected)
-            self.source_var.set(self.source_path.name)
-            if self.output_dir is None:
-                self.output_dir = self.source_path.parent / "openraw-output"
-                self.output_var.set(str(self.output_dir))
+            self._select_source(Path(selected))
             self.status_var.set("Ready to process")
+
+        def _create_sample_source(self) -> None:
+            try:
+                sample_path = write_synthetic_dng(_default_sample_path())
+            except OSError as exc:
+                self._show_error(_friendly_error_message(exc))
+                return
+            self._select_source(sample_path)
+            self.status_var.set("Sample DNG ready")
+
+        def _select_source(self, source: Path) -> None:
+            self.source_path = source
+            self.source_var.set(source.name)
+            if self.output_dir is None:
+                self.output_dir = source.parent / "openraw-output"
+                self.output_var.set(str(self.output_dir))
             self._clear_result()
 
         def _choose_output(self) -> None:
@@ -236,7 +277,8 @@ def launch_desktop_app() -> None:
             try:
                 result = LocalPhotoPipeline().process(PipelineRequest(source, output_dir, overrides={"exposure": exposure}))
             except (PipelineError, OSError, ValueError) as exc:
-                self.root.after(0, lambda: self._show_error(str(exc)))
+                message = _friendly_error_message(exc)
+                self.root.after(0, lambda: self._show_error(message))
                 return
             self.root.after(0, lambda: self._show_result(result, source))
 

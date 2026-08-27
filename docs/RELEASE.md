@@ -50,7 +50,7 @@ Before creating a GitHub Release:
 - run the full test suite locally
 - build the Windows ZIP locally or through GitHub Actions
 - open the packaged app on Windows
-- generate `sample-data\openraw-synthetic.DNG`
+- click `Create Sample DNG`
 - process the synthetic DNG through the packaged app
 - confirm preview PNG, JPEG export, and recipe JSON are created
 - confirm README still describes the true current limitations

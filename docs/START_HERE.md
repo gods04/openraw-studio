@@ -199,9 +199,10 @@ The first local desktop shell is now available through:
 ```
 
 It supports importing a DNG, choosing an output folder, running AUTO, viewing
-the generated preview, comparing before/after, adjusting exposure, opening the
-exported JPEG, and opening the output folder. It currently uses the same local
-pipeline as the CLI and is intentionally DNG-first.
+the generated preview, comparing before/after, adjusting exposure, creating a
+safe sample DNG, opening the exported JPEG, and opening the output folder. It
+currently uses the same local pipeline as the CLI and is intentionally
+DNG-first.
 
 ### Step 4 - Real RAW Backend
 
@@ -233,7 +234,9 @@ Before building deeper RAW features, read:
 
 Goal: build confidence without committing private photos.
 
-The current safe test path is:
+The current safe test path is the `Create Sample DNG` button in the desktop app.
+
+The same sample can be created from the command line:
 
 ```powershell
 python scripts\create_sample_dng.py

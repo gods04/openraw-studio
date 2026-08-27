@@ -3,8 +3,15 @@ import unittest
 from pathlib import Path
 
 from openraw_studio.core.domain import ImageRef
+from openraw_studio.pipeline.errors import BackendUnavailableError, SourceFileError
 from openraw_studio.pipeline.interfaces import PipelineResult
-from openraw_studio.ui.desktop import _flatten_rgb_pixels, _format_exposure_label, _format_result_summary
+from openraw_studio.ui.desktop import (
+    _default_sample_path,
+    _flatten_rgb_pixels,
+    _format_exposure_label,
+    _format_result_summary,
+    _friendly_error_message,
+)
 
 
 class DesktopHelperTests(unittest.TestCase):
@@ -34,6 +41,25 @@ class DesktopHelperTests(unittest.TestCase):
         self.assertIn("Preview:", summary)
         self.assertIn("JPEG:", summary)
         self.assertIn("Recipe:", summary)
+
+    def test_default_sample_path_uses_pictures_folder(self) -> None:
+        sample_path = _default_sample_path(Path("C:/Users/Example"))
+
+        self.assertEqual(sample_path, Path("C:/Users/Example/Pictures/OpenRAW Studio Samples/openraw-synthetic.DNG"))
+
+    def test_friendly_error_message_explains_unsupported_extension(self) -> None:
+        message = _friendly_error_message(SourceFileError("Unsupported RAW extension: .jpg"))
+
+        self.assertIn("not supported yet", message)
+        self.assertIn("DNG-first", message)
+
+    def test_friendly_error_message_explains_native_dng_limit(self) -> None:
+        message = _friendly_error_message(
+            BackendUnavailableError("OpenRAW Native preview failed: only uncompressed strips are supported")
+        )
+
+        self.assertIn("does not support yet", message)
+        self.assertIn("sample DNG", message)
 
 
 if __name__ == "__main__":

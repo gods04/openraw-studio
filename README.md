@@ -38,7 +38,9 @@ The script creates `.venv`, installs OpenRAW Studio locally, and opens the app.
 When release builds are published, this section will link to GitHub Releases
 with a normal Windows download.
 
-To try the app without using a private photo, generate a tiny synthetic DNG:
+To try the app without using a private photo, click `Create Sample DNG` inside
+the app. You can also generate the same tiny synthetic DNG from the command
+line:
 
 ```powershell
 python scripts\create_sample_dng.py
@@ -67,7 +69,8 @@ Then import `sample-data\openraw-synthetic.DNG` in the app.
 - Native preview-derived JPEG export for narrow DNG test files
 - Beginner desktop shell launched with `openraw app` or `scripts/run_app.ps1`
 - App import, output-folder selection, AUTO processing, exposure adjustment,
-  before/after comparison, and direct output opening
+  before/after comparison, built-in sample DNG creation, and direct output
+  opening
 - Synthetic DNG generator for safe local smoke tests
 - Windows ZIP build script and GitHub Actions packaging workflow
 - Contract tests for the initial foundation
@@ -108,7 +111,7 @@ Fastest Windows app launch:
 
 That script creates the virtual environment and starts the desktop app.
 
-Create a safe sample DNG for testing:
+Create a safe sample DNG for testing from the command line:
 
 ```powershell
 python scripts\create_sample_dng.py
@@ -142,10 +145,11 @@ Open the beginner-friendly desktop app:
 openraw app
 ```
 
-Import a supported DNG, click `AUTO Process Photo`, and the app will create a
-preview PNG, a preview-derived JPEG, and a recipe JSON in the selected output
-folder. After processing, `Show Before` lets you compare the basic demosaiced
-image with the OpenRAW color-treated preview.
+Import a supported DNG, or click `Create Sample DNG`, then click
+`AUTO Process Photo`. The app will create a preview PNG, a preview-derived JPEG,
+and a recipe JSON in the selected output folder. After processing,
+`Show Before` lets you compare the basic demosaiced image with the OpenRAW
+color-treated preview.
 The Exposure control is recorded in the recipe and applied to both preview and
 JPEG export. `Open Output Folder` opens the generated files directly.
 The on-screen preview is capped at 2048 pixels on its longest side; export keeps
