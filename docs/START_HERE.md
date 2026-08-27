@@ -173,7 +173,7 @@ must stay simple:
 ```text
 Open app
   -> import RAW
-  -> click AUTO
+  -> update preview
   -> compare before/after
   -> export
 ```
@@ -185,7 +185,8 @@ The first desktop UI should have:
 - processing status
 - preview area
 - before/after comparison placeholder
-- AUTO button
+- Update Preview button
+- Export JPEG button
 - export location
 
 Keep advanced controls hidden until the pipeline works.

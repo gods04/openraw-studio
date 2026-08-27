@@ -47,6 +47,22 @@ def _format_result_summary(result: Any) -> str:
     return "\n".join(lines)
 
 
+def _result_status(result: Any) -> str:
+    if result.diagnostics.get("preview_only"):
+        return "Preview updated"
+    if result.exports:
+        return "JPEG exported"
+    return "Finished"
+
+
+def _manual_overrides(exposure: float, contrast: float, warmth: float) -> dict[str, float]:
+    return {
+        "exposure": float(exposure),
+        "contrast": float(contrast),
+        "warmth": float(warmth),
+    }
+
+
 def _default_sample_path(home: Path | None = None) -> Path:
     root = home or Path.home()
     return root / "Pictures" / "OpenRAW Studio Samples" / "openraw-synthetic.DNG"
@@ -99,6 +115,8 @@ def launch_desktop_app() -> None:
             self.after_photo: Any = None
             self.showing_after = True
             self.last_export_path: Path | None = None
+            self.run_counter = 0
+            self.is_busy = False
 
             self.source_var = tk.StringVar(value="No RAW photo selected")
             self.output_var = tk.StringVar(value="Output folder will be chosen automatically")
@@ -199,7 +217,21 @@ def launch_desktop_app() -> None:
             ).pack(fill="x", pady=(6, 8))
 
             ttk_module.Button(controls, text="Reset Adjustments", style="Secondary.TButton", command=self._reset_adjustments).pack(fill="x")
-            self.process_button = ttk_module.Button(controls, text="AUTO  Process Photo", style="Primary.TButton", command=self._process)
+            self.preview_button = ttk_module.Button(
+                controls,
+                text="Update Preview",
+                style="Secondary.TButton",
+                command=self._update_preview,
+                state="disabled",
+            )
+            self.preview_button.pack(fill="x", pady=(12, 0))
+            self.process_button = ttk_module.Button(
+                controls,
+                text="Export JPEG",
+                style="Primary.TButton",
+                command=self._export_jpeg,
+                state="disabled",
+            )
             self.process_button.pack(fill="x", pady=(12, 0))
             ttk_module.Label(controls, textvariable=self.status_var, style="Muted.TLabel", wraplength=260).pack(anchor="w", pady=(16, 0))
 
@@ -264,12 +296,15 @@ def launch_desktop_app() -> None:
             self.status_var.set("Sample DNG ready")
 
         def _select_source(self, source: Path) -> None:
+            self.run_counter += 1
             self.source_path = source
             self.source_var.set(source.name)
             if self.output_dir is None:
                 self.output_dir = source.parent / "openraw-output"
                 self.output_var.set(str(self.output_dir))
             self._clear_result()
+            self.preview_button.configure(state="normal")
+            self.process_button.configure(state="normal")
 
         def _choose_output(self) -> None:
             selected = self.filedialog.askdirectory(title="Choose output folder")
@@ -281,6 +316,8 @@ def launch_desktop_app() -> None:
             self.exposure_label_var.set(_format_exposure_label(float(self.exposure_var.get())))
             self.contrast_label_var.set(_format_adjustment_label(float(self.contrast_var.get())))
             self.warmth_label_var.set(_format_adjustment_label(float(self.warmth_var.get())))
+            if self.source_path is not None and not self.is_busy:
+                self.status_var.set("Adjustments changed")
 
         def _reset_adjustments(self) -> None:
             self.exposure_var.set(0.0)
@@ -300,51 +337,77 @@ def launch_desktop_app() -> None:
             self.open_folder_button.configure(state="disabled")
             self.open_export_button.configure(state="disabled")
 
-        def _process(self) -> None:
+        def _update_preview(self) -> None:
+            self._start_pipeline(preview_only=True)
+
+        def _export_jpeg(self) -> None:
+            self._start_pipeline(preview_only=False)
+
+        def _start_pipeline(self, *, preview_only: bool) -> None:
             if self.source_path is None:
                 self.messagebox.showinfo("OpenRAW Studio", "Import a RAW photo first.")
                 return
             output_dir = self.output_dir or (self.source_path.parent / "openraw-output")
             self.output_dir = output_dir
-            self.process_button.configure(state="disabled")
-            self.status_var.set("Processing locally...")
+            self.output_var.set(str(output_dir))
+            self.run_counter += 1
+            run_id = self.run_counter
+            self._set_busy(True)
+            self.status_var.set("Updating preview..." if preview_only else "Exporting JPEG...")
             self.export_label.configure(text="")
+            self.last_export_path = None
             self.open_export_button.configure(state="disabled")
+            overrides = _manual_overrides(
+                float(self.exposure_var.get()),
+                float(self.contrast_var.get()),
+                float(self.warmth_var.get()),
+            )
             threading.Thread(
                 target=self._process_worker,
                 args=(
+                    run_id,
                     self.source_path,
                     output_dir,
-                    float(self.exposure_var.get()),
-                    float(self.contrast_var.get()),
-                    float(self.warmth_var.get()),
+                    overrides,
+                    preview_only,
                 ),
                 daemon=True,
             ).start()
 
-        def _process_worker(self, source: Path, output_dir: Path, exposure: float, contrast: float, warmth: float) -> None:
+        def _process_worker(self, run_id: int, source: Path, output_dir: Path, overrides: dict[str, float], preview_only: bool) -> None:
             try:
                 result = LocalPhotoPipeline().process(
                     PipelineRequest(
                         source,
                         output_dir,
-                        overrides={"exposure": exposure, "contrast": contrast, "warmth": warmth},
+                        overrides=overrides,
+                        preview_only=preview_only,
                     )
                 )
             except (PipelineError, OSError, ValueError) as exc:
                 message = _friendly_error_message(exc)
-                self.root.after(0, lambda: self._show_error(message))
+                self.root.after(0, lambda: self._show_error(message, run_id=run_id))
                 return
-            self.root.after(0, lambda: self._show_result(result, source))
+            self.root.after(0, lambda: self._show_result(result, source, run_id=run_id))
 
-        def _show_error(self, message: str) -> None:
-            self.process_button.configure(state="normal")
+        def _set_busy(self, busy: bool) -> None:
+            self.is_busy = busy
+            state = "disabled" if busy or self.source_path is None else "normal"
+            self.preview_button.configure(state=state)
+            self.process_button.configure(state=state)
+
+        def _show_error(self, message: str, *, run_id: int | None = None) -> None:
+            if run_id is not None and run_id != self.run_counter:
+                return
+            self._set_busy(False)
             self.status_var.set("Processing failed")
             self.messagebox.showerror("OpenRAW Studio", message)
 
-        def _show_result(self, result: Any, source: Path) -> None:
-            self.process_button.configure(state="normal")
-            self.status_var.set("Finished")
+        def _show_result(self, result: Any, source: Path, *, run_id: int) -> None:
+            if run_id != self.run_counter:
+                return
+            self._set_busy(False)
+            self.status_var.set(_result_status(result))
             if result.preview is not None and result.preview.path.exists():
                 try:
                     from PIL import Image, ImageTk

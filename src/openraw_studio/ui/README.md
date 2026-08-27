@@ -17,6 +17,7 @@ The UI should keep the image workspace first:
 - AUTO action
 - exposure adjustment
 - contrast and warmth adjustment
+- preview-only refresh
 - expandable advanced panels
 - export controls
 - open generated JPEG action

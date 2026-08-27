@@ -28,7 +28,7 @@ The startup script will:
 Current app flow:
 
 ```text
-Import DNG -> choose output folder -> adjust exposure/contrast/warmth if needed -> AUTO Process Photo
+Import DNG -> choose output folder -> adjust exposure/contrast/warmth -> Update Preview -> Export JPEG
 ```
 
 For supported simple DNG files, the app writes:

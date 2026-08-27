@@ -12,6 +12,8 @@ from openraw_studio.ui.desktop import (
     _format_exposure_label,
     _format_result_summary,
     _friendly_error_message,
+    _manual_overrides,
+    _result_status,
 )
 
 
@@ -47,6 +49,22 @@ class DesktopHelperTests(unittest.TestCase):
         self.assertIn("Preview:", summary)
         self.assertIn("JPEG:", summary)
         self.assertIn("Recipe:", summary)
+
+    def test_result_status_distinguishes_preview_from_export(self) -> None:
+        preview_result = PipelineResult(recipe={}, diagnostics={"preview_only": True})
+        export_result = PipelineResult(
+            recipe={},
+            exports=(ImageRef(Path("export.jpg"), width=1, height=1, color_space="sRGB", role="export"),),
+        )
+
+        self.assertEqual(_result_status(preview_result), "Preview updated")
+        self.assertEqual(_result_status(export_result), "JPEG exported")
+
+    def test_manual_overrides_collects_tone_controls(self) -> None:
+        self.assertEqual(
+            _manual_overrides(0.5, -0.25, 0.75),
+            {"exposure": 0.5, "contrast": -0.25, "warmth": 0.75},
+        )
 
     def test_default_sample_path_uses_pictures_folder(self) -> None:
         sample_path = _default_sample_path(Path("C:/Users/Example"))

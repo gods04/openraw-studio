@@ -145,11 +145,12 @@ Open the beginner-friendly desktop app:
 openraw app
 ```
 
-Import a supported DNG, or click `Create Sample DNG`, then click
-`AUTO Process Photo`. The app will create a preview PNG, a preview-derived JPEG,
-and a recipe JSON in the selected output folder. After processing,
+Import a supported DNG, or click `Create Sample DNG`, then use `Update Preview`
+to refresh the preview with the current adjustments. When the image looks right,
+click `Export JPEG`. The app will create a preview PNG, a preview-derived JPEG,
+and a recipe JSON in the selected output folder. After preview or export,
 `Show Before` lets you compare the basic demosaiced image with the OpenRAW
-color-treated preview.
+color-treated result.
 The Exposure, Contrast, and Warmth controls are recorded in the recipe and
 applied to both preview and JPEG export. `Open Output Folder` opens the
 generated files directly.
