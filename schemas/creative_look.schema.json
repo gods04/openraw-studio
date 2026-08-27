@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openraw.studio/schemas/creative_look.v1.json",
+  "title": "OpenRAW Studio Creative Look",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "name",
+    "description",
+    "tone",
+    "color",
+    "film"
+  ],
+  "properties": {
+    "schema_version": { "const": "creative-look.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "description": { "type": "string" },
+    "tone": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "color": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "lut": {
+      "type": ["object", "null"],
+      "additionalProperties": true
+    },
+    "film": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["grain", "halation", "bloom", "density"],
+      "properties": {
+        "grain": { "type": "number", "minimum": 0, "maximum": 1 },
+        "halation": { "type": "number", "minimum": 0, "maximum": 1 },
+        "bloom": { "type": "number", "minimum": 0, "maximum": 1 },
+        "density": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "skin_protection": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    }
+  }
+}

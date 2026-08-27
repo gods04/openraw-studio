@@ -1,0 +1,40 @@
+import tempfile
+import unittest
+from pathlib import Path
+
+from openraw_studio.core.domain import ImageRef
+from openraw_studio.pipeline.interfaces import PipelineResult
+from openraw_studio.ui.desktop import _flatten_rgb_pixels, _format_exposure_label, _format_result_summary
+
+
+class DesktopHelperTests(unittest.TestCase):
+    def test_format_exposure_label_uses_editor_style_ev(self) -> None:
+        self.assertEqual(_format_exposure_label(0.0), "0.0 EV")
+        self.assertEqual(_format_exposure_label(0.04), "0.0 EV")
+        self.assertEqual(_format_exposure_label(0.74), "+0.7 EV")
+        self.assertEqual(_format_exposure_label(-1.26), "-1.3 EV")
+
+    def test_flatten_rgb_pixels_returns_pillow_ready_bytes(self) -> None:
+        self.assertEqual(_flatten_rgb_pixels(((1, 2, 3), (4, 5, 6))), b"\x01\x02\x03\x04\x05\x06")
+
+    def test_format_result_summary_lists_user_facing_outputs(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            preview = ImageRef(root / "preview.png", width=10, height=8, color_space="sRGB", role="preview")
+            export = ImageRef(root / "export.jpg", width=10, height=8, color_space="sRGB", role="base")
+            result = PipelineResult(
+                recipe={},
+                preview=preview,
+                exports=(export,),
+                diagnostics={"recipe_path": str(root / "recipe.json")},
+            )
+
+            summary = _format_result_summary(result)
+
+        self.assertIn("Preview:", summary)
+        self.assertIn("JPEG:", summary)
+        self.assertIn("Recipe:", summary)
+
+
+if __name__ == "__main__":
+    unittest.main()

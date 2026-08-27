@@ -1,0 +1,27 @@
+{
+  "schema_version": "app-config.v1",
+  "paths": {
+    "import_folder": "E:/Pictures/OpenRAW/import",
+    "output_folder": "E:/Pictures/OpenRAW/output",
+    "cache_folder": "E:/Pictures/OpenRAW/cache"
+  },
+  "raw": {
+    "backend": "external-darktable-cli",
+    "backend_path": null,
+    "preview_max_dimension": 2048
+  },
+  "vision": {
+    "device_preference": "auto",
+    "allow_cloud": false
+  },
+  "defaults": {
+    "processing_profile": "general",
+    "creative_look": "clean",
+    "auto_strength": 0.5
+  },
+  "safety": {
+    "preserve_original_raw": true,
+    "low_confidence_edit_scale": 0.35,
+    "max_auto_face_slim": 0.12
+  }
+}

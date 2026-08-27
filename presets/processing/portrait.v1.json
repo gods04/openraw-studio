@@ -1,0 +1,30 @@
+{
+  "schema_version": "processing-preset.v1",
+  "id": "portrait",
+  "name": "Portrait",
+  "description": "Natural portrait processing with face exposure and skin protection targets.",
+  "targets": {
+    "face_luminance": 0.62,
+    "skin_chroma_stability": 0.85,
+    "background_separation": 0.12,
+    "eye_local_contrast": 0.08
+  },
+  "constraints": {
+    "maximum_exposure_change": 0.7,
+    "maximum_face_exposure_change": 0.45,
+    "maximum_auto_skin_smooth": 0.22,
+    "maximum_auto_whitening": 0.12,
+    "maximum_auto_face_slim": 0.12,
+    "protect_lips_eyes_hair": 0.95
+  },
+  "conditions": {
+    "minimum_face_confidence": 0.65,
+    "minimum_face_area_fraction": 0.015
+  },
+  "confidence_gates": {
+    "scene": 0.45,
+    "portrait": 0.65,
+    "face_landmarks": 0.75,
+    "skin_mask": 0.75
+  }
+}

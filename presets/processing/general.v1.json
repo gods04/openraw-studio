@@ -1,0 +1,25 @@
+{
+  "schema_version": "processing-preset.v1",
+  "id": "general",
+  "name": "General",
+  "description": "Conservative baseline processing when no strong scene or portrait signal is available.",
+  "targets": {
+    "global_luminance": 0.5,
+    "highlight_rolloff": "soft",
+    "shadow_detail": 0.2,
+    "vibrance": 0.12
+  },
+  "constraints": {
+    "maximum_exposure_change": 0.5,
+    "maximum_saturation_change": 0.18,
+    "protect_skin_hue": 0.8
+  },
+  "conditions": {
+    "requires_portrait_confidence": 0.0
+  },
+  "confidence_gates": {
+    "scene": 0.35,
+    "portrait": 0.5,
+    "quality": 0.35
+  }
+}

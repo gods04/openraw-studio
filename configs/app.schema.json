@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openraw.studio/schemas/app_config.v1.json",
+  "title": "OpenRAW Studio App Config",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "paths",
+    "raw",
+    "vision",
+    "defaults",
+    "safety"
+  ],
+  "properties": {
+    "schema_version": { "const": "app-config.v1" },
+    "paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["import_folder", "output_folder"],
+      "properties": {
+        "import_folder": { "type": "string" },
+        "output_folder": { "type": "string" },
+        "cache_folder": { "type": "string" }
+      }
+    },
+    "raw": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["backend"],
+      "properties": {
+        "backend": { "type": "string" },
+        "backend_path": { "type": ["string", "null"] },
+        "preview_max_dimension": { "type": "integer", "minimum": 512 }
+      }
+    },
+    "vision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["device_preference"],
+      "properties": {
+        "device_preference": {
+          "type": "string",
+          "enum": ["auto", "cuda", "cpu", "directml"]
+        },
+        "allow_cloud": { "type": "boolean" }
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["processing_profile", "creative_look"],
+      "properties": {
+        "processing_profile": { "type": "string" },
+        "creative_look": { "type": "string" },
+        "auto_strength": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["preserve_original_raw", "low_confidence_edit_scale"],
+      "properties": {
+        "preserve_original_raw": { "const": true },
+        "low_confidence_edit_scale": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "max_auto_face_slim": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    }
+  }
+}

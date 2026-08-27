@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openraw-studio"
+version = "0.1.0"
+description = "Local-first computational photography application foundation."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [
+  { name = "gods04" }
+]
+dependencies = [
+  "Pillow>=10.0",
+]
+
+[project.scripts]
+openraw = "openraw_studio.cli:main"
+
+[project.optional-dependencies]
+dev = []
+packaging = [
+  "pyinstaller>=6.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
