@@ -8,6 +8,7 @@ from openraw_studio.pipeline.interfaces import PipelineResult
 from openraw_studio.ui.desktop import (
     _default_sample_path,
     _flatten_rgb_pixels,
+    _format_adjustment_label,
     _format_exposure_label,
     _format_result_summary,
     _friendly_error_message,
@@ -20,6 +21,11 @@ class DesktopHelperTests(unittest.TestCase):
         self.assertEqual(_format_exposure_label(0.04), "0.0 EV")
         self.assertEqual(_format_exposure_label(0.74), "+0.7 EV")
         self.assertEqual(_format_exposure_label(-1.26), "-1.3 EV")
+
+    def test_format_adjustment_label_uses_signed_percent_points(self) -> None:
+        self.assertEqual(_format_adjustment_label(0.0), "0")
+        self.assertEqual(_format_adjustment_label(0.253), "+25")
+        self.assertEqual(_format_adjustment_label(-0.727), "-73")
 
     def test_flatten_rgb_pixels_returns_pillow_ready_bytes(self) -> None:
         self.assertEqual(_flatten_rgb_pixels(((1, 2, 3), (4, 5, 6))), b"\x01\x02\x03\x04\x05\x06")

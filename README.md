@@ -68,7 +68,7 @@ Then import `sample-data\openraw-synthetic.DNG` in the app.
 - Native PNG preview encoding for narrow DNG test files
 - Native preview-derived JPEG export for narrow DNG test files
 - Beginner desktop shell launched with `openraw app` or `scripts/run_app.ps1`
-- App import, output-folder selection, AUTO processing, exposure adjustment,
+- App import, output-folder selection, AUTO processing, exposure/contrast/warmth adjustments,
   before/after comparison, built-in sample DNG creation, and direct output
   opening
 - Synthetic DNG generator for safe local smoke tests
@@ -150,8 +150,9 @@ Import a supported DNG, or click `Create Sample DNG`, then click
 and a recipe JSON in the selected output folder. After processing,
 `Show Before` lets you compare the basic demosaiced image with the OpenRAW
 color-treated preview.
-The Exposure control is recorded in the recipe and applied to both preview and
-JPEG export. `Open Output Folder` opens the generated files directly.
+The Exposure, Contrast, and Warmth controls are recorded in the recipe and
+applied to both preview and JPEG export. `Open Output Folder` opens the
+generated files directly.
 The on-screen preview is capped at 2048 pixels on its longest side; export keeps
 the source dimensions supported by the current Native path.
 
@@ -169,6 +170,12 @@ stops:
 
 ```powershell
 openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-output" --exposure 0.7
+```
+
+You can also pass basic contrast and warmth controls:
+
+```powershell
+openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-output" --contrast 0.25 --warmth 0.2
 ```
 
 Render the current native preview-only path for a narrow supported DNG:

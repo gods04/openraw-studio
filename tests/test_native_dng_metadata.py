@@ -259,6 +259,24 @@ class NativeDngMetadataTests(unittest.TestCase):
         self.assertEqual(preview.height, 2)
         self.assertEqual(preview.pixel_at(0, 0), (255, 96, 0))
 
+    def test_tone_map_preview_applies_contrast_and_warmth(self) -> None:
+        sensor = LinearSensorImage(
+            width=2,
+            height=2,
+            color_filter_array="RGGB",
+            samples=(0.4, 0.4, 0.4, 0.4),
+            black_level=0,
+            white_level=1,
+            source_bit_depth=16,
+        )
+        linear_rgb = demosaic_simple(sensor)
+
+        neutral = tone_map_preview(linear_rgb, gamma=1.0)
+        adjusted = tone_map_preview(linear_rgb, contrast=0.8, warmth=1.0, gamma=1.0)
+
+        self.assertNotEqual(neutral.pixel_at(0, 0), adjusted.pixel_at(0, 0))
+        self.assertGreater(adjusted.pixel_at(0, 0)[0], adjusted.pixel_at(0, 0)[2])
+
     def test_png_writer_outputs_readable_dimensions(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "preview.png"
@@ -344,6 +362,22 @@ class NativeDngMetadataTests(unittest.TestCase):
         self.assertEqual(result.recipe["pipeline"]["mode"], "render")
         self.assertTrue(result.recipe["pipeline"]["rendered"])
         self.assertEqual(result.recipe["exports"][0]["format"], "jpeg")
+
+    def test_native_pipeline_records_manual_tone_overrides(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "pixels.DNG"
+            output = root / "output"
+            source.write_bytes(_minimal_pixel_dng_bytes())
+
+            result = LocalPhotoPipeline().process(
+                PipelineRequest(source, output, overrides={"exposure": 0.5, "contrast": 0.4, "warmth": -0.25})
+            )
+
+        raw_adjustments = result.recipe["adjustments"]["raw"]
+        self.assertEqual(raw_adjustments["exposure"], 0.5)
+        self.assertEqual(raw_adjustments["contrast"], 0.4)
+        self.assertEqual(raw_adjustments["warmth"], -0.25)
 
 
 def _minimal_dng_bytes() -> bytes:

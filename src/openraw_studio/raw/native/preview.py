@@ -18,6 +18,8 @@ def render_png_preview(
     *,
     apply_color: bool = True,
     exposure: float = 0.0,
+    contrast: float = 0.0,
+    warmth: float = 0.0,
     max_dimension: int | None = None,
 ) -> PreviewRgbImage:
     """Render the current simple native DNG pipeline to a PNG preview."""
@@ -26,6 +28,8 @@ def render_png_preview(
         source_path,
         apply_color=apply_color,
         exposure=exposure,
+        contrast=contrast,
+        warmth=warmth,
         max_dimension=max_dimension,
     )
     write_png(preview, output_path)
@@ -45,6 +49,8 @@ def render_preview_image(
     *,
     apply_color: bool = True,
     exposure: float = 0.0,
+    contrast: float = 0.0,
+    warmth: float = 0.0,
     max_dimension: int | None = None,
 ) -> PreviewRgbImage:
     """Render a source RAW file into an 8-bit RGB preview image."""
@@ -57,7 +63,7 @@ def render_preview_image(
     linear_rgb = demosaic_simple(linear_sensor)
     if apply_color:
         linear_rgb = apply_camera_matrix(linear_rgb, metadata.get("color_matrix_1"))
-    preview = tone_map_preview(linear_rgb, exposure=exposure)
+    preview = tone_map_preview(linear_rgb, exposure=exposure, contrast=contrast, warmth=warmth)
     return resize_preview(preview, max_dimension=max_dimension)
 
 

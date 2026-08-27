@@ -157,7 +157,7 @@ Current status:
 - `darktable-cli` adapter exists only as an explicit experimental backend
 - preview-derived native JPEG export exists for narrow supported DNG files
 - first-pass DNG white balance and ColorMatrix1 transform are now applied
-- exposure adjustment is available from the CLI and desktop shell and is saved in the recipe
+- exposure, contrast, and warmth adjustments are available from the CLI and desktop shell and are saved in the recipe
 - Windows startup script creates `.venv`, installs the local package, and opens the app
 - Windows package script and GitHub Actions artifact build exist
 - full camera-aware color conversion and a better export abstraction are next
@@ -200,9 +200,9 @@ The first local desktop shell is now available through:
 
 It supports importing a DNG, choosing an output folder, running AUTO, viewing
 the generated preview, comparing before/after, adjusting exposure, creating a
-safe sample DNG, opening the exported JPEG, and opening the output folder. It
-currently uses the same local pipeline as the CLI and is intentionally
-DNG-first.
+safe sample DNG, adjusting contrast/warmth, opening the exported JPEG, and
+opening the output folder. It currently uses the same local pipeline as the CLI
+and is intentionally DNG-first.
 
 ### Step 4 - Real RAW Backend
 

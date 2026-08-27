@@ -25,6 +25,13 @@ def _format_exposure_label(value: float) -> str:
     return f"{rounded:+.1f} EV"
 
 
+def _format_adjustment_label(value: float) -> str:
+    amount = int(round(value * 100.0))
+    if amount == 0:
+        return "0"
+    return f"{amount:+d}"
+
+
 def _flatten_rgb_pixels(pixels: tuple[tuple[int, int, int], ...]) -> bytes:
     return bytes(channel for pixel in pixels for channel in pixel)
 
@@ -97,7 +104,11 @@ def launch_desktop_app() -> None:
             self.output_var = tk.StringVar(value="Output folder will be chosen automatically")
             self.status_var = tk.StringVar(value="Choose a RAW photo to begin")
             self.exposure_var = tk.DoubleVar(value=0.0)
+            self.contrast_var = tk.DoubleVar(value=0.0)
+            self.warmth_var = tk.DoubleVar(value=0.0)
             self.exposure_label_var = tk.StringVar(value=_format_exposure_label(0.0))
+            self.contrast_label_var = tk.StringVar(value=_format_adjustment_label(0.0))
+            self.warmth_label_var = tk.StringVar(value=_format_adjustment_label(0.0))
             self._build_style(ttk)
             self._build_layout(tk, ttk, filedialog, messagebox)
 
@@ -147,9 +158,10 @@ def launch_desktop_app() -> None:
             ttk_module.Button(controls, text="Choose Folder", style="Secondary.TButton", command=self._choose_output).pack(fill="x")
 
             ttk_module.Separator(controls).pack(fill="x", pady=28)
+            ttk_module.Label(controls, text="ADJUSTMENTS", style="Muted.TLabel").pack(anchor="w")
             exposure_header = ttk_module.Frame(controls, style="Panel.TFrame")
-            exposure_header.pack(fill="x")
-            ttk_module.Label(exposure_header, text="EXPOSURE", style="Muted.TLabel").pack(side="left")
+            exposure_header.pack(fill="x", pady=(8, 0))
+            ttk_module.Label(exposure_header, text="Exposure", style="Panel.TLabel").pack(side="left")
             ttk_module.Label(exposure_header, textvariable=self.exposure_label_var, style="Muted.TLabel").pack(side="right")
             ttk_module.Scale(
                 controls,
@@ -157,9 +169,36 @@ def launch_desktop_app() -> None:
                 to=2.0,
                 variable=self.exposure_var,
                 orient="horizontal",
-                command=self._sync_exposure_label,
-            ).pack(fill="x", pady=(8, 8))
-            ttk_module.Button(controls, text="Reset Exposure", style="Secondary.TButton", command=self._reset_exposure).pack(fill="x")
+                command=self._sync_adjustment_labels,
+            ).pack(fill="x", pady=(6, 8))
+
+            contrast_header = ttk_module.Frame(controls, style="Panel.TFrame")
+            contrast_header.pack(fill="x")
+            ttk_module.Label(contrast_header, text="Contrast", style="Panel.TLabel").pack(side="left")
+            ttk_module.Label(contrast_header, textvariable=self.contrast_label_var, style="Muted.TLabel").pack(side="right")
+            ttk_module.Scale(
+                controls,
+                from_=-1.0,
+                to=1.0,
+                variable=self.contrast_var,
+                orient="horizontal",
+                command=self._sync_adjustment_labels,
+            ).pack(fill="x", pady=(6, 8))
+
+            warmth_header = ttk_module.Frame(controls, style="Panel.TFrame")
+            warmth_header.pack(fill="x")
+            ttk_module.Label(warmth_header, text="Warmth", style="Panel.TLabel").pack(side="left")
+            ttk_module.Label(warmth_header, textvariable=self.warmth_label_var, style="Muted.TLabel").pack(side="right")
+            ttk_module.Scale(
+                controls,
+                from_=-1.0,
+                to=1.0,
+                variable=self.warmth_var,
+                orient="horizontal",
+                command=self._sync_adjustment_labels,
+            ).pack(fill="x", pady=(6, 8))
+
+            ttk_module.Button(controls, text="Reset Adjustments", style="Secondary.TButton", command=self._reset_adjustments).pack(fill="x")
             self.process_button = ttk_module.Button(controls, text="AUTO  Process Photo", style="Primary.TButton", command=self._process)
             self.process_button.pack(fill="x", pady=(12, 0))
             ttk_module.Label(controls, textvariable=self.status_var, style="Muted.TLabel", wraplength=260).pack(anchor="w", pady=(16, 0))
@@ -238,12 +277,16 @@ def launch_desktop_app() -> None:
                 self.output_dir = Path(selected)
                 self.output_var.set(str(self.output_dir))
 
-        def _sync_exposure_label(self, *_: Any) -> None:
+        def _sync_adjustment_labels(self, *_: Any) -> None:
             self.exposure_label_var.set(_format_exposure_label(float(self.exposure_var.get())))
+            self.contrast_label_var.set(_format_adjustment_label(float(self.contrast_var.get())))
+            self.warmth_label_var.set(_format_adjustment_label(float(self.warmth_var.get())))
 
-        def _reset_exposure(self) -> None:
+        def _reset_adjustments(self) -> None:
             self.exposure_var.set(0.0)
-            self._sync_exposure_label()
+            self.contrast_var.set(0.0)
+            self.warmth_var.set(0.0)
+            self._sync_adjustment_labels()
 
         def _clear_result(self) -> None:
             self.preview_photo = None
@@ -269,13 +312,25 @@ def launch_desktop_app() -> None:
             self.open_export_button.configure(state="disabled")
             threading.Thread(
                 target=self._process_worker,
-                args=(self.source_path, output_dir, float(self.exposure_var.get())),
+                args=(
+                    self.source_path,
+                    output_dir,
+                    float(self.exposure_var.get()),
+                    float(self.contrast_var.get()),
+                    float(self.warmth_var.get()),
+                ),
                 daemon=True,
             ).start()
 
-        def _process_worker(self, source: Path, output_dir: Path, exposure: float) -> None:
+        def _process_worker(self, source: Path, output_dir: Path, exposure: float, contrast: float, warmth: float) -> None:
             try:
-                result = LocalPhotoPipeline().process(PipelineRequest(source, output_dir, overrides={"exposure": exposure}))
+                result = LocalPhotoPipeline().process(
+                    PipelineRequest(
+                        source,
+                        output_dir,
+                        overrides={"exposure": exposure, "contrast": contrast, "warmth": warmth},
+                    )
+                )
             except (PipelineError, OSError, ValueError) as exc:
                 message = _friendly_error_message(exc)
                 self.root.after(0, lambda: self._show_error(message))

@@ -39,6 +39,8 @@ def build_parser() -> argparse.ArgumentParser:
     process.add_argument("--creative-look", default=None, help="Creative look ID.")
     process.add_argument("--auto-strength", type=float, default=0.5, help="AUTO strength from 0.0 to 1.0.")
     process.add_argument("--exposure", type=float, default=0.0, help="Exposure adjustment in stops (-4.0 to 4.0).")
+    process.add_argument("--contrast", type=float, default=0.0, help="Contrast adjustment from -1.0 to 1.0.")
+    process.add_argument("--warmth", type=float, default=0.0, help="Warmth adjustment from -1.0 cooler to 1.0 warmer.")
     process.add_argument(
         "--raw-backend",
         choices=("native", "darktable-experimental"),
@@ -83,6 +85,12 @@ def _run_process(args: argparse.Namespace) -> int:
     if not -4.0 <= args.exposure <= 4.0:
         print("error: --exposure must be between -4.0 and 4.0", file=sys.stderr)
         return 2
+    if not -1.0 <= args.contrast <= 1.0:
+        print("error: --contrast must be between -1.0 and 1.0", file=sys.stderr)
+        return 2
+    if not -1.0 <= args.warmth <= 1.0:
+        print("error: --warmth must be between -1.0 and 1.0", file=sys.stderr)
+        return 2
     if args.dry_run and args.preview_only:
         print("error: --dry-run and --preview-only cannot be used together", file=sys.stderr)
         return 2
@@ -97,7 +105,7 @@ def _run_process(args: argparse.Namespace) -> int:
                 processing_profile=args.processing_profile,
                 creative_look=args.creative_look,
                 auto_strength=args.auto_strength,
-                overrides={"exposure": args.exposure},
+                overrides={"exposure": args.exposure, "contrast": args.contrast, "warmth": args.warmth},
                 dry_run=args.dry_run,
                 preview_only=args.preview_only,
             )

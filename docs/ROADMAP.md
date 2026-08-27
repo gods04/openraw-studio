@@ -55,6 +55,7 @@ Suggested implementation order:
 10. add source discovery and import-folder watcher contract
 11. [done] add locally generated synthetic DNG for safe smoke tests
 12. [done] add first Windows ZIP packaging workflow
+13. [done] add basic exposure, contrast, and warmth controls to preview/export recipes
 
 Exit criteria:
 

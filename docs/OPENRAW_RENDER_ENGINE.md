@@ -93,6 +93,7 @@ Status:
 - `openraw process --preview-only` can complete without final export
 - preview-derived JPEG export exists for narrow supported DNG files
 - DNG AsShotNeutral white balance and ColorMatrix1 transform are applied when available
+- recipe-driven exposure, contrast, and warmth controls are applied to preview and JPEG export
 - full camera-aware color conversion and high-quality JPEG/TIFF export are next
 
 Current native metadata scope:
@@ -121,6 +122,7 @@ Current native pixel scope:
 - simple gamma preview transform
 - PNG preview output
 - preview-derived JPEG export output
+- recipe-driven exposure/contrast/warmth adjustment
 
 Not supported yet:
 

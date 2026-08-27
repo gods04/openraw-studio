@@ -115,9 +115,7 @@ class LocalPhotoPipeline:
             "rationale": list(decision.rationale),
         }
         recipe["adjustments"] = dict(decision.adjustments)
-        raw_adjustments = dict(recipe["adjustments"].get("raw", {}))
-        if "exposure" in request.overrides:
-            raw_adjustments["exposure"] = request.overrides["exposure"]
+        raw_adjustments = _raw_adjustments_with_overrides(recipe["adjustments"].get("raw", {}), request.overrides)
         recipe["adjustments"]["raw"] = raw_adjustments
         recipe["engines"] = [
             self.vision.engine_info().__dict__,
@@ -254,3 +252,14 @@ def _create_preview_with_recipe(raw_processor: RawProcessor, source: ImageAsset,
     if "recipe" in parameters:
         return raw_processor.create_preview(source, output_path, max_dimension=2048, recipe=recipe)
     return raw_processor.create_preview(source, output_path, max_dimension=2048)
+
+
+def _raw_adjustments_with_overrides(
+    raw_adjustments: Mapping[str, Any],
+    overrides: Mapping[str, Any],
+) -> dict[str, Any]:
+    updated = dict(raw_adjustments)
+    for key in ("exposure", "contrast", "warmth"):
+        if key in overrides:
+            updated[key] = overrides[key]
+    return updated

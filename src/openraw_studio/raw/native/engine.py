@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -37,6 +38,7 @@ class NativeRawProcessor:
                 "jpeg_export": "pillow-jpeg-v0.1",
                 "white_balance": "dng-as-shot-neutral-v0.1",
                 "camera_color_matrix": "dng-color-matrix-1-v0.1",
+                "tone_adjustments": "exposure-contrast-warmth-v0.1",
                 "dng_metadata": True,
                 "dng_uncompressed_strips": True,
                 "recipe_planning": True,
@@ -78,10 +80,13 @@ class NativeRawProcessor:
         if output_path.suffix.lower() != ".png":
             raise RawProcessingError("OpenRAW Native preview currently writes PNG files; output path must end in .png")
         try:
+            adjustments = _recipe_render_adjustments(recipe)
             preview = render_png_preview(
                 source.path,
                 output_path,
-                exposure=_recipe_exposure(recipe),
+                exposure=adjustments.exposure,
+                contrast=adjustments.contrast,
+                warmth=adjustments.warmth,
                 max_dimension=max_dimension,
             )
         except (DngMetadataError, NotImplementedError, ValueError) as exc:
@@ -104,7 +109,13 @@ class NativeRawProcessor:
         if request.output_path.suffix.lower() not in {".jpg", ".jpeg"}:
             raise RawProcessingError("OpenRAW Native export currently writes JPEG files; output path must end in .jpg")
         try:
-            rendered = render_preview_image(plan.source_path, exposure=_recipe_exposure(request.recipe))
+            adjustments = _recipe_render_adjustments(request.recipe)
+            rendered = render_preview_image(
+                plan.source_path,
+                exposure=adjustments.exposure,
+                contrast=adjustments.contrast,
+                warmth=adjustments.warmth,
+            )
             write_jpeg(rendered, plan.output_path)
         except (DngMetadataError, NotImplementedError, RuntimeError, ValueError, OSError) as exc:
             raise RawProcessingError(f"OpenRAW Native export failed: {exc}") from exc
@@ -128,11 +139,27 @@ def _camera_metadata_from_dng(dng: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _recipe_exposure(recipe: Mapping[str, Any] | None) -> float:
+@dataclass(frozen=True)
+class RenderAdjustments:
+    exposure: float = 0.0
+    contrast: float = 0.0
+    warmth: float = 0.0
+
+
+def _recipe_render_adjustments(recipe: Mapping[str, Any] | None) -> RenderAdjustments:
     adjustments = (recipe or {}).get("adjustments", {})
     raw = adjustments.get("raw", {}) if isinstance(adjustments, Mapping) else {}
-    value = raw.get("exposure", 0.0) if isinstance(raw, Mapping) else 0.0
+    if not isinstance(raw, Mapping):
+        raw = {}
+    return RenderAdjustments(
+        exposure=_bounded_float(raw.get("exposure", 0.0), minimum=-4.0, maximum=4.0),
+        contrast=_bounded_float(raw.get("contrast", 0.0), minimum=-1.0, maximum=1.0),
+        warmth=_bounded_float(raw.get("warmth", 0.0), minimum=-1.0, maximum=1.0),
+    )
+
+
+def _bounded_float(value: Any, *, minimum: float, maximum: float) -> float:
     try:
-        return max(-4.0, min(4.0, float(value)))
+        return max(minimum, min(maximum, float(value)))
     except (TypeError, ValueError):
         return 0.0
