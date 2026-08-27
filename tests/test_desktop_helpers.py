@@ -3,10 +3,12 @@ import unittest
 from pathlib import Path
 
 from openraw_studio.core.domain import ImageRef
+from openraw_studio.decision.auto_adjust import AutoAdjustSuggestion
 from openraw_studio.pipeline.errors import BackendUnavailableError, SourceFileError
 from openraw_studio.pipeline.interfaces import PipelineResult
 from openraw_studio.ui.desktop import (
     _adjustments_match,
+    _auto_adjust_status,
     _default_sample_path,
     _flatten_rgb_pixels,
     _format_adjustment_label,
@@ -61,6 +63,15 @@ class DesktopHelperTests(unittest.TestCase):
 
         self.assertEqual(_result_status(preview_result), "Preview updated")
         self.assertEqual(_result_status(export_result), "JPEG exported")
+
+    def test_auto_adjust_status_summarizes_suggestion(self) -> None:
+        suggestion = AutoAdjustSuggestion(exposure=0.3, contrast=0.12, warmth=-0.06, rationale=("test",))
+
+        status = _auto_adjust_status(suggestion)
+
+        self.assertIn("+0.3 EV", status)
+        self.assertIn("Contrast +12", status)
+        self.assertIn("Warmth -6", status)
 
     def test_manual_overrides_collects_tone_controls(self) -> None:
         self.assertEqual(

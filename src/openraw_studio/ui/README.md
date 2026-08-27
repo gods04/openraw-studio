@@ -16,6 +16,7 @@ The UI should keep the image workspace first:
 - built-in synthetic sample DNG creation
 - before/after comparison
 - AUTO action
+- conservative Auto Adjust action
 - exposure adjustment
 - contrast and warmth adjustment
 - preview-only refresh

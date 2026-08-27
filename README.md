@@ -68,9 +68,9 @@ Then import `sample-data\openraw-synthetic.DNG` in the app.
 - Native PNG preview encoding for narrow DNG test files
 - Native preview-derived JPEG export for narrow DNG test files
 - Beginner desktop shell launched with `openraw app` or `scripts/run_app.ps1`
-- App import, output-folder selection, AUTO processing, exposure/contrast/warmth adjustments,
-  before/after comparison, built-in sample DNG creation, and direct output
-  opening
+- App import, output-folder selection, conservative Auto Adjust,
+  exposure/contrast/warmth adjustments, before/after comparison, built-in
+  sample DNG creation, and direct output opening
 - Synthetic DNG generator for safe local smoke tests
 - Windows ZIP build script and GitHub Actions packaging workflow
 - Contract tests for the initial foundation
@@ -145,12 +145,12 @@ Open the beginner-friendly desktop app:
 openraw app
 ```
 
-Import a supported DNG, or click `Create Sample DNG`, then use `Update Preview`
-to refresh the preview with the current adjustments. When the image looks right,
-click `Export JPEG`. The app will create a preview PNG, a preview-derived JPEG,
-and a recipe JSON in the selected output folder. After preview or export,
-`Show Before` lets you compare the basic demosaiced image with the OpenRAW
-color-treated result.
+Import a supported DNG, or click `Create Sample DNG`, then click `Auto Adjust`
+for a conservative starter look. Use `Update Preview` to refresh the preview
+with the current adjustments. When the image looks right, click `Export JPEG`.
+The app will create a preview PNG, a preview-derived JPEG, and a recipe JSON in
+the selected output folder. After preview or export, `Show Before` lets you
+compare the basic demosaiced image with the OpenRAW color-treated result.
 The Exposure, Contrast, and Warmth controls are recorded in the recipe and
 applied to both preview and JPEG export. `Open Output Folder` opens the
 generated files directly. When adjustments change after a preview render, the

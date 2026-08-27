@@ -9,6 +9,7 @@ import subprocess
 import sys
 from typing import Any, Mapping
 
+from openraw_studio.decision.auto_adjust import AutoAdjustSuggestion, suggest_auto_adjustments
 from openraw_studio.pipeline.errors import BackendUnavailableError, PipelineError, SourceFileError
 from openraw_studio.pipeline.interfaces import PipelineRequest
 from openraw_studio.pipeline.local import LocalPhotoPipeline
@@ -53,6 +54,15 @@ def _result_status(result: Any) -> str:
     if result.exports:
         return "JPEG exported"
     return "Finished"
+
+
+def _auto_adjust_status(suggestion: AutoAdjustSuggestion) -> str:
+    return (
+        "Auto Adjust applied: "
+        f"{_format_exposure_label(suggestion.exposure)}, "
+        f"Contrast {_format_adjustment_label(suggestion.contrast)}, "
+        f"Warmth {_format_adjustment_label(suggestion.warmth)}"
+    )
 
 
 def _manual_overrides(exposure: float, contrast: float, warmth: float) -> dict[str, float]:
@@ -241,6 +251,14 @@ def launch_desktop_app() -> None:
             ).pack(fill="x", pady=(6, 8))
 
             ttk_module.Button(controls, text="Reset Adjustments", style="Secondary.TButton", command=self._reset_adjustments).pack(fill="x")
+            self.auto_adjust_button = ttk_module.Button(
+                controls,
+                text="Auto Adjust",
+                style="Secondary.TButton",
+                command=self._auto_adjust,
+                state="disabled",
+            )
+            self.auto_adjust_button.pack(fill="x", pady=(12, 0))
             self.preview_button = ttk_module.Button(
                 controls,
                 text="Update Preview",
@@ -328,8 +346,7 @@ def launch_desktop_app() -> None:
                 self.output_dir = source.parent / "openraw-output"
                 self.output_var.set(str(self.output_dir))
             self._clear_result()
-            self.preview_button.configure(state="normal")
-            self.process_button.configure(state="normal")
+            self._set_busy(False)
 
         def _choose_output(self) -> None:
             selected = self.filedialog.askdirectory(title="Choose output folder")
@@ -350,6 +367,36 @@ def launch_desktop_app() -> None:
             self.contrast_var.set(0.0)
             self.warmth_var.set(0.0)
             self._sync_adjustment_labels()
+
+        def _auto_adjust(self) -> None:
+            if self.source_path is None:
+                self.messagebox.showinfo("OpenRAW Studio", "Import a RAW photo first.")
+                return
+            self.run_counter += 1
+            run_id = self.run_counter
+            self._set_busy(True)
+            self.status_var.set("Auto adjusting...")
+            threading.Thread(target=self._auto_adjust_worker, args=(run_id, self.source_path), daemon=True).start()
+
+        def _auto_adjust_worker(self, run_id: int, source: Path) -> None:
+            try:
+                suggestion = suggest_auto_adjustments(source)
+            except (PipelineError, OSError, ValueError, RuntimeError, NotImplementedError) as exc:
+                message = _friendly_error_message(exc)
+                self.root.after(0, lambda: self._show_error(message, run_id=run_id))
+                return
+            self.root.after(0, lambda: self._apply_auto_adjustment(suggestion, run_id=run_id))
+
+        def _apply_auto_adjustment(self, suggestion: AutoAdjustSuggestion, *, run_id: int) -> None:
+            if run_id != self.run_counter:
+                return
+            self.exposure_var.set(suggestion.exposure)
+            self.contrast_var.set(suggestion.contrast)
+            self.warmth_var.set(suggestion.warmth)
+            self._sync_adjustment_labels()
+            self._set_busy(False)
+            preview_state = self._refresh_preview_state()
+            self.status_var.set(_auto_adjust_status(suggestion) if preview_state != "Preview current" else "Auto Adjust applied")
 
         def _clear_result(self) -> None:
             self.preview_photo = None
@@ -418,6 +465,7 @@ def launch_desktop_app() -> None:
         def _set_busy(self, busy: bool) -> None:
             self.is_busy = busy
             state = "disabled" if busy or self.source_path is None else "normal"
+            self.auto_adjust_button.configure(state=state)
             self.preview_button.configure(state=state)
             self.process_button.configure(state=state)
 

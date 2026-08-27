@@ -58,6 +58,7 @@ Suggested implementation order:
 13. [done] add basic exposure, contrast, and warmth controls to preview/export recipes
 14. [done] split desktop preview refresh from final JPEG export
 15. [done] mark desktop previews stale when adjustments change
+16. [done] add conservative desktop Auto Adjust starter action
 
 Exit criteria:
 

@@ -173,6 +173,7 @@ must stay simple:
 ```text
 Open app
   -> import RAW
+  -> Auto Adjust
   -> update preview
   -> compare before/after
   -> export
@@ -186,6 +187,7 @@ The first desktop UI should have:
 - preview area
 - preview current/stale state
 - before/after comparison placeholder
+- Auto Adjust button
 - Update Preview button
 - Export JPEG button
 - export location
