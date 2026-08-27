@@ -184,6 +184,7 @@ The first desktop UI should have:
 - output folder selector
 - processing status
 - preview area
+- preview current/stale state
 - before/after comparison placeholder
 - Update Preview button
 - Export JPEG button
@@ -202,8 +203,9 @@ The first local desktop shell is now available through:
 It supports importing a DNG, choosing an output folder, running AUTO, viewing
 the generated preview, comparing before/after, adjusting exposure, creating a
 safe sample DNG, adjusting contrast/warmth, opening the exported JPEG, and
-opening the output folder. It currently uses the same local pipeline as the CLI
-and is intentionally DNG-first.
+opening the output folder. When adjustments change, the UI marks the preview as
+needing an update until the next preview/export render. It currently uses the
+same local pipeline as the CLI and is intentionally DNG-first.
 
 ### Step 4 - Real RAW Backend
 

@@ -6,6 +6,7 @@ from openraw_studio.core.domain import ImageRef
 from openraw_studio.pipeline.errors import BackendUnavailableError, SourceFileError
 from openraw_studio.pipeline.interfaces import PipelineResult
 from openraw_studio.ui.desktop import (
+    _adjustments_match,
     _default_sample_path,
     _flatten_rgb_pixels,
     _format_adjustment_label,
@@ -13,6 +14,7 @@ from openraw_studio.ui.desktop import (
     _format_result_summary,
     _friendly_error_message,
     _manual_overrides,
+    _preview_state_text,
     _result_status,
 )
 
@@ -65,6 +67,20 @@ class DesktopHelperTests(unittest.TestCase):
             _manual_overrides(0.5, -0.25, 0.75),
             {"exposure": 0.5, "contrast": -0.25, "warmth": 0.75},
         )
+
+    def test_adjustments_match_with_small_tolerance(self) -> None:
+        rendered = {"exposure": 0.5, "contrast": -0.25, "warmth": 0.75}
+        current = {"exposure": 0.50001, "contrast": -0.25, "warmth": 0.75}
+
+        self.assertTrue(_adjustments_match(rendered, current))
+        self.assertFalse(_adjustments_match(rendered, {**current, "warmth": 0.5}))
+
+    def test_preview_state_text_marks_stale_preview(self) -> None:
+        current = {"exposure": 0.0, "contrast": 0.0, "warmth": 0.0}
+
+        self.assertEqual(_preview_state_text(None, current), "No preview yet")
+        self.assertEqual(_preview_state_text(current, current), "Preview current")
+        self.assertEqual(_preview_state_text({**current, "contrast": 0.2}, current), "Preview needs update")
 
     def test_default_sample_path_uses_pictures_folder(self) -> None:
         sample_path = _default_sample_path(Path("C:/Users/Example"))

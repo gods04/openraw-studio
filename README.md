@@ -153,7 +153,8 @@ and a recipe JSON in the selected output folder. After preview or export,
 color-treated result.
 The Exposure, Contrast, and Warmth controls are recorded in the recipe and
 applied to both preview and JPEG export. `Open Output Folder` opens the
-generated files directly.
+generated files directly. When adjustments change after a preview render, the
+desktop app marks the preview as needing an update.
 The on-screen preview is capped at 2048 pixels on its longest side; export keeps
 the source dimensions supported by the current Native path.
 

@@ -7,7 +7,7 @@ import threading
 import os
 import subprocess
 import sys
-from typing import Any
+from typing import Any, Mapping
 
 from openraw_studio.pipeline.errors import BackendUnavailableError, PipelineError, SourceFileError
 from openraw_studio.pipeline.interfaces import PipelineRequest
@@ -63,6 +63,28 @@ def _manual_overrides(exposure: float, contrast: float, warmth: float) -> dict[s
     }
 
 
+def _adjustments_match(
+    rendered: Mapping[str, float] | None,
+    current: Mapping[str, float],
+    *,
+    tolerance: float = 0.0001,
+) -> bool:
+    if rendered is None:
+        return False
+    for key in ("exposure", "contrast", "warmth"):
+        if abs(float(rendered.get(key, 0.0)) - float(current.get(key, 0.0))) > tolerance:
+            return False
+    return True
+
+
+def _preview_state_text(rendered: Mapping[str, float] | None, current: Mapping[str, float]) -> str:
+    if rendered is None:
+        return "No preview yet"
+    if _adjustments_match(rendered, current):
+        return "Preview current"
+    return "Preview needs update"
+
+
 def _default_sample_path(home: Path | None = None) -> Path:
     root = home or Path.home()
     return root / "Pictures" / "OpenRAW Studio Samples" / "openraw-synthetic.DNG"
@@ -115,12 +137,14 @@ def launch_desktop_app() -> None:
             self.after_photo: Any = None
             self.showing_after = True
             self.last_export_path: Path | None = None
+            self.last_preview_overrides: dict[str, float] | None = None
             self.run_counter = 0
             self.is_busy = False
 
             self.source_var = tk.StringVar(value="No RAW photo selected")
             self.output_var = tk.StringVar(value="Output folder will be chosen automatically")
             self.status_var = tk.StringVar(value="Choose a RAW photo to begin")
+            self.preview_state_var = tk.StringVar(value="No preview yet")
             self.exposure_var = tk.DoubleVar(value=0.0)
             self.contrast_var = tk.DoubleVar(value=0.0)
             self.warmth_var = tk.DoubleVar(value=0.0)
@@ -243,8 +267,11 @@ def launch_desktop_app() -> None:
                 font=("Segoe UI", 14),
             )
             self.preview_label.grid(row=0, column=0, sticky="nsew")
+            ttk_module.Label(preview, textvariable=self.preview_state_var, style="Muted.TLabel").grid(row=1, column=0, sticky="w", pady=(14, 0))
+            self.export_label = ttk_module.Label(preview, text="", style="Muted.TLabel", wraplength=680)
+            self.export_label.grid(row=2, column=0, sticky="w", pady=(8, 0))
             preview_actions = ttk_module.Frame(preview, style="Panel.TFrame")
-            preview_actions.grid(row=2, column=0, sticky="ew", pady=(12, 0))
+            preview_actions.grid(row=3, column=0, sticky="ew", pady=(12, 0))
             preview_actions.columnconfigure(1, weight=1)
             self.compare_button = ttk_module.Button(
                 preview_actions,
@@ -254,8 +281,6 @@ def launch_desktop_app() -> None:
                 state="disabled",
             )
             self.compare_button.grid(row=0, column=0, sticky="w")
-            self.export_label = ttk_module.Label(preview, text="", style="Muted.TLabel", wraplength=680)
-            self.export_label.grid(row=1, column=0, sticky="w", pady=(14, 0))
             self.open_folder_button = ttk_module.Button(
                 preview_actions,
                 text="Open Output Folder",
@@ -317,7 +342,8 @@ def launch_desktop_app() -> None:
             self.contrast_label_var.set(_format_adjustment_label(float(self.contrast_var.get())))
             self.warmth_label_var.set(_format_adjustment_label(float(self.warmth_var.get())))
             if self.source_path is not None and not self.is_busy:
-                self.status_var.set("Adjustments changed")
+                preview_state = self._refresh_preview_state()
+                self.status_var.set(preview_state if preview_state == "Preview needs update" else "Adjustments changed")
 
         def _reset_adjustments(self) -> None:
             self.exposure_var.set(0.0)
@@ -330,8 +356,10 @@ def launch_desktop_app() -> None:
             self.before_photo = None
             self.after_photo = None
             self.last_export_path = None
+            self.last_preview_overrides = None
             self.showing_after = True
             self.preview_label.configure(image="", text="Your preview will appear here")
+            self.preview_state_var.set("No preview yet")
             self.export_label.configure(text="")
             self.compare_button.configure(state="disabled", text="Show Before")
             self.open_folder_button.configure(state="disabled")
@@ -354,14 +382,11 @@ def launch_desktop_app() -> None:
             run_id = self.run_counter
             self._set_busy(True)
             self.status_var.set("Updating preview..." if preview_only else "Exporting JPEG...")
+            self.preview_state_var.set("Updating preview..." if preview_only else "Exporting preview and JPEG...")
             self.export_label.configure(text="")
             self.last_export_path = None
             self.open_export_button.configure(state="disabled")
-            overrides = _manual_overrides(
-                float(self.exposure_var.get()),
-                float(self.contrast_var.get()),
-                float(self.warmth_var.get()),
-            )
+            overrides = self._current_overrides()
             threading.Thread(
                 target=self._process_worker,
                 args=(
@@ -388,7 +413,7 @@ def launch_desktop_app() -> None:
                 message = _friendly_error_message(exc)
                 self.root.after(0, lambda: self._show_error(message, run_id=run_id))
                 return
-            self.root.after(0, lambda: self._show_result(result, source, run_id=run_id))
+            self.root.after(0, lambda: self._show_result(result, source, overrides=overrides, run_id=run_id))
 
         def _set_busy(self, busy: bool) -> None:
             self.is_busy = busy
@@ -396,19 +421,33 @@ def launch_desktop_app() -> None:
             self.preview_button.configure(state=state)
             self.process_button.configure(state=state)
 
+        def _current_overrides(self) -> dict[str, float]:
+            return _manual_overrides(
+                float(self.exposure_var.get()),
+                float(self.contrast_var.get()),
+                float(self.warmth_var.get()),
+            )
+
+        def _refresh_preview_state(self) -> str:
+            preview_state = _preview_state_text(self.last_preview_overrides, self._current_overrides())
+            self.preview_state_var.set(preview_state)
+            return preview_state
+
         def _show_error(self, message: str, *, run_id: int | None = None) -> None:
             if run_id is not None and run_id != self.run_counter:
                 return
             self._set_busy(False)
             self.status_var.set("Processing failed")
+            self._refresh_preview_state()
             self.messagebox.showerror("OpenRAW Studio", message)
 
-        def _show_result(self, result: Any, source: Path, *, run_id: int) -> None:
+        def _show_result(self, result: Any, source: Path, *, overrides: dict[str, float], run_id: int) -> None:
             if run_id != self.run_counter:
                 return
             self._set_busy(False)
             self.status_var.set(_result_status(result))
             if result.preview is not None and result.preview.path.exists():
+                self.last_preview_overrides = dict(overrides)
                 try:
                     from PIL import Image, ImageTk
 
@@ -426,6 +465,7 @@ def launch_desktop_app() -> None:
                     self.showing_after = True
                 except (OSError, RuntimeError):
                     self.preview_label.configure(text="Preview created. Open the output folder to view it.", image="")
+            self._refresh_preview_state()
             self.export_label.configure(text=_format_result_summary(result))
             if result.preview is not None or result.exports:
                 self.open_folder_button.configure(state="normal")

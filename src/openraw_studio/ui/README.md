@@ -12,6 +12,7 @@ The UI should keep the image workspace first:
 
 - import/watch status
 - current photo preview
+- preview current/stale state
 - built-in synthetic sample DNG creation
 - before/after comparison
 - AUTO action
