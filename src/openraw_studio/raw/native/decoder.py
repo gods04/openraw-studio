@@ -55,8 +55,12 @@ class NativeRawDecoder:
             white_level=int(pixel_data.white_level) if isinstance(pixel_data.white_level, int | float) else None,
             metadata={
                 "byte_order": pixel_data.byte_order,
+                "storage_layout": pixel_data.storage_layout,
                 "strip_count": len(pixel_data.strip_offsets),
                 "rows_per_strip": pixel_data.rows_per_strip,
+                "tile_count": len(pixel_data.tile_offsets),
+                "tile_width": pixel_data.tile_width,
+                "tile_length": pixel_data.tile_length,
                 "cfa_pattern": pixel_data.cfa_pattern,
                 "as_shot_neutral": dng_summary.get("as_shot_neutral"),
                 "color_matrix_1": dng_summary.get("color_matrix_1"),

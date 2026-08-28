@@ -27,7 +27,7 @@ Acceptance:
 - no model weights or private photos are committed
 - `openraw process --dry-run` writes a recipe sidecar
 - default RAW engine identity is `openraw-native`
-- `openraw process --preview-only` writes a native preview for supported narrow DNG files
+- `openraw process --preview-only` writes a native preview for supported narrow uncompressed DNG files
 
 ## V0.1 - Pipeline Proof
 
@@ -61,6 +61,7 @@ Suggested implementation order:
 16. [done] add conservative desktop Auto Adjust starter action
 17. [done] show selected-photo info and planned output paths in the desktop app
 18. [done] restore basic desktop adjustments from saved recipe sidecars
+19. [done] add native extraction for simple uncompressed tiled DNG payloads
 
 Exit criteria:
 

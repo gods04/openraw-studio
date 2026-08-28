@@ -86,12 +86,12 @@ Status:
 
 - lightweight TIFF/DNG metadata reader exists
 - OpenRAW Native inspection records DNG metadata in recipes
-- first uncompressed strip-based pixel extraction exists
+- first uncompressed strip- and tile-based pixel extraction exists
 - black/white level sensor normalization exists
 - simple Bayer demosaic exists
 - simple tone mapping and PNG preview encoding exist
 - `openraw process --preview-only` can complete without final export
-- preview-derived JPEG export exists for narrow supported DNG files
+- preview-derived JPEG export exists for narrow supported uncompressed DNG files
 - DNG AsShotNeutral white balance and ColorMatrix1 transform are applied when available
 - recipe-driven exposure, contrast, and warmth controls are applied to preview and JPEG export
 - full camera-aware color conversion and high-quality JPEG/TIFF export are next
@@ -116,6 +116,10 @@ Current native pixel scope:
 - `SamplesPerPixel=1`
 - `StripOffsets`
 - `StripByteCounts`
+- `TileWidth`
+- `TileLength`
+- `TileOffsets`
+- `TileByteCounts`
 - simple 16-bit sample unpacking
 - scalar black/white level normalization to 0.0-1.0 linear sensor values
 - simple local-average Bayer demosaic for RGGB, GRBG, GBRG, and BGGR
@@ -127,7 +131,6 @@ Current native pixel scope:
 Not supported yet:
 
 - compressed DNG
-- tiled DNG
 - packed 10/12/14-bit data
 - multi-sample RGB DNG
 - SubIFD selection beyond the simplest payload

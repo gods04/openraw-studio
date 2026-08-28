@@ -41,6 +41,7 @@ class NativeRawProcessor:
                 "tone_adjustments": "exposure-contrast-warmth-v0.1",
                 "dng_metadata": True,
                 "dng_uncompressed_strips": True,
+                "dng_uncompressed_tiles": True,
                 "recipe_planning": True,
                 "owned_by_openraw": True,
             },

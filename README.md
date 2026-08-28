@@ -62,11 +62,11 @@ Then import `sample-data\openraw-synthetic.DNG` in the app.
 - `openraw process --dry-run` recipe/artifact planner for one RAW-like file
 - OpenRAW Native RAW engine scaffold as the default backend
 - Native DNG/TIFF metadata reader for the first RAW-engine milestone
-- Native extraction for simple uncompressed DNG strip pixel payloads
+- Native extraction for simple uncompressed DNG strip and tile pixel payloads
 - Native black/white level normalization for 16-bit Bayer sensor data
 - Native simple Bayer demosaic baseline
-- Native PNG preview encoding for narrow DNG test files
-- Native preview-derived JPEG export for narrow DNG test files
+- Native PNG preview encoding for narrow uncompressed DNG test files
+- Native preview-derived JPEG export for narrow uncompressed DNG test files
 - Beginner desktop shell launched with `openraw app` or `scripts/run_app.ps1`
 - App import, output-folder selection, conservative Auto Adjust,
   exposure/contrast/warmth adjustments, before/after comparison, built-in
@@ -187,14 +187,14 @@ You can also pass basic contrast and warmth controls:
 openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-output" --contrast 0.25 --warmth 0.2
 ```
 
-Render the current native preview-only path for a narrow supported DNG:
+Render the current native preview-only path for a narrow supported uncompressed DNG:
 
 ```powershell
 openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-output" --preview-only
 ```
 
-This can write a `.preview.png` file for simple uncompressed 16-bit strip-based
-DNG files and skip final export.
+This can write a `.preview.png` file for simple uncompressed 16-bit strip- or
+tile-based DNG files and skip final export.
 
 Render the current narrow end-to-end native path:
 
@@ -202,10 +202,10 @@ Render the current narrow end-to-end native path:
 openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-output"
 ```
 
-For supported simple DNG files, this writes both `.preview.png` and `.auto.jpg`
-artifacts. The JPEG is a V0.1 preview-derived export. It applies available DNG
-`AsShotNeutral` and `ColorMatrix1` metadata, but is not final camera-aware color
-science yet.
+For supported simple uncompressed DNG files, this writes both `.preview.png` and
+`.auto.jpg` artifacts. The JPEG is a V0.1 preview-derived export. It applies
+available DNG `AsShotNeutral` and `ColorMatrix1` metadata, but is not final
+camera-aware color science yet.
 
 Run tests:
 

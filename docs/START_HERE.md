@@ -108,7 +108,7 @@ Current native preview-only command:
 openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-output" --preview-only
 ```
 
-Current native render command for narrow supported DNG files:
+Current native render command for narrow supported uncompressed DNG files:
 
 ```powershell
 openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-output"
@@ -149,13 +149,13 @@ Current status:
 - backend availability check exists
 - OpenRAW Native is the default RAW engine identity
 - DNG/TIFF metadata reader exists
-- simple uncompressed DNG strip pixel extraction exists
+- simple uncompressed DNG strip and tile pixel extraction exists
 - black/white level sensor normalization exists
 - simple Bayer demosaic exists
 - simple PNG preview encoding exists
 - `--preview-only` pipeline mode exists
 - `darktable-cli` adapter exists only as an explicit experimental backend
-- preview-derived native JPEG export exists for narrow supported DNG files
+- preview-derived native JPEG export exists for narrow supported uncompressed DNG files
 - first-pass DNG white balance and ColorMatrix1 transform are now applied
 - exposure, contrast, and warmth adjustments are available from the CLI and desktop shell and are saved in the recipe
 - Windows startup script creates `.venv`, installs the local package, and opens the app

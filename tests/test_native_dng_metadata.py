@@ -92,6 +92,34 @@ class NativeDngMetadataTests(unittest.TestCase):
         self.assertEqual(pixel_data.white_level, 4095)
         self.assertEqual(pixel_data.samples_u16(), (64, 1024, 2048, 4095))
 
+    def test_reader_reassembles_uncompressed_tiled_pixels(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "tiles.DNG"
+            path.write_bytes(_minimal_tiled_pixel_dng_bytes())
+
+            pixel_data = DngMetadataReader().read_pixel_data(path)
+
+        self.assertEqual(pixel_data.width, 3)
+        self.assertEqual(pixel_data.height, 3)
+        self.assertEqual(pixel_data.storage_layout, "tiles")
+        self.assertEqual(pixel_data.tile_width, 2)
+        self.assertEqual(pixel_data.tile_length, 2)
+        self.assertEqual(len(pixel_data.tile_offsets), 4)
+        self.assertEqual(pixel_data.samples_u16(), tuple(range(1, 10)))
+
+    def test_native_decoder_returns_sensor_data_for_tiled_dng(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "tiles.DNG"
+            path.write_bytes(_minimal_tiled_pixel_dng_bytes())
+
+            sensor = NativeRawDecoder().decode(path)
+
+        self.assertEqual(sensor.width, 3)
+        self.assertEqual(sensor.height, 3)
+        self.assertEqual(sensor.raw_bytes, _pack_shorts(list(range(1, 10))))
+        self.assertEqual(sensor.metadata["storage_layout"], "tiles")
+        self.assertEqual(sensor.metadata["tile_count"], 4)
+
     def test_native_decoder_returns_sensor_data_for_simple_dng(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "pixels.DNG"
@@ -324,6 +352,23 @@ class NativeDngMetadataTests(unittest.TestCase):
         self.assertTrue(preview_bytes.startswith(b"\x89PNG\r\n\x1a\n"))
         self.assertEqual(preview_size, (2, 2))
 
+    def test_native_processor_writes_png_preview_for_tiled_dng(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "tiles.DNG"
+            preview_path = root / "preview.png"
+            source.write_bytes(_minimal_tiled_pixel_dng_bytes())
+
+            image = NativeRawProcessor().create_preview(ImageAsset(source), preview_path, max_dimension=2048)
+            preview_bytes = preview_path.read_bytes()
+            preview_size = read_image_size(preview_path)
+
+        self.assertEqual(image.width, 3)
+        self.assertEqual(image.height, 3)
+        self.assertEqual(image.path, preview_path)
+        self.assertTrue(preview_bytes.startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertEqual(preview_size, (3, 3))
+
     def test_preview_can_render_before_and_after_color_stages(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "pixels.DNG"
@@ -424,18 +469,54 @@ def _minimal_pixel_dng_bytes() -> bytes:
     return _build_tiff(entries, trailing_payload=pixel_bytes)
 
 
-def _build_tiff(entries: list[dict], trailing_payload: bytes = b"") -> bytes:
+def _minimal_tiled_pixel_dng_bytes() -> bytes:
+    tile_payloads = [
+        _pack_shorts([1, 2, 4, 5]),
+        _pack_shorts([3, 0, 6, 0]),
+        _pack_shorts([7, 8, 0, 0]),
+        _pack_shorts([9, 0, 0, 0]),
+    ]
+    entries = [
+        _entry_inline(256, 4, 1, _pack_long(3)),
+        _entry_inline(257, 4, 1, _pack_long(3)),
+        _entry_inline(258, 3, 1, _pack_short(16)),
+        _entry_inline(259, 3, 1, _pack_short(1)),
+        _entry_inline(262, 3, 1, _pack_short(32803)),
+        _entry_inline(277, 3, 1, _pack_short(1)),
+        _entry_inline(322, 4, 1, _pack_long(2)),
+        _entry_inline(323, 4, 1, _pack_long(2)),
+        _entry_pixel_offsets(324, len(tile_payloads)),
+        _entry_external(325, 4, _pack_longs([len(payload) for payload in tile_payloads])),
+        _entry_inline(33421, 3, 2, _pack_short(2) + _pack_short(2)),
+        _entry_inline(33422, 1, 4, bytes([0, 1, 1, 2])),
+        _entry_inline(50706, 1, 4, bytes([1, 4, 0, 0])),
+        _entry_inline(50714, 3, 1, _pack_short(0)),
+        _entry_inline(50717, 4, 1, _pack_long(65535)),
+    ]
+    return _build_tiff(entries, trailing_payloads=tile_payloads)
+
+
+def _build_tiff(entries: list[dict], trailing_payload: bytes = b"", trailing_payloads: list[bytes] | None = None) -> bytes:
     header = b"II" + struct.pack("<H", 42) + struct.pack("<I", 8)
     ifd_size = 2 + len(entries) * 12 + 4
     data_offset = 8 + ifd_size
     external_data = bytearray()
     encoded_entries = []
+    payload_chunks = trailing_payloads if trailing_payloads is not None else ([trailing_payload] if trailing_payload else [])
+    offset_placeholders: list[tuple[int, int]] = []
 
     for entry in entries:
         if entry["inline"]:
             encoded_entries.append(
                 struct.pack("<HHI", entry["tag"], entry["field_type"], entry["count"]) + entry["payload"].ljust(4, b"\x00")
             )
+        elif entry.get("pixel_offsets"):
+            placeholder_start = len(external_data)
+            payload = b"\x00" * (entry["count"] * 4)
+            offset = data_offset + placeholder_start
+            encoded_entries.append(struct.pack("<HHII", entry["tag"], entry["field_type"], entry["count"], offset))
+            external_data.extend(payload)
+            offset_placeholders.append((placeholder_start, entry["count"]))
         elif entry.get("pixel_offset"):
             offset = data_offset + len(external_data)
             encoded_entries.append(struct.pack("<HHII", entry["tag"], entry["field_type"], entry["count"], offset))
@@ -447,8 +528,19 @@ def _build_tiff(entries: list[dict], trailing_payload: bytes = b"") -> bytes:
             if len(external_data) % 2:
                 external_data.extend(b"\x00")
 
+    if offset_placeholders:
+        pixel_offsets = []
+        payload_offset = data_offset + len(external_data)
+        for payload in payload_chunks:
+            pixel_offsets.append(payload_offset)
+            payload_offset += len(payload)
+        for placeholder_start, count in offset_placeholders:
+            if count != len(pixel_offsets):
+                raise ValueError("pixel offset placeholder count does not match payload count")
+            external_data[placeholder_start : placeholder_start + count * 4] = _pack_longs(pixel_offsets)
+
     ifd = struct.pack("<H", len(entries)) + b"".join(encoded_entries) + struct.pack("<I", 0)
-    return header + ifd + bytes(external_data) + trailing_payload
+    return header + ifd + bytes(external_data) + b"".join(payload_chunks)
 
 
 def _entry_inline(tag: int, field_type: int, count: int, payload: bytes) -> dict:
@@ -456,12 +548,16 @@ def _entry_inline(tag: int, field_type: int, count: int, payload: bytes) -> dict
 
 
 def _entry_external(tag: int, field_type: int, payload: bytes) -> dict:
-    type_size = {2: 1, 5: 8, 10: 8}[field_type]
+    type_size = {2: 1, 4: 4, 5: 8, 10: 8}[field_type]
     return {"tag": tag, "field_type": field_type, "count": len(payload) // type_size, "payload": payload, "inline": False}
 
 
 def _entry_pixel_offset(tag: int) -> dict:
     return {"tag": tag, "field_type": 4, "count": 1, "payload": b"", "inline": False, "pixel_offset": True}
+
+
+def _entry_pixel_offsets(tag: int, count: int) -> dict:
+    return {"tag": tag, "field_type": 4, "count": count, "payload": b"", "inline": False, "pixel_offsets": True}
 
 
 def _pack_short(value: int) -> bytes:
@@ -470,6 +566,10 @@ def _pack_short(value: int) -> bytes:
 
 def _pack_long(value: int) -> bytes:
     return struct.pack("<I", value)
+
+
+def _pack_longs(values: list[int]) -> bytes:
+    return b"".join(_pack_long(value) for value in values)
 
 
 def _pack_shorts(values: list[int]) -> bytes:

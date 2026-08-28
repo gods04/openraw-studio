@@ -58,8 +58,13 @@ class DngPixelData:
     samples_per_pixel: int
     byte_order: str
     raw_bytes: bytes
-    strip_offsets: tuple[int, ...]
-    strip_byte_counts: tuple[int, ...]
+    storage_layout: str = "strips"
+    strip_offsets: tuple[int, ...] = ()
+    strip_byte_counts: tuple[int, ...] = ()
+    tile_offsets: tuple[int, ...] = ()
+    tile_byte_counts: tuple[int, ...] = ()
+    tile_width: int | None = None
+    tile_length: int | None = None
     rows_per_strip: int | None = None
     black_level: int | float | tuple[int | float, ...] | None = None
     white_level: int | float | tuple[int | float, ...] | None = None
@@ -165,6 +170,10 @@ SUMMARY_TAGS = {
     "Orientation": "orientation",
     "SamplesPerPixel": "samples_per_pixel",
     "RowsPerStrip": "rows_per_strip",
+    "TileWidth": "tile_width",
+    "TileLength": "tile_length",
+    "TileOffsets": "tile_offsets",
+    "TileByteCounts": "tile_byte_counts",
     "CFARepeatPatternDim": "cfa_repeat_pattern_dim",
     "CFAPattern": "cfa_pattern",
     "DNGVersion": "dng_version",
@@ -201,11 +210,12 @@ class DngMetadataReader:
         )
 
     def read_pixel_data(self, path: str | Path) -> DngPixelData:
-        """Extract simple uncompressed strip-based pixel data.
+        """Extract simple uncompressed strip- or tile-based pixel data.
 
         This is deliberately narrow: V0.1 native extraction supports
-        Compression=1, BitsPerSample=16, SamplesPerPixel=1, and StripOffsets /
-        StripByteCounts. Tile-based and compressed DNG files are future work.
+        Compression=1, BitsPerSample=16, SamplesPerPixel=1, and either
+        StripOffsets / StripByteCounts or TileOffsets / TileByteCounts.
+        Compressed DNG files are future work.
         """
 
         data = Path(path).read_bytes()
@@ -220,7 +230,7 @@ class DngMetadataReader:
         height = _expect_int(summary, "height")
 
         if compression != 1:
-            raise DngMetadataError(f"unsupported DNG compression: {compression}; only uncompressed strips are supported")
+            raise DngMetadataError(f"unsupported DNG compression: {compression}; only uncompressed strips or tiles are supported")
         if bits_per_sample != 16:
             raise DngMetadataError(f"unsupported BitsPerSample: {bits_per_sample}; only 16-bit data is supported")
         if samples_per_pixel != 1:
@@ -228,12 +238,40 @@ class DngMetadataReader:
                 f"unsupported SamplesPerPixel: {samples_per_pixel}; only single-sample Bayer data is supported"
             )
 
-        strip_offsets = _tuple_of_ints(_require_tag_value(ifd, 273, "StripOffsets"))
-        strip_byte_counts = _tuple_of_ints(_require_tag_value(ifd, 279, "StripByteCounts"))
-        if len(strip_offsets) != len(strip_byte_counts):
-            raise DngMetadataError("StripOffsets and StripByteCounts have different lengths")
+        bytes_per_pixel = (bits_per_sample // 8) * samples_per_pixel
+        strip_offsets: tuple[int, ...] = ()
+        strip_byte_counts: tuple[int, ...] = ()
+        tile_offsets: tuple[int, ...] = ()
+        tile_byte_counts: tuple[int, ...] = ()
+        tile_width: int | None = None
+        tile_length: int | None = None
+        storage_layout = "strips"
 
-        raw_bytes = b"".join(_slice_checked(data, offset, count) for offset, count in zip(strip_offsets, strip_byte_counts))
+        if _ifd_has_strip_payload(ifd):
+            strip_offsets = _tuple_of_ints(_require_tag_value(ifd, 273, "StripOffsets"))
+            strip_byte_counts = _tuple_of_ints(_require_tag_value(ifd, 279, "StripByteCounts"))
+            if len(strip_offsets) != len(strip_byte_counts):
+                raise DngMetadataError("StripOffsets and StripByteCounts have different lengths")
+            raw_bytes = b"".join(_slice_checked(data, offset, count) for offset, count in zip(strip_offsets, strip_byte_counts))
+        elif _ifd_has_tile_payload(ifd):
+            storage_layout = "tiles"
+            tile_width = _expect_int(summary, "tile_width")
+            tile_length = _expect_int(summary, "tile_length")
+            tile_offsets = _tuple_of_ints(_require_tag_value(ifd, 324, "TileOffsets"))
+            tile_byte_counts = _tuple_of_ints(_require_tag_value(ifd, 325, "TileByteCounts"))
+            raw_bytes = _assemble_tiled_payload(
+                data,
+                tile_offsets,
+                tile_byte_counts,
+                width=width,
+                height=height,
+                tile_width=tile_width,
+                tile_length=tile_length,
+                bytes_per_pixel=bytes_per_pixel,
+            )
+        else:
+            raise DngMetadataError("missing strip or tile pixel payload tags")
+
         pixel_data = DngPixelData(
             width=width,
             height=height,
@@ -241,8 +279,13 @@ class DngMetadataReader:
             samples_per_pixel=samples_per_pixel,
             byte_order=byte_order,
             raw_bytes=raw_bytes,
+            storage_layout=storage_layout,
             strip_offsets=strip_offsets,
             strip_byte_counts=strip_byte_counts,
+            tile_offsets=tile_offsets,
+            tile_byte_counts=tile_byte_counts,
+            tile_width=tile_width,
+            tile_length=tile_length,
             rows_per_strip=_optional_int(summary.get("rows_per_strip")),
             black_level=summary.get("black_level"),
             white_level=summary.get("white_level"),
@@ -398,12 +441,98 @@ def _require_range(data: bytes, offset: int, length: int) -> None:
 
 
 def _select_pixel_ifd(ifds: list[TiffIfd]) -> TiffIfd:
-    candidates = [ifd for ifd in ifds if 273 in ifd.tags and 279 in ifd.tags]
+    candidates = [ifd for ifd in ifds if _ifd_has_strip_payload(ifd) or _ifd_has_tile_payload(ifd)]
     if not candidates:
-        if any(324 in ifd.tags or 325 in ifd.tags for ifd in ifds):
-            raise DngMetadataError("tile-based DNG pixel extraction is not implemented yet")
-        raise DngMetadataError("no strip-based pixel payload tags found")
+        if any(_ifd_has_incomplete_pixel_payload(ifd) for ifd in ifds):
+            raise DngMetadataError("incomplete strip or tile pixel payload tags")
+        raise DngMetadataError("no strip or tile pixel payload tags found")
     return _largest_ifd_first(candidates)[0]
+
+
+def _ifd_has_strip_payload(ifd: TiffIfd) -> bool:
+    return 273 in ifd.tags and 279 in ifd.tags
+
+
+def _ifd_has_tile_payload(ifd: TiffIfd) -> bool:
+    return 322 in ifd.tags and 323 in ifd.tags and 324 in ifd.tags and 325 in ifd.tags
+
+
+def _ifd_has_incomplete_pixel_payload(ifd: TiffIfd) -> bool:
+    return any(tag in ifd.tags for tag in (273, 279, 322, 323, 324, 325))
+
+
+def _assemble_tiled_payload(
+    data: bytes,
+    tile_offsets: tuple[int, ...],
+    tile_byte_counts: tuple[int, ...],
+    *,
+    width: int,
+    height: int,
+    tile_width: int,
+    tile_length: int,
+    bytes_per_pixel: int,
+) -> bytes:
+    if tile_width <= 0 or tile_length <= 0:
+        raise DngMetadataError("TileWidth and TileLength must be greater than zero")
+    if len(tile_offsets) != len(tile_byte_counts):
+        raise DngMetadataError("TileOffsets and TileByteCounts have different lengths")
+
+    tiles_across = _ceil_div(width, tile_width)
+    tiles_down = _ceil_div(height, tile_length)
+    expected_tiles = tiles_across * tiles_down
+    if len(tile_offsets) != expected_tiles:
+        raise DngMetadataError(f"tile count does not match image dimensions: {len(tile_offsets)} != {expected_tiles}")
+
+    output = bytearray(width * height * bytes_per_pixel)
+    for tile_index, (offset, byte_count) in enumerate(zip(tile_offsets, tile_byte_counts)):
+        tile = _slice_checked(data, offset, byte_count)
+        tile_row = tile_index // tiles_across
+        tile_column = tile_index % tiles_across
+        origin_row = tile_row * tile_length
+        origin_column = tile_column * tile_width
+        copy_rows = min(tile_length, height - origin_row)
+        copy_columns = min(tile_width, width - origin_column)
+        _copy_tile_into_rows(
+            output,
+            tile,
+            image_width=width,
+            origin_row=origin_row,
+            origin_column=origin_column,
+            copy_rows=copy_rows,
+            copy_columns=copy_columns,
+            tile_width=tile_width,
+            bytes_per_pixel=bytes_per_pixel,
+        )
+    return bytes(output)
+
+
+def _copy_tile_into_rows(
+    output: bytearray,
+    tile: bytes,
+    *,
+    image_width: int,
+    origin_row: int,
+    origin_column: int,
+    copy_rows: int,
+    copy_columns: int,
+    tile_width: int,
+    bytes_per_pixel: int,
+) -> None:
+    if copy_rows <= 0 or copy_columns <= 0:
+        return
+    last_needed_byte = ((copy_rows - 1) * tile_width + copy_columns) * bytes_per_pixel
+    if len(tile) < last_needed_byte:
+        raise DngMetadataError(f"tile payload is shorter than expected: {len(tile)} < {last_needed_byte}")
+
+    row_bytes = copy_columns * bytes_per_pixel
+    for row in range(copy_rows):
+        source_start = row * tile_width * bytes_per_pixel
+        target_start = ((origin_row + row) * image_width + origin_column) * bytes_per_pixel
+        output[target_start : target_start + row_bytes] = tile[source_start : source_start + row_bytes]
+
+
+def _ceil_div(value: int, divisor: int) -> int:
+    return (value + divisor - 1) // divisor
 
 
 def _require_tag_value(ifd: TiffIfd, tag_code: int, label: str) -> Any:

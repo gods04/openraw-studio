@@ -260,7 +260,10 @@ def _friendly_error_message(error: BaseException) -> str:
         if "Source file does not exist" in message:
             return "The selected photo could not be found. It may have been moved or deleted."
     if isinstance(error, BackendUnavailableError):
-        if "only uncompressed strips are supported" in message:
+        if (
+            "only uncompressed strips are supported" in message
+            or "only uncompressed strips or tiles are supported" in message
+        ):
             return "This DNG uses a structure that OpenRAW Native does not support yet. Try the built-in sample DNG for the current V0.1 path."
         if "currently starts with DNG files" in message:
             return "OpenRAW Native currently processes DNG files first. Broader camera RAW formats are still on the roadmap."

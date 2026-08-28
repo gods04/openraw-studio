@@ -31,7 +31,7 @@ Current app flow:
 Import DNG -> choose output folder -> Auto Adjust -> Update Preview -> refine exposure/contrast/warmth -> Export JPEG
 ```
 
-For supported simple DNG files, the app writes:
+For supported simple uncompressed DNG files, the app writes:
 
 - preview PNG
 - preview-derived JPEG
@@ -133,7 +133,7 @@ can write a dry-run recipe/artifact plan for a RAW-like source file:
 - `openraw doctor` reports the OpenRAW Native engine foundation
 - `openraw process --dry-run` writes a recipe sidecar without rendering pixels
 - `openraw process` writes a PNG preview and preview-derived JPEG export for
-  narrow supported DNG files
+  narrow supported uncompressed DNG files
 
 Check the environment:
 
@@ -145,7 +145,7 @@ Expected meaning:
 
 ```text
 OpenRAW Native engine foundation is available.
-Narrow DNG preview and preview-derived JPEG export are available.
+Narrow uncompressed DNG preview and preview-derived JPEG export are available.
 ```
 
 Plan one source file:
@@ -160,8 +160,8 @@ Render the first native preview-only path:
 openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-output" --preview-only
 ```
 
-This writes a PNG preview only for narrow DNG files supported by the current
-native engine and intentionally skips final JPEG export.
+This writes a PNG preview only for narrow uncompressed DNG files supported by
+the current native engine and intentionally skips final JPEG export.
 
 Render the first native end-to-end path:
 
@@ -169,9 +169,9 @@ Render the first native end-to-end path:
 openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-output"
 ```
 
-For supported simple DNG files, this writes both `IMG_0001.preview.png` and
-`IMG_0001.auto.jpg`. The JPEG is preview-derived and does not represent final
-camera-aware color science yet.
+For supported simple uncompressed DNG files, this writes both
+`IMG_0001.preview.png` and `IMG_0001.auto.jpg`. The JPEG is preview-derived and
+does not represent final camera-aware color science yet.
 
 Expected dry-run output:
 

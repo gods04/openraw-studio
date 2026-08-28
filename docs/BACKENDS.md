@@ -14,8 +14,9 @@ Status:
 
 ```text
 foundation ready
-simple PNG preview support for narrow DNG files
-preview-derived JPEG export support for narrow DNG files
+simple PNG preview support for narrow uncompressed DNG files
+preview-derived JPEG export support for narrow uncompressed DNG files
+strip and tile pixel payloads supported for the current 16-bit DNG path
 high-quality JPEG/TIFF export not implemented yet
 ```
 

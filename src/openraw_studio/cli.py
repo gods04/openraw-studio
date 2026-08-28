@@ -65,7 +65,10 @@ def _run_doctor(include_experimental_backends: bool, darktable_cli: str | None) 
     print(f"OpenRAW Studio {__version__}")
     print("Python package: available")
     print(f"{native.name}: available")
-    print("  status: foundation ready; simple PNG preview and preview-derived JPEG export support for narrow DNG files")
+    print(
+        "  status: foundation ready; simple PNG preview and preview-derived JPEG export "
+        "support for narrow uncompressed DNG files with strip/tile payloads"
+    )
     if include_experimental_backends or darktable_cli:
         check = check_darktable_cli(darktable_cli)
         print(f"{check.name} experimental: {'available' if check.available else 'missing'}")

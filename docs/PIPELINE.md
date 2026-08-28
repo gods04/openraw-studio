@@ -31,10 +31,10 @@ Current native preview command:
 openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-output" --preview-only
 ```
 
-The preview-only path writes a `.preview.png` file for narrow supported DNG
-files and skips final export.
+The preview-only path writes a `.preview.png` file for narrow supported
+uncompressed DNG files and skips final export.
 
-Current native render command for narrow supported DNG files:
+Current native render command for narrow supported uncompressed DNG files:
 
 ```powershell
 openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-output"
