@@ -47,9 +47,9 @@ Suggested implementation order:
 2. expand OpenRAW Native DNG-first metadata extraction
 3. expand native DNG pixel extraction beyond simple uncompressed strips
 4. [done] add first-pass DNG white balance and color-matrix conversion to the preview
-5. expand preview-derived native JPEG export into a proper export stage
+5. [done] expand preview-derived native JPEG export into a proper export stage
 6. improve preview dimension and color-space metadata
-7. add export writer abstraction for final derivatives
+7. [done] add export writer abstraction for final derivatives
 8. add command-line smoke flow documentation using a local RAW file
 9. add fixture-free tests around recipe, decisions, and artifact paths
 10. add source discovery and import-folder watcher contract

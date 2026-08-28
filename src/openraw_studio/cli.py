@@ -86,7 +86,7 @@ def _run_doctor(include_experimental_backends: bool, darktable_cli: str | None) 
     print("Python package: available")
     print(f"{native.name}: available")
     print(
-        "  status: foundation ready; simple PNG preview and preview-derived JPEG export "
+        "  status: foundation ready; simple PNG preview/native render plus local JPEG export "
         "support for narrow uncompressed DNG files with strip/tile payloads"
     )
     if include_experimental_backends or darktable_cli:

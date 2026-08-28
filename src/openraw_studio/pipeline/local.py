@@ -12,7 +12,10 @@ from openraw_studio.core.files import is_supported_raw_path, sha256_file
 from openraw_studio.core.recipe import new_recipe, write_recipe
 from openraw_studio.decision.interfaces import DecisionRequest
 from openraw_studio.decision.rules import RuleBasedDecisionEngine
-from openraw_studio.pipeline.errors import BackendUnavailableError, SourceFileError
+from openraw_studio.export.errors import ExportError
+from openraw_studio.export.interfaces import ExportEngine, ExportRequest
+from openraw_studio.export.local import LocalJpegExportEngine
+from openraw_studio.pipeline.errors import BackendUnavailableError, PipelineError, SourceFileError
 from openraw_studio.pipeline.interfaces import PipelineRequest, PipelineResult
 from openraw_studio.raw.errors import RawProcessingError
 from openraw_studio.raw.interfaces import RawProcessor, RawRenderRequest
@@ -27,10 +30,12 @@ class LocalPhotoPipeline:
         self,
         *,
         raw_processor: RawProcessor | None = None,
+        export_engine: ExportEngine | None = None,
         processing_presets: Mapping[str, Mapping[str, Any]] | None = None,
         creative_looks: Mapping[str, Mapping[str, Any]] | None = None,
     ) -> None:
         self.raw_processor = raw_processor or NativeRawProcessor()
+        self.export_engine = export_engine or LocalJpegExportEngine()
         self.processing_presets = dict(processing_presets or {"general": {}, "portrait": {}})
         self.creative_looks = dict(creative_looks or {"clean": {}, "warm_film": {}})
         self.vision = HeuristicVisionEngine()
@@ -121,6 +126,7 @@ class LocalPhotoPipeline:
             self.vision.engine_info().__dict__,
             self.decision.engine_info().__dict__,
             self.raw_processor.engine_info().__dict__,
+            self.export_engine.engine_info().__dict__,
         ]
         recipe["exports"] = []
         recipe["qc"] = {
@@ -171,7 +177,7 @@ class LocalPhotoPipeline:
                             "planned_artifacts": plan.as_dict(),
                         },
                     )
-                export_ref = self.raw_processor.render_base(
+                rendered_ref = self.raw_processor.render_base(
                     RawRenderRequest(
                         source=source_asset,
                         recipe=recipe,
@@ -180,6 +186,17 @@ class LocalPhotoPipeline:
                         color_space="sRGB",
                     )
                 )
+                export_result = self.export_engine.export(
+                    ExportRequest(
+                        image=rendered_ref,
+                        recipe=recipe,
+                        output_path=plan.export_path,
+                        format="jpeg",
+                        quality=92,
+                        write_recipe_sidecar=False,
+                    )
+                )
+                export_ref = export_result.exported
             except RawProcessingError as exc:
                 recipe["pipeline"] = {
                     "mode": "render",
@@ -191,11 +208,19 @@ class LocalPhotoPipeline:
                     f"{exc} A recipe was written to {plan.recipe_path}. "
                     "Run with --dry-run for recipe-only planning, or use an experimental backend for development."
                 ) from exc
+            except ExportError as exc:
+                recipe["pipeline"] = {
+                    "mode": "render",
+                    "rendered": False,
+                    "message": f"Export failed: {exc}",
+                }
+                write_recipe(recipe, plan.recipe_path)
+                raise PipelineError(f"Export failed: {exc}") from exc
 
             recipe["pipeline"] = {
                 "mode": "render",
                 "rendered": True,
-                "message": "Preview and preview-derived JPEG export were rendered.",
+                "message": "Preview and JPEG export were rendered.",
             }
             recipe["exports"] = [
                 {
@@ -203,6 +228,8 @@ class LocalPhotoPipeline:
                     "format": "jpeg",
                     "width": export_ref.width,
                     "height": export_ref.height,
+                    "quality": export_result.metadata.get("quality", 92),
+                    "engine": self.export_engine.engine_info().name,
                 }
             ]
             recipe["preview"] = {

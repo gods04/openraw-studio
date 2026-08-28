@@ -26,6 +26,7 @@ Already present:
 - rule-based `DecisionEngine`
 - `recipe.v1` sidecar writing
 - OpenRAW Native RAW engine scaffold
+- local JPEG `ExportEngine`
 
 ## Module Ownership
 

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from openraw_studio.core.domain import EngineInfo, ImageAsset, ImageRef, RawInspection, ImageMetadata
 from openraw_studio.cli import main
+from openraw_studio.export.local import LocalJpegExportEngine
 from openraw_studio.pipeline.interfaces import PipelineRequest
 from openraw_studio.pipeline.local import LocalPhotoPipeline
 from openraw_studio.raw.backends import BackendCheck
@@ -52,6 +53,7 @@ class CliPipelineTests(unittest.TestCase):
         pipeline = LocalPhotoPipeline()
 
         self.assertIsInstance(pipeline.raw_processor, NativeRawProcessor)
+        self.assertIsInstance(pipeline.export_engine, LocalJpegExportEngine)
 
     def test_dry_run_pipeline_writes_recipe(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -106,7 +108,10 @@ class CliPipelineTests(unittest.TestCase):
             self.assertTrue((output / "previews" / "IMG_0003.preview.png").exists())
             self.assertTrue((output / "exports" / "IMG_0003.auto.jpg").exists())
             self.assertEqual(recipe["pipeline"]["rendered"], True)
+            self.assertEqual(recipe["engines"][3]["name"], "openraw-export")
             self.assertEqual(recipe["exports"][0]["width"], 2)
+            self.assertEqual(recipe["exports"][0]["quality"], 92)
+            self.assertEqual(recipe["exports"][0]["engine"], "openraw-export")
 
     def test_preview_only_pipeline_skips_export(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

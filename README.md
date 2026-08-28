@@ -68,7 +68,7 @@ Then import `sample-data\openraw-synthetic.DNG` in the app.
 - Native black/white level normalization for 16-bit Bayer sensor data
 - Native simple Bayer demosaic baseline
 - Native PNG preview encoding for narrow uncompressed DNG test files
-- Native preview-derived JPEG export for narrow uncompressed DNG test files
+- Local JPEG export engine for final derivative writing and recipe traceability
 - Beginner desktop shell launched with `openraw app` or `scripts/run_app.ps1`
 - App single-photo import, folder import, output-folder selection, conservative Auto Adjust,
   exposure/contrast/warmth adjustments, before/after comparison, built-in
@@ -214,7 +214,8 @@ openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-outpu
 ```
 
 For supported simple uncompressed DNG files, this writes both `.preview.png` and
-`.auto.jpg` artifacts. The JPEG is a V0.1 preview-derived export. It applies
+`.auto.jpg` artifacts through the local JPEG export engine. The image data is
+still V0.1 preview-derived. It applies
 available DNG `AsShotNeutral` and `ColorMatrix1` metadata, but is not final
 camera-aware color science yet.
 

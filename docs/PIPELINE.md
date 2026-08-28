@@ -153,8 +153,10 @@ V0.1 QC can be minimal:
 
 ### 7. Export
 
-Write the finished derivative and sidecar recipe. Exports must include enough
-metadata to trace the source and engine versions.
+Write the finished derivative and optional sidecar recipe through
+`ExportEngine`. V0.1 uses the local JPEG export engine, which records format,
+quality, source artifact, and engine metadata while preserving the original RAW.
+Exports must include enough metadata to trace the source and engine versions.
 
 ## Failure Handling
 

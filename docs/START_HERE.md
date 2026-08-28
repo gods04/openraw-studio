@@ -156,12 +156,12 @@ Current status:
 - simple PNG preview encoding exists
 - `--preview-only` pipeline mode exists
 - `darktable-cli` adapter exists only as an explicit experimental backend
-- preview-derived native JPEG export exists for narrow supported uncompressed DNG files
+- local JPEG export engine records final derivative exports for supported DNG files
 - first-pass DNG white balance and ColorMatrix1 transform are now applied
 - exposure, contrast, and warmth adjustments are available from the CLI and desktop shell and are saved in the recipe
 - Windows startup script creates `.venv`, installs the local package, and opens the app
 - Windows package script and GitHub Actions artifact build exist
-- full camera-aware color conversion and a better export abstraction are next
+- full camera-aware color conversion and higher-quality JPEG/TIFF export are next
 
 ### Step 3 - Minimal Desktop Shell
 
