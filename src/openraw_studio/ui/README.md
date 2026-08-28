@@ -26,6 +26,7 @@ The UI should keep the image workspace first:
 - preview-only refresh
 - expandable advanced panels
 - export controls
+- batch export for currently supported folder files
 - open generated JPEG action
 - open output folder action
 - saved recipe detection for restoring basic adjustments

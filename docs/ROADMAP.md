@@ -64,6 +64,7 @@ Suggested implementation order:
 19. [done] add native extraction for simple uncompressed tiled DNG payloads
 20. [done] add Native support reporting through CLI and desktop photo info
 21. [done] add desktop folder import with a lightweight photo list
+22. [done] add batch folder export through CLI and desktop app
 
 Exit criteria:
 

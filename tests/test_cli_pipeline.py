@@ -205,6 +205,46 @@ class CliPipelineTests(unittest.TestCase):
         self.assertIn("Native render: not supported yet", text)
         self.assertIn("DNG files", text)
 
+    def test_cli_batch_exports_supported_folder_items(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source_dir = root / "input"
+            source_dir.mkdir()
+            write_synthetic_dng(source_dir / "sample.DNG", width=4, height=4)
+            (source_dir / "sample.NEF").write_bytes(b"fake raw bytes")
+            output_dir = root / "output"
+            output = StringIO()
+
+            with redirect_stdout(output):
+                exit_code = main(["batch", str(source_dir), "--output", str(output_dir)])
+            export_exists = (output_dir / "exports" / "sample.auto.jpg").exists()
+
+        text = output.getvalue()
+        self.assertEqual(exit_code, 0)
+        self.assertIn("OpenRAW batch complete.", text)
+        self.assertIn("Exported: 1", text)
+        self.assertIn("Skipped: 1", text)
+        self.assertTrue(export_exists)
+
+    def test_cli_batch_returns_one_when_no_files_can_be_processed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source_dir = root / "input"
+            source_dir.mkdir()
+            (source_dir / "sample.NEF").write_bytes(b"fake raw bytes")
+
+            with redirect_stdout(StringIO()):
+                exit_code = main(["batch", str(source_dir), "--output", str(root / "output")])
+
+        self.assertEqual(exit_code, 1)
+
+    def test_cli_batch_rejects_invalid_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            with redirect_stderr(StringIO()):
+                exit_code = main(["batch", temp, "--output", temp, "--limit", "0"])
+
+        self.assertEqual(exit_code, 2)
+
     def test_darktable_adapter_builds_preview_command(self) -> None:
         calls = []
 

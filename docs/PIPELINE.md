@@ -53,6 +53,17 @@ This path writes a `.preview.png` preview, a preview-derived `.auto.jpg` export,
 and a recipe sidecar. It is an honest V0.1 render proof, not the final
 camera-aware color pipeline.
 
+Current native batch command:
+
+```powershell
+openraw batch "E:\Photos\input" --output "E:\Photos\openraw-output"
+```
+
+The batch command discovers RAW-like files in one folder, checks current Native
+support for each source, processes supported files through the normal
+single-photo pipeline, and reports skipped/failed files without stopping the
+whole batch.
+
 ## Inputs
 
 V0.1 accepts:

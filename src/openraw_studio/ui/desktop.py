@@ -9,12 +9,13 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 import subprocess
 import sys
 import threading
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from openraw_studio.core.artifacts import ArtifactPlan
 from openraw_studio.core.files import is_supported_raw_path
 from openraw_studio.core.recipe import validate_recipe_shape
 from openraw_studio.decision.auto_adjust import AutoAdjustSuggestion, suggest_auto_adjustments
+from openraw_studio.pipeline.batch import BatchItemResult, BatchResult, run_batch_export
 from openraw_studio.pipeline.errors import BackendUnavailableError, PipelineError, SourceFileError
 from openraw_studio.pipeline.interfaces import PipelineRequest
 from openraw_studio.pipeline.local import LocalPhotoPipeline
@@ -157,6 +158,42 @@ def _folder_status_text(folder: Path, item_count: int, *, limit: int = MAX_LIBRA
         return f"No RAW/DNG files found in {_short_path(folder, max_chars=46)}"
     suffix = f"Showing first {limit}" if item_count >= limit else f"{item_count}"
     return f"{suffix} RAW/DNG files in {_short_path(folder, max_chars=46)}"
+
+
+def _supported_library_sources(items: Sequence[tuple[Path, str, bool]]) -> tuple[Path, ...]:
+    return tuple(path for path, _label, can_render in items if can_render)
+
+
+def _library_sources(items: Sequence[tuple[Path, str, bool]]) -> tuple[Path, ...]:
+    return tuple(path for path, _label, _can_render in items)
+
+
+def _batch_progress_text(done: int, total: int, item: BatchItemResult) -> str:
+    return f"Batch {done}/{total}: {item.status} {item.source_path.name}"
+
+
+def _batch_result_status(result: BatchResult) -> str:
+    if result.total == 0:
+        return "No RAW/DNG files to export"
+    if result.failed:
+        return f"Batch finished with {result.failed} failed, {result.processed} processed, {result.skipped} skipped"
+    return f"Batch finished: {result.processed} processed, {result.skipped} skipped"
+
+
+def _format_batch_result_summary(result: BatchResult, *, limit: int = 6) -> str:
+    lines = [
+        f"Batch summary: {result.processed} processed, {result.skipped} skipped, {result.failed} failed",
+    ]
+    for item in result.items[:limit]:
+        target = item.export_path or item.preview_path or item.recipe_path
+        if target is not None:
+            lines.append(f"{item.status.capitalize()}: {item.source_path.name} -> {target}")
+        else:
+            lines.append(f"{item.status.capitalize()}: {item.source_path.name} -> {item.message}")
+    remaining = max(0, result.total - limit)
+    if remaining:
+        lines.append(f"...and {remaining} more")
+    return "\n".join(lines)
 
 
 def _planned_output_summary(source: Path, output_dir: Path) -> str:
@@ -497,6 +534,14 @@ def launch_desktop_app() -> None:
                 state="disabled",
             )
             self.process_button.pack(fill="x", pady=(12, 0))
+            self.batch_button = ttk_module.Button(
+                controls,
+                text="Export Folder",
+                style="Secondary.TButton",
+                command=self._export_folder,
+                state="disabled",
+            )
+            self.batch_button.pack(fill="x", pady=(8, 0))
             ttk_module.Label(controls, textvariable=self.status_var, style="Muted.TLabel", wraplength=260).pack(anchor="w", pady=(16, 0))
 
             info_bar = ttk_module.Frame(preview, style="Panel.TFrame")
@@ -598,6 +643,7 @@ def launch_desktop_app() -> None:
             if scan_id != self.library_scan_counter:
                 return
             self.library_status_var.set(message)
+            self._set_busy(False)
 
         def _show_library_items(self, scan_id: int, folder: Path, items: tuple[tuple[Path, str, bool], ...]) -> None:
             if scan_id != self.library_scan_counter:
@@ -607,6 +653,7 @@ def launch_desktop_app() -> None:
             for _path, label, _can_render in self.library_items:
                 self.library_listbox.insert("end", label)
             self.library_status_var.set(_folder_status_text(folder, len(self.library_items)))
+            self._set_busy(False)
             if self.library_items:
                 first_supported = next((index for index, item in enumerate(self.library_items) if item[2]), 0)
                 self.library_listbox.selection_set(first_supported)
@@ -771,6 +818,62 @@ def launch_desktop_app() -> None:
         def _export_jpeg(self) -> None:
             self._start_pipeline(preview_only=False)
 
+        def _export_folder(self) -> None:
+            sources = _library_sources(self.library_items)
+            supported_sources = _supported_library_sources(self.library_items)
+            if not supported_sources:
+                self.messagebox.showinfo("OpenRAW Studio", "Import a folder with supported DNG files first.")
+                return
+            if self.source_path is None:
+                self.messagebox.showinfo("OpenRAW Studio", "Select a photo first.")
+                return
+            output_dir = self.output_dir or (self.source_path.parent / "openraw-output")
+            self.output_dir = output_dir
+            self.output_var.set(str(output_dir))
+            self._refresh_output_info()
+            self.run_counter += 1
+            run_id = self.run_counter
+            overrides = self._current_overrides()
+            self._set_busy(True)
+            self.status_var.set(f"Exporting {len(supported_sources)} supported photos...")
+            self.preview_state_var.set("Batch export running...")
+            self.export_label.configure(text="")
+            threading.Thread(
+                target=self._batch_export_worker,
+                args=(run_id, sources, output_dir, overrides),
+                daemon=True,
+            ).start()
+
+        def _batch_export_worker(
+            self,
+            run_id: int,
+            sources: tuple[Path, ...],
+            output_dir: Path,
+            overrides: dict[str, float],
+        ) -> None:
+            def on_progress(done: int, total: int, item: BatchItemResult) -> None:
+                text = _batch_progress_text(done, total, item)
+                self.root.after(0, lambda run_id=run_id, text=text: self._show_batch_progress(run_id, text))
+
+            result = run_batch_export(sources, output_dir, overrides=overrides, progress_callback=on_progress)
+            self.root.after(0, lambda run_id=run_id, result=result: self._show_batch_result(run_id, result))
+
+        def _show_batch_progress(self, run_id: int, text: str) -> None:
+            if run_id != self.run_counter:
+                return
+            self.status_var.set(text)
+
+        def _show_batch_result(self, run_id: int, result: BatchResult) -> None:
+            if run_id != self.run_counter:
+                return
+            self._set_busy(False)
+            self.status_var.set(_batch_result_status(result))
+            self.preview_state_var.set(_preview_state_text(self.last_preview_overrides, self._current_overrides()))
+            self.export_label.configure(text=_format_batch_result_summary(result))
+            self._refresh_output_info()
+            if result.processed:
+                self.open_folder_button.configure(state="normal")
+
         def _start_pipeline(self, *, preview_only: bool) -> None:
             if self.source_path is None:
                 self.messagebox.showinfo("OpenRAW Studio", "Import a RAW photo first.")
@@ -822,6 +925,8 @@ def launch_desktop_app() -> None:
             self.auto_adjust_button.configure(state=state)
             self.preview_button.configure(state=state)
             self.process_button.configure(state=state)
+            batch_state = "disabled" if busy or not _supported_library_sources(self.library_items) else "normal"
+            self.batch_button.configure(state=batch_state)
 
         def _current_overrides(self) -> dict[str, float]:
             return _manual_overrides(

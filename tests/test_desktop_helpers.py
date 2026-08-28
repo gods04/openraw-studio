@@ -4,12 +4,15 @@ from pathlib import Path
 
 from openraw_studio.core.domain import ImageRef
 from openraw_studio.decision.auto_adjust import AutoAdjustSuggestion
+from openraw_studio.pipeline.batch import BatchItemResult, BatchResult
 from openraw_studio.pipeline.errors import BackendUnavailableError, SourceFileError
 from openraw_studio.pipeline.interfaces import PipelineResult
 from openraw_studio.core.recipe import new_recipe, write_recipe
 from openraw_studio.ui.desktop import (
     _adjustments_match,
     _auto_adjust_status,
+    _batch_progress_text,
+    _batch_result_status,
     _candidate_raw_files,
     _default_sample_path,
     _flatten_rgb_pixels,
@@ -18,9 +21,11 @@ from openraw_studio.ui.desktop import (
     _format_bytes,
     _format_exposure_label,
     _format_native_support_summary,
+    _format_batch_result_summary,
     _format_photo_info,
     _format_result_summary,
     _friendly_error_message,
+    _library_sources,
     _library_item_label,
     _load_recipe_adjustments,
     _manual_overrides,
@@ -31,6 +36,7 @@ from openraw_studio.ui.desktop import (
     _result_status,
     _scan_library_folder,
     _short_path,
+    _supported_library_sources,
 )
 from openraw_studio.raw.native.synthetic import write_synthetic_dng
 from openraw_studio.raw.native.support import NativeSupportReport
@@ -157,6 +163,32 @@ class DesktopHelperTests(unittest.TestCase):
     def test_folder_status_text_summarizes_empty_and_nonempty_folders(self) -> None:
         self.assertIn("No RAW/DNG files", _folder_status_text(Path("empty"), 0))
         self.assertIn("2 RAW/DNG files", _folder_status_text(Path("photos"), 2))
+
+    def test_supported_library_sources_filters_to_renderable_items(self) -> None:
+        items = (
+            (Path("a.DNG"), "[OK] a.DNG", True),
+            (Path("b.NEF"), "[NO] b.NEF", False),
+        )
+
+        self.assertEqual(_library_sources(items), (Path("a.DNG"), Path("b.NEF")))
+        self.assertEqual(_supported_library_sources(items), (Path("a.DNG"),))
+
+    def test_batch_progress_and_result_text_summarize_batch_work(self) -> None:
+        exported = BatchItemResult(
+            source_path=Path("a.DNG"),
+            status="exported",
+            message="JPEG exported",
+            export_path=Path("output/exports/a.auto.jpg"),
+        )
+        skipped = BatchItemResult(source_path=Path("b.NEF"), status="skipped", message="DNG only")
+        result = BatchResult(output_dir=Path("output"), items=(exported, skipped))
+
+        self.assertEqual(_batch_progress_text(1, 2, exported), "Batch 1/2: exported a.DNG")
+        self.assertEqual(_batch_result_status(result), "Batch finished: 1 processed, 1 skipped")
+        summary = _format_batch_result_summary(result)
+        self.assertIn("Batch summary: 1 processed, 1 skipped, 0 failed", summary)
+        self.assertIn("Exported: a.DNG", summary)
+        self.assertIn("Skipped: b.NEF", summary)
 
     def test_planned_output_summary_uses_relative_artifact_paths(self) -> None:
         summary = _planned_output_summary(Path("IMG_0001.DNG"), Path("openraw-output"))

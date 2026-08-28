@@ -28,7 +28,7 @@ The startup script will:
 Current app flow:
 
 ```text
-Import DNG or folder -> choose output folder -> Auto Adjust -> Update Preview -> refine exposure/contrast/warmth -> Export JPEG
+Import DNG or folder -> choose output folder -> Auto Adjust -> Update Preview -> refine exposure/contrast/warmth -> Export JPEG or Export Folder
 ```
 
 The app also shows whether the selected file is supported by the current
@@ -40,6 +40,9 @@ For supported simple uncompressed DNG files, the app writes:
 - preview PNG
 - preview-derived JPEG
 - recipe JSON sidecar
+
+`Export Folder` processes currently supported files from the imported folder
+using the current basic adjustments and reports skipped/failed files.
 
 To try the app without using a private photo, click `Create Sample DNG` inside
 the desktop app.
@@ -182,6 +185,15 @@ openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-outpu
 For supported simple uncompressed DNG files, this writes both
 `IMG_0001.preview.png` and `IMG_0001.auto.jpg`. The JPEG is preview-derived and
 does not represent final camera-aware color science yet.
+
+Batch export the supported files in one folder:
+
+```powershell
+openraw batch "E:\Photos\input" --output "E:\Photos\openraw-output"
+```
+
+The batch command skips files outside the current OpenRAW Native support path
+instead of treating the whole folder as failed.
 
 Expected dry-run output:
 

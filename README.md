@@ -61,6 +61,7 @@ Then import `sample-data\openraw-synthetic.DNG` in the app.
 - `openraw doctor` environment check
 - `openraw inspect` support report for one RAW/DNG file
 - `openraw process --dry-run` recipe/artifact planner for one RAW-like file
+- `openraw batch` folder export for currently supported DNG files
 - OpenRAW Native RAW engine scaffold as the default backend
 - Native DNG/TIFF metadata reader for the first RAW-engine milestone
 - Native extraction for simple uncompressed DNG strip and tile pixel payloads
@@ -71,8 +72,8 @@ Then import `sample-data\openraw-synthetic.DNG` in the app.
 - Beginner desktop shell launched with `openraw app` or `scripts/run_app.ps1`
 - App single-photo import, folder import, output-folder selection, conservative Auto Adjust,
   exposure/contrast/warmth adjustments, before/after comparison, built-in
-  sample DNG creation, photo/output information display, and direct output
-  opening
+  sample DNG creation, photo/output information display, batch folder export,
+  and direct output opening
 - Saved recipe detection that restores basic desktop adjustments for the same
   photo
 - Synthetic DNG generator for safe local smoke tests
@@ -158,7 +159,9 @@ openraw app
 Import a supported DNG, import a folder to browse RAW-like files, or click
 `Create Sample DNG`, then click `Auto Adjust` for a conservative starter look.
 Use `Update Preview` to refresh the preview with the current adjustments. When
-the image looks right, click `Export JPEG`.
+the image looks right, click `Export JPEG`. After importing a folder, click
+`Export Folder` to export every currently supported file using the current basic
+adjustments; unsupported files are skipped and reported.
 The app shows basic photo information, current Native support status, and the
 planned preview, JPEG, and recipe paths before rendering. It will create a
 preview PNG, a preview-derived JPEG, and a recipe JSON in the selected output
@@ -214,6 +217,15 @@ For supported simple uncompressed DNG files, this writes both `.preview.png` and
 `.auto.jpg` artifacts. The JPEG is a V0.1 preview-derived export. It applies
 available DNG `AsShotNeutral` and `ColorMatrix1` metadata, but is not final
 camera-aware color science yet.
+
+Batch export currently supported DNG files from a folder:
+
+```powershell
+openraw batch "E:\Photos\input" --output "E:\Photos\openraw-output"
+```
+
+The batch command scans RAW-like files, processes the files that match the
+current OpenRAW Native support path, and reports skipped or failed files.
 
 Run tests:
 
