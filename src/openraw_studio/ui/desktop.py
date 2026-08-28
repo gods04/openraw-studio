@@ -17,8 +17,8 @@ from openraw_studio.decision.auto_adjust import AutoAdjustSuggestion, suggest_au
 from openraw_studio.pipeline.errors import BackendUnavailableError, PipelineError, SourceFileError
 from openraw_studio.pipeline.interfaces import PipelineRequest
 from openraw_studio.pipeline.local import LocalPhotoPipeline
-from openraw_studio.raw.native.dng import DngMetadataError, DngMetadataReader
 from openraw_studio.raw.native.preview import render_preview_image
+from openraw_studio.raw.native.support import NativeSupportReport, inspect_native_support
 from openraw_studio.raw.native.synthetic import write_synthetic_dng
 
 
@@ -113,14 +113,14 @@ def _format_photo_info(path: Path, metadata: Mapping[str, Any], *, size_bytes: i
 
 def _read_photo_info(path: Path) -> str:
     size_bytes = path.stat().st_size
-    if path.suffix.lower() != ".dng":
-        return _format_photo_info(path, {}, size_bytes=size_bytes)
+    support = inspect_native_support(path)
+    return _format_photo_info(path, support.metadata, size_bytes=size_bytes) + "\n" + _format_native_support_summary(support)
 
-    try:
-        metadata = DngMetadataReader().read(path).as_dict()
-    except DngMetadataError:
-        return _format_photo_info(path, {}, size_bytes=size_bytes) + "\nDNG metadata: unavailable"
-    return _format_photo_info(path, metadata, size_bytes=size_bytes)
+
+def _format_native_support_summary(report: NativeSupportReport) -> str:
+    if report.can_render:
+        return "Support: Supported by OpenRAW Native V0.1"
+    return f"Support: Not supported yet\nReason: {report.reason}"
 
 
 def _planned_output_summary(source: Path, output_dir: Path) -> str:

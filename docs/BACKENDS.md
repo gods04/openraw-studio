@@ -27,6 +27,8 @@ src/openraw_studio/raw/native/
 ```
 
 See `docs/OPENRAW_RENDER_ENGINE.md` for the implementation route.
+Use `openraw inspect <path-to-photo>` to check whether one file fits the current
+Native render path before processing.
 
 ## Experimental Backend: darktable-cli
 

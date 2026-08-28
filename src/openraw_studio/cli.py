@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 import sys
+from typing import Mapping
 
 from openraw_studio import __version__
 from openraw_studio.pipeline.errors import BackendUnavailableError, PipelineError
@@ -12,7 +14,7 @@ from openraw_studio.pipeline.interfaces import PipelineRequest
 from openraw_studio.pipeline.local import LocalPhotoPipeline
 from openraw_studio.raw.backends import check_darktable_cli
 from openraw_studio.raw.darktable import DarktableCliProcessor
-from openraw_studio.raw.native import NativeRawProcessor
+from openraw_studio.raw.native import NativeRawProcessor, NativeSupportReport, inspect_native_support
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -31,6 +33,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Also check optional developer backends such as darktable-cli.",
     )
     doctor.add_argument("--darktable-cli", help="Optional explicit darktable-cli executable path.")
+
+    inspect_command = subparsers.add_parser("inspect", help="Explain whether one RAW/DNG can be rendered by OpenRAW Native.")
+    inspect_command.add_argument("source", help="Path to a RAW/DNG file.")
+    inspect_command.add_argument("--json", action="store_true", help="Print a machine-readable support report.")
 
     process = subparsers.add_parser("process", help="Process or plan processing for one RAW file.")
     process.add_argument("source", help="Path to a RAW file.")
@@ -79,6 +85,46 @@ def _run_doctor(include_experimental_backends: bool, darktable_cli: str | None) 
         if check.message:
             print(f"  note: {check.message}")
     return 0
+
+
+def _run_inspect(args: argparse.Namespace) -> int:
+    report = inspect_native_support(Path(args.source))
+    if args.json:
+        print(json.dumps(report.as_dict(), indent=2, sort_keys=True))
+    else:
+        print(_format_inspect_report(report))
+    if not report.file_exists:
+        return 2
+    return 0 if report.can_render else 1
+
+
+def _format_inspect_report(report: NativeSupportReport) -> str:
+    render_status = "supported" if report.can_render else "not supported yet"
+    lines = [
+        "OpenRAW inspect",
+        f"Source: {report.source_path}",
+        f"Native render: {render_status}",
+        f"Reason: {report.reason}",
+    ]
+
+    if camera := _camera_from_metadata(report.metadata):
+        lines.append(f"Camera: {camera}")
+    if report.details:
+        lines.append("Details:")
+        lines.extend(f"  - {detail}" for detail in report.details)
+    return "\n".join(lines)
+
+
+def _camera_from_metadata(metadata: Mapping[str, object]) -> str | None:
+    unique = metadata.get("unique_camera_model")
+    if isinstance(unique, str) and unique.strip():
+        return unique.strip()
+    make = metadata.get("make")
+    model = metadata.get("model")
+    parts = [part.strip() for part in (make, model) if isinstance(part, str) and part.strip()]
+    if parts:
+        return " ".join(parts)
+    return None
 
 
 def _run_process(args: argparse.Namespace) -> int:
@@ -146,6 +192,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "doctor":
         return _run_doctor(args.include_experimental_backends, args.darktable_cli)
+    if args.command == "inspect":
+        return _run_inspect(args)
     if args.command == "process":
         return _run_process(args)
     if args.command == "app":

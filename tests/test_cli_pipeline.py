@@ -13,7 +13,7 @@ from openraw_studio.pipeline.local import LocalPhotoPipeline
 from openraw_studio.raw.backends import BackendCheck
 from openraw_studio.raw.darktable import DarktableCliProcessor
 from openraw_studio.raw.interfaces import RawRenderRequest
-from openraw_studio.raw.native import NativeRawProcessor
+from openraw_studio.raw.native import NativeRawProcessor, write_synthetic_dng
 
 
 PNG_2X3 = (
@@ -176,6 +176,34 @@ class CliPipelineTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertIn("openraw-native: available", text)
         self.assertNotIn("darktable-cli experimental", text)
+
+    def test_cli_inspect_reports_supported_synthetic_dng(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            source = write_synthetic_dng(Path(temp) / "sample.DNG", width=8, height=8)
+            output = StringIO()
+
+            with redirect_stdout(output):
+                exit_code = main(["inspect", str(source)])
+
+        text = output.getvalue()
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Native render: supported", text)
+        self.assertIn("Supported by OpenRAW Native V0.1", text)
+        self.assertIn("Storage: 1 strip", text)
+
+    def test_cli_inspect_reports_unsupported_extension(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "sample.NEF"
+            source.write_bytes(b"fake raw bytes")
+            output = StringIO()
+
+            with redirect_stdout(output):
+                exit_code = main(["inspect", str(source)])
+
+        text = output.getvalue()
+        self.assertEqual(exit_code, 1)
+        self.assertIn("Native render: not supported yet", text)
+        self.assertIn("DNG files", text)
 
     def test_darktable_adapter_builds_preview_command(self) -> None:
         calls = []

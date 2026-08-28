@@ -94,6 +94,7 @@ Status:
 - preview-derived JPEG export exists for narrow supported uncompressed DNG files
 - DNG AsShotNeutral white balance and ColorMatrix1 transform are applied when available
 - recipe-driven exposure, contrast, and warmth controls are applied to preview and JPEG export
+- `openraw inspect` reports current Native support status before preview/export
 - full camera-aware color conversion and high-quality JPEG/TIFF export are next
 
 Current native metadata scope:

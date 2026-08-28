@@ -15,6 +15,7 @@ from openraw_studio.ui.desktop import (
     _format_adjustment_label,
     _format_bytes,
     _format_exposure_label,
+    _format_native_support_summary,
     _format_photo_info,
     _format_result_summary,
     _friendly_error_message,
@@ -28,6 +29,7 @@ from openraw_studio.ui.desktop import (
     _short_path,
 )
 from openraw_studio.raw.native.synthetic import write_synthetic_dng
+from openraw_studio.raw.native.support import NativeSupportReport
 
 
 class DesktopHelperTests(unittest.TestCase):
@@ -85,6 +87,22 @@ class DesktopHelperTests(unittest.TestCase):
         self.assertIn("Dimensions: 18 x 12", info)
         self.assertIn("Camera: OpenRAW Synthetic NativeCam", info)
         self.assertIn("RAW: 16-bit", info)
+        self.assertIn("Support: Supported by OpenRAW Native V0.1", info)
+
+    def test_format_native_support_summary_explains_unsupported_files(self) -> None:
+        report = NativeSupportReport(
+            source_path=Path("sample.NEF"),
+            file_exists=True,
+            can_inspect=False,
+            can_render=False,
+            status="unsupported",
+            reason="OpenRAW Native V0.1 currently starts with DNG files.",
+        )
+
+        summary = _format_native_support_summary(report)
+
+        self.assertIn("Support: Not supported yet", summary)
+        self.assertIn("DNG files", summary)
 
     def test_planned_output_summary_uses_relative_artifact_paths(self) -> None:
         summary = _planned_output_summary(Path("IMG_0001.DNG"), Path("openraw-output"))

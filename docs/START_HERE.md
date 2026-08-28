@@ -147,6 +147,7 @@ Current status:
 - file checksum and basic filesystem metadata exist
 - dry-run recipe writing exists
 - backend availability check exists
+- `openraw inspect` reports whether a file fits the current Native render path
 - OpenRAW Native is the default RAW engine identity
 - DNG/TIFF metadata reader exists
 - simple uncompressed DNG strip and tile pixel extraction exists
@@ -185,6 +186,7 @@ The first desktop UI should have:
 - output folder selector
 - basic selected-photo information
 - planned preview/JPEG/recipe output paths
+- current OpenRAW Native support status
 - processing status
 - preview area
 - preview current/stale state

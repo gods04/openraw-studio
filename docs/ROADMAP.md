@@ -62,6 +62,7 @@ Suggested implementation order:
 17. [done] show selected-photo info and planned output paths in the desktop app
 18. [done] restore basic desktop adjustments from saved recipe sidecars
 19. [done] add native extraction for simple uncompressed tiled DNG payloads
+20. [done] add Native support reporting through CLI and desktop photo info
 
 Exit criteria:
 

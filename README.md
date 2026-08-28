@@ -59,6 +59,7 @@ Then import `sample-data\openraw-synthetic.DNG` in the app.
   QC, export, model runtime, and pipeline layers
 - Example presets for `general`, `portrait`, `clean`, and `warm_film`
 - `openraw doctor` environment check
+- `openraw inspect` support report for one RAW/DNG file
 - `openraw process --dry-run` recipe/artifact planner for one RAW-like file
 - OpenRAW Native RAW engine scaffold as the default backend
 - Native DNG/TIFF metadata reader for the first RAW-engine milestone
@@ -142,6 +143,12 @@ openraw doctor
 `openraw doctor` should report the OpenRAW Native engine foundation. It does not
 require darktable for the normal project path.
 
+Check whether one file is supported by the current OpenRAW Native path:
+
+```powershell
+openraw inspect "E:\Photos\input\IMG_0001.DNG"
+```
+
 Open the beginner-friendly desktop app:
 
 ```powershell
@@ -151,11 +158,11 @@ openraw app
 Import a supported DNG, or click `Create Sample DNG`, then click `Auto Adjust`
 for a conservative starter look. Use `Update Preview` to refresh the preview
 with the current adjustments. When the image looks right, click `Export JPEG`.
-The app shows basic photo information and the planned preview, JPEG, and recipe
-paths before rendering. It will create a preview PNG, a preview-derived JPEG,
-and a recipe JSON in the selected output folder. After preview or export, `Show
-Before` lets you compare the basic demosaiced image with the OpenRAW
-color-treated result.
+The app shows basic photo information, current Native support status, and the
+planned preview, JPEG, and recipe paths before rendering. It will create a
+preview PNG, a preview-derived JPEG, and a recipe JSON in the selected output
+folder. After preview or export, `Show Before` lets you compare the basic
+demosaiced image with the OpenRAW color-treated result.
 The Exposure, Contrast, and Warmth controls are recorded in the recipe and
 applied to both preview and JPEG export. `Open Output Folder` opens the
 generated files directly. When adjustments change after a preview render, the

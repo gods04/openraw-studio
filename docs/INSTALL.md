@@ -31,6 +31,9 @@ Current app flow:
 Import DNG -> choose output folder -> Auto Adjust -> Update Preview -> refine exposure/contrast/warmth -> Export JPEG
 ```
 
+The app also shows whether the selected file is supported by the current
+OpenRAW Native path before rendering.
+
 For supported simple uncompressed DNG files, the app writes:
 
 - preview PNG
@@ -146,6 +149,12 @@ Expected meaning:
 ```text
 OpenRAW Native engine foundation is available.
 Narrow uncompressed DNG preview and preview-derived JPEG export are available.
+```
+
+Inspect one file before processing it:
+
+```powershell
+openraw inspect "E:\Photos\input\IMG_0001.DNG"
 ```
 
 Plan one source file:

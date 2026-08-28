@@ -12,6 +12,7 @@ The UI should keep the image workspace first:
 
 - import/watch status
 - selected photo metadata summary
+- current OpenRAW Native support status
 - planned preview/JPEG/recipe output paths
 - current photo preview
 - preview current/stale state

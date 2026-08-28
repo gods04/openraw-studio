@@ -25,6 +25,15 @@ openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-outpu
 The current dry run writes recipe JSON and planned artifact paths. It does not
 decode RAW pixels yet.
 
+Current native support inspection command:
+
+```powershell
+openraw inspect "E:\Photos\input\IMG_0001.DNG"
+```
+
+This reports whether the file matches the current OpenRAW Native render path
+before starting preview or export.
+
 Current native preview command:
 
 ```powershell
