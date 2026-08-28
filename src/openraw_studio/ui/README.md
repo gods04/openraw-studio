@@ -11,6 +11,8 @@ On Windows, the friendliest repo entry point is:
 The UI should keep the image workspace first:
 
 - import/watch status
+- selected photo metadata summary
+- planned preview/JPEG/recipe output paths
 - current photo preview
 - preview current/stale state
 - built-in synthetic sample DNG creation

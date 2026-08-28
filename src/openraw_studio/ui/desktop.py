@@ -9,10 +9,12 @@ import subprocess
 import sys
 from typing import Any, Mapping
 
+from openraw_studio.core.artifacts import ArtifactPlan
 from openraw_studio.decision.auto_adjust import AutoAdjustSuggestion, suggest_auto_adjustments
 from openraw_studio.pipeline.errors import BackendUnavailableError, PipelineError, SourceFileError
 from openraw_studio.pipeline.interfaces import PipelineRequest
 from openraw_studio.pipeline.local import LocalPhotoPipeline
+from openraw_studio.raw.native.dng import DngMetadataError, DngMetadataReader
 from openraw_studio.raw.native.preview import render_preview_image
 from openraw_studio.raw.native.synthetic import write_synthetic_dng
 
@@ -31,6 +33,103 @@ def _format_adjustment_label(value: float) -> str:
     if amount == 0:
         return "0"
     return f"{amount:+d}"
+
+
+def _format_bytes(size: int) -> str:
+    if size < 1024:
+        return f"{size} B"
+
+    amount = float(size)
+    for unit in ("KB", "MB", "GB", "TB"):
+        amount /= 1024.0
+        if amount < 1024.0 or unit == "TB":
+            return f"{amount:.1f} {unit}"
+    return f"{amount:.1f} TB"
+
+
+def _short_path(path: Path, *, max_chars: int = 72) -> str:
+    text = str(path)
+    if len(text) <= max_chars:
+        return text
+    if max_chars <= 3:
+        return "..."[:max_chars]
+    return "..." + text[-(max_chars - 3) :]
+
+
+def _display_path(path: Path, *, base: Path | None = None, max_chars: int = 72) -> str:
+    if base is not None:
+        try:
+            return str(path.relative_to(base))
+        except ValueError:
+            pass
+    return _short_path(path, max_chars=max_chars)
+
+
+def _format_metadata_value(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        cleaned = value.strip()
+        return cleaned or None
+    if isinstance(value, tuple):
+        return ", ".join(str(item) for item in value)
+    return str(value)
+
+
+def _format_photo_info(path: Path, metadata: Mapping[str, Any], *, size_bytes: int | None = None) -> str:
+    lines = [f"File: {path.name}"]
+
+    width = metadata.get("width")
+    height = metadata.get("height")
+    if width is not None and height is not None:
+        lines.append(f"Dimensions: {int(width)} x {int(height)}")
+
+    camera = _format_metadata_value(metadata.get("unique_camera_model"))
+    if camera is None:
+        make = _format_metadata_value(metadata.get("make"))
+        model = _format_metadata_value(metadata.get("model"))
+        camera = " ".join(part for part in (make, model) if part)
+    if camera:
+        lines.append(f"Camera: {camera}")
+
+    bits_per_sample = metadata.get("bits_per_sample")
+    if bits_per_sample is not None:
+        lines.append(f"RAW: {int(bits_per_sample)}-bit")
+    elif path.suffix:
+        lines.append(f"Type: {path.suffix.lstrip('.').upper()}")
+
+    version = _format_metadata_value(metadata.get("dng_version_text"))
+    if version:
+        lines.append(f"DNG: {version}")
+
+    if size_bytes is not None:
+        lines.append(f"Size: {_format_bytes(size_bytes)}")
+
+    return "\n".join(lines)
+
+
+def _read_photo_info(path: Path) -> str:
+    size_bytes = path.stat().st_size
+    if path.suffix.lower() != ".dng":
+        return _format_photo_info(path, {}, size_bytes=size_bytes)
+
+    try:
+        metadata = DngMetadataReader().read(path).as_dict()
+    except DngMetadataError:
+        return _format_photo_info(path, {}, size_bytes=size_bytes) + "\nDNG metadata: unavailable"
+    return _format_photo_info(path, metadata, size_bytes=size_bytes)
+
+
+def _planned_output_summary(source: Path, output_dir: Path) -> str:
+    plan = ArtifactPlan.for_source(source, output_dir)
+    return "\n".join(
+        [
+            f"Folder: {_short_path(plan.output_dir, max_chars=68)}",
+            f"Preview: {_display_path(plan.preview_path, base=plan.output_dir)}",
+            f"JPEG: {_display_path(plan.export_path, base=plan.output_dir)}",
+            f"Recipe: {_display_path(plan.recipe_path, base=plan.output_dir)}",
+        ]
+    )
 
 
 def _flatten_rgb_pixels(pixels: tuple[tuple[int, int, int], ...]) -> bytes:
@@ -153,6 +252,8 @@ def launch_desktop_app() -> None:
 
             self.source_var = tk.StringVar(value="No RAW photo selected")
             self.output_var = tk.StringVar(value="Output folder will be chosen automatically")
+            self.photo_info_var = tk.StringVar(value="No photo selected")
+            self.output_info_var = tk.StringVar(value="Output plan appears after import")
             self.status_var = tk.StringVar(value="Choose a RAW photo to begin")
             self.preview_state_var = tk.StringVar(value="No preview yet")
             self.exposure_var = tk.DoubleVar(value=0.0)
@@ -196,7 +297,7 @@ def launch_desktop_app() -> None:
             preview = ttk_module.Frame(shell, style="Panel.TFrame", padding=18)
             preview.grid(row=1, column=1, sticky="nsew", pady=(24, 0))
             preview.columnconfigure(0, weight=1)
-            preview.rowconfigure(0, weight=1)
+            preview.rowconfigure(1, weight=1)
 
             ttk_module.Label(controls, text="PHOTO", style="Muted.TLabel").pack(anchor="w")
             ttk_module.Label(controls, textvariable=self.source_var, style="Panel.TLabel", wraplength=260).pack(anchor="w", pady=(8, 14))
@@ -277,6 +378,27 @@ def launch_desktop_app() -> None:
             self.process_button.pack(fill="x", pady=(12, 0))
             ttk_module.Label(controls, textvariable=self.status_var, style="Muted.TLabel", wraplength=260).pack(anchor="w", pady=(16, 0))
 
+            info_bar = ttk_module.Frame(preview, style="Panel.TFrame")
+            info_bar.grid(row=0, column=0, sticky="ew", pady=(0, 14))
+            info_bar.columnconfigure(0, weight=1)
+            info_bar.columnconfigure(1, weight=1)
+            ttk_module.Label(info_bar, text="PHOTO INFO", style="Muted.TLabel").grid(row=0, column=0, sticky="w")
+            ttk_module.Label(info_bar, text="OUTPUT PLAN", style="Muted.TLabel").grid(row=0, column=1, sticky="w", padx=(24, 0))
+            ttk_module.Label(
+                info_bar,
+                textvariable=self.photo_info_var,
+                style="Muted.TLabel",
+                wraplength=320,
+                justify="left",
+            ).grid(row=1, column=0, sticky="nw", pady=(6, 0))
+            ttk_module.Label(
+                info_bar,
+                textvariable=self.output_info_var,
+                style="Muted.TLabel",
+                wraplength=360,
+                justify="left",
+            ).grid(row=1, column=1, sticky="nw", padx=(24, 0), pady=(6, 0))
+
             self.preview_label = tk_module.Label(
                 preview,
                 text="Your preview will appear here",
@@ -284,12 +406,12 @@ def launch_desktop_app() -> None:
                 foreground="#6e6e73",
                 font=("Segoe UI", 14),
             )
-            self.preview_label.grid(row=0, column=0, sticky="nsew")
-            ttk_module.Label(preview, textvariable=self.preview_state_var, style="Muted.TLabel").grid(row=1, column=0, sticky="w", pady=(14, 0))
+            self.preview_label.grid(row=1, column=0, sticky="nsew")
+            ttk_module.Label(preview, textvariable=self.preview_state_var, style="Muted.TLabel").grid(row=2, column=0, sticky="w", pady=(14, 0))
             self.export_label = ttk_module.Label(preview, text="", style="Muted.TLabel", wraplength=680)
-            self.export_label.grid(row=2, column=0, sticky="w", pady=(8, 0))
+            self.export_label.grid(row=3, column=0, sticky="w", pady=(8, 0))
             preview_actions = ttk_module.Frame(preview, style="Panel.TFrame")
-            preview_actions.grid(row=3, column=0, sticky="ew", pady=(12, 0))
+            preview_actions.grid(row=4, column=0, sticky="ew", pady=(12, 0))
             preview_actions.columnconfigure(1, weight=1)
             self.compare_button = ttk_module.Button(
                 preview_actions,
@@ -342,17 +464,40 @@ def launch_desktop_app() -> None:
             self.run_counter += 1
             self.source_path = source
             self.source_var.set(source.name)
+            self.photo_info_var.set("Reading photo info...")
             if self.output_dir is None:
                 self.output_dir = source.parent / "openraw-output"
                 self.output_var.set(str(self.output_dir))
+            self._refresh_output_info()
             self._clear_result()
             self._set_busy(False)
+            threading.Thread(target=self._photo_info_worker, args=(source,), daemon=True).start()
 
         def _choose_output(self) -> None:
             selected = self.filedialog.askdirectory(title="Choose output folder")
             if selected:
                 self.output_dir = Path(selected)
                 self.output_var.set(str(self.output_dir))
+                self._refresh_output_info()
+
+        def _refresh_output_info(self) -> None:
+            if self.source_path is None:
+                self.output_info_var.set("Output plan appears after import")
+                return
+            output_dir = self.output_dir or (self.source_path.parent / "openraw-output")
+            self.output_info_var.set(_planned_output_summary(self.source_path, output_dir))
+
+        def _photo_info_worker(self, source: Path) -> None:
+            try:
+                info = _read_photo_info(source)
+            except OSError:
+                info = "Photo info unavailable"
+            self.root.after(0, lambda: self._show_photo_info(source, info))
+
+        def _show_photo_info(self, source: Path, info: str) -> None:
+            if self.source_path != source:
+                return
+            self.photo_info_var.set(info)
 
         def _sync_adjustment_labels(self, *_: Any) -> None:
             self.exposure_label_var.set(_format_exposure_label(float(self.exposure_var.get())))
@@ -425,6 +570,7 @@ def launch_desktop_app() -> None:
             output_dir = self.output_dir or (self.source_path.parent / "openraw-output")
             self.output_dir = output_dir
             self.output_var.set(str(output_dir))
+            self._refresh_output_info()
             self.run_counter += 1
             run_id = self.run_counter
             self._set_busy(True)

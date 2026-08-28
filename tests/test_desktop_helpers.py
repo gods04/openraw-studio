@@ -12,13 +12,19 @@ from openraw_studio.ui.desktop import (
     _default_sample_path,
     _flatten_rgb_pixels,
     _format_adjustment_label,
+    _format_bytes,
     _format_exposure_label,
+    _format_photo_info,
     _format_result_summary,
     _friendly_error_message,
     _manual_overrides,
+    _planned_output_summary,
     _preview_state_text,
+    _read_photo_info,
     _result_status,
+    _short_path,
 )
+from openraw_studio.raw.native.synthetic import write_synthetic_dng
 
 
 class DesktopHelperTests(unittest.TestCase):
@@ -32,6 +38,58 @@ class DesktopHelperTests(unittest.TestCase):
         self.assertEqual(_format_adjustment_label(0.0), "0")
         self.assertEqual(_format_adjustment_label(0.253), "+25")
         self.assertEqual(_format_adjustment_label(-0.727), "-73")
+
+    def test_format_bytes_uses_photo_friendly_units(self) -> None:
+        self.assertEqual(_format_bytes(0), "0 B")
+        self.assertEqual(_format_bytes(1024), "1.0 KB")
+        self.assertEqual(_format_bytes(1536), "1.5 KB")
+        self.assertEqual(_format_bytes(1024 * 1024), "1.0 MB")
+
+    def test_short_path_keeps_tail_of_long_paths(self) -> None:
+        shortened = _short_path(Path("C:/Users/Example/Pictures/OpenRAW/Very/Long/Folder/IMG_0001.DNG"), max_chars=24)
+
+        self.assertTrue(shortened.startswith("..."))
+        self.assertTrue(shortened.endswith("IMG_0001.DNG"))
+        self.assertLessEqual(len(shortened), 24)
+
+    def test_format_photo_info_lists_core_metadata(self) -> None:
+        info = _format_photo_info(
+            Path("IMG_0001.DNG"),
+            {
+                "width": 6000,
+                "height": 4000,
+                "unique_camera_model": "OpenRAW NativeCam",
+                "bits_per_sample": 16,
+                "dng_version_text": "1.4.0.0",
+            },
+            size_bytes=1536,
+        )
+
+        self.assertIn("File: IMG_0001.DNG", info)
+        self.assertIn("Dimensions: 6000 x 4000", info)
+        self.assertIn("Camera: OpenRAW NativeCam", info)
+        self.assertIn("RAW: 16-bit", info)
+        self.assertIn("DNG: 1.4.0.0", info)
+        self.assertIn("Size: 1.5 KB", info)
+
+    def test_read_photo_info_reads_synthetic_dng_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            path = write_synthetic_dng(Path(temp) / "sample.DNG", width=18, height=12)
+
+            info = _read_photo_info(path)
+
+        self.assertIn("File: sample.DNG", info)
+        self.assertIn("Dimensions: 18 x 12", info)
+        self.assertIn("Camera: OpenRAW Synthetic NativeCam", info)
+        self.assertIn("RAW: 16-bit", info)
+
+    def test_planned_output_summary_uses_relative_artifact_paths(self) -> None:
+        summary = _planned_output_summary(Path("IMG_0001.DNG"), Path("openraw-output"))
+
+        self.assertIn("Folder: openraw-output", summary)
+        self.assertIn(f"Preview: {Path('previews') / 'IMG_0001.preview.png'}", summary)
+        self.assertIn(f"JPEG: {Path('exports') / 'IMG_0001.auto.jpg'}", summary)
+        self.assertIn(f"Recipe: {Path('recipes') / 'IMG_0001.DNG.recipe.json'}", summary)
 
     def test_flatten_rgb_pixels_returns_pillow_ready_bytes(self) -> None:
         self.assertEqual(_flatten_rgb_pixels(((1, 2, 3), (4, 5, 6))), b"\x01\x02\x03\x04\x05\x06")
