@@ -6,6 +6,7 @@ from openraw_studio.core.domain import ImageRef
 from openraw_studio.decision.auto_adjust import AutoAdjustSuggestion
 from openraw_studio.pipeline.errors import BackendUnavailableError, SourceFileError
 from openraw_studio.pipeline.interfaces import PipelineResult
+from openraw_studio.core.recipe import new_recipe, write_recipe
 from openraw_studio.ui.desktop import (
     _adjustments_match,
     _auto_adjust_status,
@@ -17,9 +18,11 @@ from openraw_studio.ui.desktop import (
     _format_photo_info,
     _format_result_summary,
     _friendly_error_message,
+    _load_recipe_adjustments,
     _manual_overrides,
     _planned_output_summary,
     _preview_state_text,
+    _recipe_adjustment_overrides,
     _read_photo_info,
     _result_status,
     _short_path,
@@ -90,6 +93,39 @@ class DesktopHelperTests(unittest.TestCase):
         self.assertIn(f"Preview: {Path('previews') / 'IMG_0001.preview.png'}", summary)
         self.assertIn(f"JPEG: {Path('exports') / 'IMG_0001.auto.jpg'}", summary)
         self.assertIn(f"Recipe: {Path('recipes') / 'IMG_0001.DNG.recipe.json'}", summary)
+
+    def test_recipe_adjustment_overrides_defaults_and_clamps_for_ui(self) -> None:
+        recipe = new_recipe("IMG_0001.DNG")
+        recipe["adjustments"]["raw"] = {
+            "exposure": 3.0,
+            "contrast": -1.5,
+            "warmth": "0.25",
+        }
+
+        self.assertEqual(
+            _recipe_adjustment_overrides(recipe),
+            {"exposure": 2.0, "contrast": -1.0, "warmth": 0.25},
+        )
+
+    def test_load_recipe_adjustments_reads_matching_recipe(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "IMG_0001.DNG"
+            recipe = new_recipe(source)
+            recipe["adjustments"]["raw"] = {"exposure": 0.7, "contrast": 0.2, "warmth": -0.1}
+            recipe_path = write_recipe(recipe, root / "IMG_0001.DNG.recipe.json")
+
+            overrides = _load_recipe_adjustments(recipe_path, source)
+
+        self.assertEqual(overrides, {"exposure": 0.7, "contrast": 0.2, "warmth": -0.1})
+
+    def test_load_recipe_adjustments_rejects_mismatched_source(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            recipe_path = write_recipe(new_recipe(root / "IMG_0001.DNG"), root / "IMG_0001.DNG.recipe.json")
+
+            with self.assertRaises(ValueError):
+                _load_recipe_adjustments(recipe_path, root / "IMG_0002.DNG")
 
     def test_flatten_rgb_pixels_returns_pillow_ready_bytes(self) -> None:
         self.assertEqual(_flatten_rgb_pixels(((1, 2, 3), (4, 5, 6))), b"\x01\x02\x03\x04\x05\x06")

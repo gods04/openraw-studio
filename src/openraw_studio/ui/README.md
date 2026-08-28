@@ -26,6 +26,7 @@ The UI should keep the image workspace first:
 - export controls
 - open generated JPEG action
 - open output folder action
+- saved recipe detection for restoring basic adjustments
 
 The UI consumes the pipeline and recipe contracts rather than directly calling
 RAW, vision, portrait, color, film, QC, or export implementations. The current

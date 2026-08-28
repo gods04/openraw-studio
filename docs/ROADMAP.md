@@ -60,6 +60,7 @@ Suggested implementation order:
 15. [done] mark desktop previews stale when adjustments change
 16. [done] add conservative desktop Auto Adjust starter action
 17. [done] show selected-photo info and planned output paths in the desktop app
+18. [done] restore basic desktop adjustments from saved recipe sidecars
 
 Exit criteria:
 

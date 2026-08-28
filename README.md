@@ -72,6 +72,8 @@ Then import `sample-data\openraw-synthetic.DNG` in the app.
   exposure/contrast/warmth adjustments, before/after comparison, built-in
   sample DNG creation, photo/output information display, and direct output
   opening
+- Saved recipe detection that restores basic desktop adjustments for the same
+  photo
 - Synthetic DNG generator for safe local smoke tests
 - Windows ZIP build script and GitHub Actions packaging workflow
 - Contract tests for the initial foundation
@@ -158,6 +160,8 @@ The Exposure, Contrast, and Warmth controls are recorded in the recipe and
 applied to both preview and JPEG export. `Open Output Folder` opens the
 generated files directly. When adjustments change after a preview render, the
 desktop app marks the preview as needing an update.
+If the selected output folder already contains a matching recipe for the photo,
+the desktop app restores the saved Exposure, Contrast, and Warmth values.
 The on-screen preview is capped at 2048 pixels on its longest side; export keeps
 the source dimensions supported by the current Native path.
 

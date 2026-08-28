@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-import threading
+import json
+import math
 import os
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import subprocess
 import sys
+import threading
 from typing import Any, Mapping
 
 from openraw_studio.core.artifacts import ArtifactPlan
+from openraw_studio.core.recipe import validate_recipe_shape
 from openraw_studio.decision.auto_adjust import AutoAdjustSuggestion, suggest_auto_adjustments
 from openraw_studio.pipeline.errors import BackendUnavailableError, PipelineError, SourceFileError
 from openraw_studio.pipeline.interfaces import PipelineRequest
@@ -130,6 +133,56 @@ def _planned_output_summary(source: Path, output_dir: Path) -> str:
             f"Recipe: {_display_path(plan.recipe_path, base=plan.output_dir)}",
         ]
     )
+
+
+def _path_name_from_recipe(value: Any) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    if "\\" in text or ":" in text:
+        return PureWindowsPath(text).name
+    return PurePosixPath(text).name
+
+
+def _recipe_source_matches(recipe: Mapping[str, Any], source: Path) -> bool:
+    recipe_source = recipe.get("source")
+    if not isinstance(recipe_source, Mapping):
+        return False
+    saved_name = _path_name_from_recipe(recipe_source.get("path"))
+    return saved_name == source.name
+
+
+def _clamped_recipe_float(value: Any, *, default: float, minimum: float, maximum: float) -> float:
+    if isinstance(value, bool):
+        return default
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    if not math.isfinite(number):
+        return default
+    return max(minimum, min(maximum, number))
+
+
+def _recipe_adjustment_overrides(recipe: Mapping[str, Any]) -> dict[str, float]:
+    adjustments = recipe.get("adjustments")
+    raw = adjustments.get("raw", {}) if isinstance(adjustments, Mapping) else {}
+    raw = raw if isinstance(raw, Mapping) else {}
+    return {
+        "exposure": _clamped_recipe_float(raw.get("exposure"), default=0.0, minimum=-2.0, maximum=2.0),
+        "contrast": _clamped_recipe_float(raw.get("contrast"), default=0.0, minimum=-1.0, maximum=1.0),
+        "warmth": _clamped_recipe_float(raw.get("warmth"), default=0.0, minimum=-1.0, maximum=1.0),
+    }
+
+
+def _load_recipe_adjustments(recipe_path: Path, source: Path) -> dict[str, float]:
+    recipe = json.loads(recipe_path.read_text(encoding="utf-8"))
+    if not isinstance(recipe, Mapping):
+        raise ValueError("recipe file must contain a JSON object")
+    validate_recipe_shape(recipe)
+    if not _recipe_source_matches(recipe, source):
+        raise ValueError("recipe does not match the selected photo")
+    return _recipe_adjustment_overrides(recipe)
 
 
 def _flatten_rgb_pixels(pixels: tuple[tuple[int, int, int], ...]) -> bytes:
@@ -448,8 +501,7 @@ def launch_desktop_app() -> None:
             )
             if not selected:
                 return
-            self._select_source(Path(selected))
-            self.status_var.set("Ready to process")
+            self._select_source(Path(selected), ready_status="Ready to process")
 
         def _create_sample_source(self) -> None:
             try:
@@ -457,10 +509,9 @@ def launch_desktop_app() -> None:
             except OSError as exc:
                 self._show_error(_friendly_error_message(exc))
                 return
-            self._select_source(sample_path)
-            self.status_var.set("Sample DNG ready")
+            self._select_source(sample_path, ready_status="Sample DNG ready")
 
-        def _select_source(self, source: Path) -> None:
+        def _select_source(self, source: Path, *, ready_status: str) -> None:
             self.run_counter += 1
             self.source_path = source
             self.source_var.set(source.name)
@@ -470,7 +521,10 @@ def launch_desktop_app() -> None:
                 self.output_var.set(str(self.output_dir))
             self._refresh_output_info()
             self._clear_result()
+            self._set_adjustment_values(_manual_overrides(0.0, 0.0, 0.0))
+            recipe_status = self._restore_recipe_if_available()
             self._set_busy(False)
+            self.status_var.set(recipe_status or ready_status)
             threading.Thread(target=self._photo_info_worker, args=(source,), daemon=True).start()
 
         def _choose_output(self) -> None:
@@ -479,13 +533,47 @@ def launch_desktop_app() -> None:
                 self.output_dir = Path(selected)
                 self.output_var.set(str(self.output_dir))
                 self._refresh_output_info()
+                if recipe_status := self._restore_recipe_if_available():
+                    self.status_var.set(recipe_status)
+                elif self.source_path is not None:
+                    self.status_var.set("Output folder updated")
 
         def _refresh_output_info(self) -> None:
             if self.source_path is None:
                 self.output_info_var.set("Output plan appears after import")
                 return
             output_dir = self.output_dir or (self.source_path.parent / "openraw-output")
-            self.output_info_var.set(_planned_output_summary(self.source_path, output_dir))
+            plan = ArtifactPlan.for_source(self.source_path, output_dir)
+            summary = _planned_output_summary(self.source_path, output_dir)
+            if plan.recipe_path.exists():
+                summary += "\nSaved recipe: found"
+            self.output_info_var.set(summary)
+
+        def _current_recipe_path(self) -> Path | None:
+            if self.source_path is None:
+                return None
+            output_dir = self.output_dir or (self.source_path.parent / "openraw-output")
+            return ArtifactPlan.for_source(self.source_path, output_dir).recipe_path
+
+        def _set_adjustment_values(self, overrides: Mapping[str, float]) -> None:
+            self.exposure_var.set(float(overrides.get("exposure", 0.0)))
+            self.contrast_var.set(float(overrides.get("contrast", 0.0)))
+            self.warmth_var.set(float(overrides.get("warmth", 0.0)))
+            self._sync_adjustment_labels(update_status=False)
+
+        def _restore_recipe_if_available(self) -> str | None:
+            if self.source_path is None:
+                return None
+            recipe_path = self._current_recipe_path()
+            if recipe_path is None or not recipe_path.exists():
+                return None
+            try:
+                overrides = _load_recipe_adjustments(recipe_path, self.source_path)
+            except (OSError, ValueError):
+                return "Saved recipe could not be loaded"
+            self._set_adjustment_values(overrides)
+            self._refresh_preview_state()
+            return "Saved recipe loaded"
 
         def _photo_info_worker(self, source: Path) -> None:
             try:
@@ -499,11 +587,11 @@ def launch_desktop_app() -> None:
                 return
             self.photo_info_var.set(info)
 
-        def _sync_adjustment_labels(self, *_: Any) -> None:
+        def _sync_adjustment_labels(self, *_: Any, update_status: bool = True) -> None:
             self.exposure_label_var.set(_format_exposure_label(float(self.exposure_var.get())))
             self.contrast_label_var.set(_format_adjustment_label(float(self.contrast_var.get())))
             self.warmth_label_var.set(_format_adjustment_label(float(self.warmth_var.get())))
-            if self.source_path is not None and not self.is_busy:
+            if update_status and self.source_path is not None and not self.is_busy:
                 preview_state = self._refresh_preview_state()
                 self.status_var.set(preview_state if preview_state == "Preview needs update" else "Adjustments changed")
 

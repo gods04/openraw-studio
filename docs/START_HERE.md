@@ -193,6 +193,7 @@ The first desktop UI should have:
 - Update Preview button
 - Export JPEG button
 - export location
+- saved recipe detection for the same photo/output folder
 
 Keep advanced controls hidden until the pipeline works.
 
@@ -209,8 +210,10 @@ the generated preview, checking selected-photo information and planned output
 paths, comparing before/after, adjusting exposure, creating a safe sample DNG,
 adjusting contrast/warmth, opening the exported JPEG, and opening the output
 folder. When adjustments change, the UI marks the preview as needing an update
-until the next preview/export render. It currently uses the same local pipeline
-as the CLI and is intentionally DNG-first.
+until the next preview/export render. If the current output folder already has a
+matching recipe for the selected photo, the UI restores the saved basic
+adjustments. It currently uses the same local pipeline as the CLI and is
+intentionally DNG-first.
 
 ### Step 4 - Real RAW Backend
 
