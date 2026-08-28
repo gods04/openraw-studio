@@ -11,6 +11,7 @@ On Windows, the friendliest repo entry point is:
 The UI should keep the image workspace first:
 
 - import/watch status
+- folder import and photo list
 - selected photo metadata summary
 - current OpenRAW Native support status
 - planned preview/JPEG/recipe output paths

@@ -183,6 +183,7 @@ Open app
 The first desktop UI should have:
 
 - import button
+- folder import and photo list
 - output folder selector
 - basic selected-photo information
 - planned preview/JPEG/recipe output paths
@@ -207,15 +208,16 @@ The first local desktop shell is now available through:
 .\scripts\run_app.ps1
 ```
 
-It supports importing a DNG, choosing an output folder, running AUTO, viewing
-the generated preview, checking selected-photo information and planned output
-paths, comparing before/after, adjusting exposure, creating a safe sample DNG,
-adjusting contrast/warmth, opening the exported JPEG, and opening the output
-folder. When adjustments change, the UI marks the preview as needing an update
-until the next preview/export render. If the current output folder already has a
-matching recipe for the selected photo, the UI restores the saved basic
-adjustments. It currently uses the same local pipeline as the CLI and is
-intentionally DNG-first.
+It supports importing a DNG, importing a folder of RAW-like files, choosing an
+output folder, running AUTO, viewing the generated preview, checking
+selected-photo information and planned output paths, comparing before/after,
+adjusting exposure, creating a safe sample DNG, adjusting contrast/warmth,
+opening the exported JPEG, and opening the output folder. When adjustments
+change, the UI marks the preview as needing an update until the next
+preview/export render. If the current output folder already has a matching
+recipe for the selected photo, the UI restores the saved basic adjustments. It
+currently uses the same local pipeline as the CLI and is intentionally
+DNG-first.
 
 ### Step 4 - Real RAW Backend
 

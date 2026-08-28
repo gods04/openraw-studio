@@ -12,6 +12,7 @@ import threading
 from typing import Any, Mapping
 
 from openraw_studio.core.artifacts import ArtifactPlan
+from openraw_studio.core.files import is_supported_raw_path
 from openraw_studio.core.recipe import validate_recipe_shape
 from openraw_studio.decision.auto_adjust import AutoAdjustSuggestion, suggest_auto_adjustments
 from openraw_studio.pipeline.errors import BackendUnavailableError, PipelineError, SourceFileError
@@ -20,6 +21,9 @@ from openraw_studio.pipeline.local import LocalPhotoPipeline
 from openraw_studio.raw.native.preview import render_preview_image
 from openraw_studio.raw.native.support import NativeSupportReport, inspect_native_support
 from openraw_studio.raw.native.synthetic import write_synthetic_dng
+
+
+MAX_LIBRARY_FILES = 200
 
 
 def _format_exposure_label(value: float) -> str:
@@ -121,6 +125,38 @@ def _format_native_support_summary(report: NativeSupportReport) -> str:
     if report.can_render:
         return "Support: Supported by OpenRAW Native V0.1"
     return f"Support: Not supported yet\nReason: {report.reason}"
+
+
+def _candidate_raw_files(folder: Path, *, limit: int = MAX_LIBRARY_FILES) -> tuple[Path, ...]:
+    if not folder.exists():
+        raise FileNotFoundError(f"Folder does not exist: {folder}")
+    if not folder.is_dir():
+        raise NotADirectoryError(f"Path is not a folder: {folder}")
+    candidates = sorted(
+        (path for path in folder.iterdir() if path.is_file() and is_supported_raw_path(path)),
+        key=lambda path: path.name.lower(),
+    )
+    return tuple(candidates[:limit])
+
+
+def _library_item_label(path: Path, report: NativeSupportReport) -> str:
+    status = "OK" if report.can_render else "NO"
+    return f"[{status}] {path.name}"
+
+
+def _scan_library_folder(folder: Path, *, limit: int = MAX_LIBRARY_FILES) -> tuple[tuple[Path, str, bool], ...]:
+    return tuple(
+        (path, _library_item_label(path, report), report.can_render)
+        for path in _candidate_raw_files(folder, limit=limit)
+        for report in (inspect_native_support(path),)
+    )
+
+
+def _folder_status_text(folder: Path, item_count: int, *, limit: int = MAX_LIBRARY_FILES) -> str:
+    if item_count == 0:
+        return f"No RAW/DNG files found in {_short_path(folder, max_chars=46)}"
+    suffix = f"Showing first {limit}" if item_count >= limit else f"{item_count}"
+    return f"{suffix} RAW/DNG files in {_short_path(folder, max_chars=46)}"
 
 
 def _planned_output_summary(source: Path, output_dir: Path) -> str:
@@ -300,6 +336,9 @@ def launch_desktop_app() -> None:
             self.preview_photo: Any = None
             self.before_photo: Any = None
             self.after_photo: Any = None
+            self.library_dir: Path | None = None
+            self.library_items: list[tuple[Path, str, bool]] = []
+            self.library_scan_counter = 0
             self.showing_after = True
             self.last_export_path: Path | None = None
             self.last_preview_overrides: dict[str, float] | None = None
@@ -308,6 +347,7 @@ def launch_desktop_app() -> None:
 
             self.source_var = tk.StringVar(value="No RAW photo selected")
             self.output_var = tk.StringVar(value="Output folder will be chosen automatically")
+            self.library_status_var = tk.StringVar(value="Import a folder to browse photos")
             self.photo_info_var = tk.StringVar(value="No photo selected")
             self.output_info_var = tk.StringVar(value="Output plan appears after import")
             self.status_var = tk.StringVar(value="Choose a RAW photo to begin")
@@ -358,15 +398,40 @@ def launch_desktop_app() -> None:
             ttk_module.Label(controls, text="PHOTO", style="Muted.TLabel").pack(anchor="w")
             ttk_module.Label(controls, textvariable=self.source_var, style="Panel.TLabel", wraplength=260).pack(anchor="w", pady=(8, 14))
             ttk_module.Button(controls, text="Import RAW", style="Secondary.TButton", command=self._choose_source).pack(fill="x")
+            ttk_module.Button(controls, text="Import Folder", style="Secondary.TButton", command=self._choose_library_folder).pack(
+                fill="x", pady=(8, 0)
+            )
             ttk_module.Button(controls, text="Create Sample DNG", style="Secondary.TButton", command=self._create_sample_source).pack(
                 fill="x", pady=(8, 0)
             )
 
-            ttk_module.Label(controls, text="OUTPUT", style="Muted.TLabel").pack(anchor="w", pady=(28, 0))
+            ttk_module.Label(controls, text="FOLDER", style="Muted.TLabel").pack(anchor="w", pady=(20, 0))
+            library_frame = ttk_module.Frame(controls, style="Panel.TFrame")
+            library_frame.pack(fill="x", pady=(8, 6))
+            self.library_listbox = tk_module.Listbox(
+                library_frame,
+                height=5,
+                activestyle="none",
+                exportselection=False,
+                borderwidth=0,
+                highlightthickness=1,
+                highlightbackground="#d2d2d7",
+                selectbackground="#1d1d1f",
+                selectforeground="#ffffff",
+                font=("Segoe UI", 9),
+            )
+            library_scroll = ttk_module.Scrollbar(library_frame, orient="vertical", command=self.library_listbox.yview)
+            self.library_listbox.configure(yscrollcommand=library_scroll.set)
+            self.library_listbox.pack(side="left", fill="both", expand=True)
+            library_scroll.pack(side="right", fill="y")
+            self.library_listbox.bind("<<ListboxSelect>>", self._select_library_item)
+            ttk_module.Label(controls, textvariable=self.library_status_var, style="Muted.TLabel", wraplength=260).pack(anchor="w")
+
+            ttk_module.Label(controls, text="OUTPUT", style="Muted.TLabel").pack(anchor="w", pady=(20, 0))
             ttk_module.Label(controls, textvariable=self.output_var, style="Panel.TLabel", wraplength=260).pack(anchor="w", pady=(8, 14))
             ttk_module.Button(controls, text="Choose Folder", style="Secondary.TButton", command=self._choose_output).pack(fill="x")
 
-            ttk_module.Separator(controls).pack(fill="x", pady=28)
+            ttk_module.Separator(controls).pack(fill="x", pady=20)
             ttk_module.Label(controls, text="ADJUSTMENTS", style="Muted.TLabel").pack(anchor="w")
             exposure_header = ttk_module.Frame(controls, style="Panel.TFrame")
             exposure_header.pack(fill="x", pady=(8, 0))
@@ -505,6 +570,58 @@ def launch_desktop_app() -> None:
             if not selected:
                 return
             self._select_source(Path(selected), ready_status="Ready to process")
+
+        def _choose_library_folder(self) -> None:
+            selected = self.filedialog.askdirectory(title="Import folder")
+            if not selected:
+                return
+            self._start_library_scan(Path(selected))
+
+        def _start_library_scan(self, folder: Path) -> None:
+            self.library_scan_counter += 1
+            scan_id = self.library_scan_counter
+            self.library_dir = folder
+            self.library_items = []
+            self.library_listbox.delete(0, "end")
+            self.library_status_var.set("Scanning folder...")
+            threading.Thread(target=self._library_scan_worker, args=(scan_id, folder), daemon=True).start()
+
+        def _library_scan_worker(self, scan_id: int, folder: Path) -> None:
+            try:
+                items = _scan_library_folder(folder)
+            except OSError as exc:
+                self.root.after(0, lambda: self._show_library_error(scan_id, _friendly_error_message(exc)))
+                return
+            self.root.after(0, lambda: self._show_library_items(scan_id, folder, items))
+
+        def _show_library_error(self, scan_id: int, message: str) -> None:
+            if scan_id != self.library_scan_counter:
+                return
+            self.library_status_var.set(message)
+
+        def _show_library_items(self, scan_id: int, folder: Path, items: tuple[tuple[Path, str, bool], ...]) -> None:
+            if scan_id != self.library_scan_counter:
+                return
+            self.library_items = list(items)
+            self.library_listbox.delete(0, "end")
+            for _path, label, _can_render in self.library_items:
+                self.library_listbox.insert("end", label)
+            self.library_status_var.set(_folder_status_text(folder, len(self.library_items)))
+            if self.library_items:
+                first_supported = next((index for index, item in enumerate(self.library_items) if item[2]), 0)
+                self.library_listbox.selection_set(first_supported)
+                self.library_listbox.activate(first_supported)
+                self.library_listbox.see(first_supported)
+                self._select_source(self.library_items[first_supported][0], ready_status="Folder imported")
+
+        def _select_library_item(self, _event: Any = None) -> None:
+            selection = self.library_listbox.curselection()
+            if not selection:
+                return
+            index = int(selection[0])
+            if index < 0 or index >= len(self.library_items):
+                return
+            self._select_source(self.library_items[index][0], ready_status="Photo selected from folder")
 
         def _create_sample_source(self) -> None:
             try:

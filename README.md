@@ -69,7 +69,7 @@ Then import `sample-data\openraw-synthetic.DNG` in the app.
 - Native PNG preview encoding for narrow uncompressed DNG test files
 - Native preview-derived JPEG export for narrow uncompressed DNG test files
 - Beginner desktop shell launched with `openraw app` or `scripts/run_app.ps1`
-- App import, output-folder selection, conservative Auto Adjust,
+- App single-photo import, folder import, output-folder selection, conservative Auto Adjust,
   exposure/contrast/warmth adjustments, before/after comparison, built-in
   sample DNG creation, photo/output information display, and direct output
   opening
@@ -155,9 +155,10 @@ Open the beginner-friendly desktop app:
 openraw app
 ```
 
-Import a supported DNG, or click `Create Sample DNG`, then click `Auto Adjust`
-for a conservative starter look. Use `Update Preview` to refresh the preview
-with the current adjustments. When the image looks right, click `Export JPEG`.
+Import a supported DNG, import a folder to browse RAW-like files, or click
+`Create Sample DNG`, then click `Auto Adjust` for a conservative starter look.
+Use `Update Preview` to refresh the preview with the current adjustments. When
+the image looks right, click `Export JPEG`.
 The app shows basic photo information, current Native support status, and the
 planned preview, JPEG, and recipe paths before rendering. It will create a
 preview PNG, a preview-derived JPEG, and a recipe JSON in the selected output

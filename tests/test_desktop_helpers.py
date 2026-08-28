@@ -10,8 +10,10 @@ from openraw_studio.core.recipe import new_recipe, write_recipe
 from openraw_studio.ui.desktop import (
     _adjustments_match,
     _auto_adjust_status,
+    _candidate_raw_files,
     _default_sample_path,
     _flatten_rgb_pixels,
+    _folder_status_text,
     _format_adjustment_label,
     _format_bytes,
     _format_exposure_label,
@@ -19,6 +21,7 @@ from openraw_studio.ui.desktop import (
     _format_photo_info,
     _format_result_summary,
     _friendly_error_message,
+    _library_item_label,
     _load_recipe_adjustments,
     _manual_overrides,
     _planned_output_summary,
@@ -26,6 +29,7 @@ from openraw_studio.ui.desktop import (
     _recipe_adjustment_overrides,
     _read_photo_info,
     _result_status,
+    _scan_library_folder,
     _short_path,
 )
 from openraw_studio.raw.native.synthetic import write_synthetic_dng
@@ -103,6 +107,56 @@ class DesktopHelperTests(unittest.TestCase):
 
         self.assertIn("Support: Not supported yet", summary)
         self.assertIn("DNG files", summary)
+
+    def test_candidate_raw_files_lists_raw_like_files_in_name_order(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "B.NEF").write_bytes(b"fake")
+            (root / "a.DNG").write_bytes(b"fake")
+            (root / "not-raw.jpg").write_bytes(b"fake")
+
+            candidates = _candidate_raw_files(root)
+
+        self.assertEqual([path.name for path in candidates], ["a.DNG", "B.NEF"])
+
+    def test_library_item_label_marks_render_support(self) -> None:
+        supported = NativeSupportReport(
+            source_path=Path("sample.DNG"),
+            file_exists=True,
+            can_inspect=True,
+            can_render=True,
+            status="supported",
+            reason="Supported by OpenRAW Native V0.1.",
+        )
+        unsupported = NativeSupportReport(
+            source_path=Path("sample.NEF"),
+            file_exists=True,
+            can_inspect=False,
+            can_render=False,
+            status="unsupported",
+            reason="OpenRAW Native V0.1 currently starts with DNG files.",
+        )
+
+        self.assertEqual(_library_item_label(Path("sample.DNG"), supported), "[OK] sample.DNG")
+        self.assertEqual(_library_item_label(Path("sample.NEF"), unsupported), "[NO] sample.NEF")
+
+    def test_scan_library_folder_reports_supported_and_unsupported_items(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_synthetic_dng(root / "sample.DNG", width=4, height=4)
+            (root / "sample.NEF").write_bytes(b"fake")
+
+            items = _scan_library_folder(root)
+
+        self.assertEqual([item[0].name for item in items], ["sample.DNG", "sample.NEF"])
+        self.assertEqual(items[0][1], "[OK] sample.DNG")
+        self.assertTrue(items[0][2])
+        self.assertEqual(items[1][1], "[NO] sample.NEF")
+        self.assertFalse(items[1][2])
+
+    def test_folder_status_text_summarizes_empty_and_nonempty_folders(self) -> None:
+        self.assertIn("No RAW/DNG files", _folder_status_text(Path("empty"), 0))
+        self.assertIn("2 RAW/DNG files", _folder_status_text(Path("photos"), 2))
 
     def test_planned_output_summary_uses_relative_artifact_paths(self) -> None:
         summary = _planned_output_summary(Path("IMG_0001.DNG"), Path("openraw-output"))

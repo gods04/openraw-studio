@@ -28,11 +28,12 @@ The startup script will:
 Current app flow:
 
 ```text
-Import DNG -> choose output folder -> Auto Adjust -> Update Preview -> refine exposure/contrast/warmth -> Export JPEG
+Import DNG or folder -> choose output folder -> Auto Adjust -> Update Preview -> refine exposure/contrast/warmth -> Export JPEG
 ```
 
 The app also shows whether the selected file is supported by the current
-OpenRAW Native path before rendering.
+OpenRAW Native path before rendering. Folder import scans RAW-like files in the
+selected folder and marks each one as currently supported or not supported yet.
 
 For supported simple uncompressed DNG files, the app writes:
 

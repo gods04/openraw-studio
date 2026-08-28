@@ -63,6 +63,7 @@ Suggested implementation order:
 18. [done] restore basic desktop adjustments from saved recipe sidecars
 19. [done] add native extraction for simple uncompressed tiled DNG payloads
 20. [done] add Native support reporting through CLI and desktop photo info
+21. [done] add desktop folder import with a lightweight photo list
 
 Exit criteria:
 
