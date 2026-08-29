@@ -25,6 +25,7 @@ from openraw_studio.raw.native.synthetic import write_synthetic_dng
 
 
 MAX_LIBRARY_FILES = 200
+NIKON_RAW_EXTENSIONS = {".nef", ".nrw"}
 
 
 def _format_exposure_label(value: float) -> str:
@@ -174,6 +175,8 @@ def _read_photo_info_with_support(path: Path) -> tuple[str, NativeSupportReport]
 def _format_native_support_summary(report: NativeSupportReport) -> str:
     if report.can_render:
         return "Support: Supported by OpenRAW Native V0.1"
+    if report.can_preview:
+        return f"Support: Preview supported; export not supported yet\nReason: {report.reason}"
     if report.can_inspect:
         return f"Support: Import supported; preview/export not supported yet\nReason: {report.reason}"
     return f"Support: Not supported yet\nReason: {report.reason}"
@@ -192,7 +195,7 @@ def _candidate_raw_files(folder: Path, *, limit: int = MAX_LIBRARY_FILES) -> tup
 
 
 def _library_item_label(path: Path, report: NativeSupportReport) -> str:
-    status = "OK" if report.can_render else "IMPORT" if report.can_inspect else "NO"
+    status = "OK" if report.can_render else "PREVIEW" if report.can_preview else "IMPORT" if report.can_inspect else "NO"
     return f"[{status}] {path.name}"
 
 
@@ -249,14 +252,21 @@ def _format_batch_result_summary(result: BatchResult, *, limit: int = 6) -> str:
 
 def _planned_output_summary(source: Path, output_dir: Path) -> str:
     plan = ArtifactPlan.for_source(source, output_dir)
+    preview_path = _preview_artifact_path(source, plan)
     return "\n".join(
         [
             f"Folder: {_short_path(plan.output_dir, max_chars=68)}",
-            f"Preview: {_display_path(plan.preview_path, base=plan.output_dir)}",
+            f"Preview: {_display_path(preview_path, base=plan.output_dir)}",
             f"JPEG: {_display_path(plan.export_path, base=plan.output_dir)}",
             f"Recipe: {_display_path(plan.recipe_path, base=plan.output_dir)}",
         ]
     )
+
+
+def _preview_artifact_path(source: Path, plan: ArtifactPlan) -> Path:
+    if source.suffix.lower() in NIKON_RAW_EXTENSIONS:
+        return plan.preview_path.with_name(f"{source.stem}.preview.jpg")
+    return plan.preview_path
 
 
 def _path_name_from_recipe(value: Any) -> str | None:
@@ -380,7 +390,7 @@ def _friendly_error_message(error: BaseException) -> str:
     message = str(error)
     if isinstance(error, SourceFileError):
         if "Unsupported RAW extension" in message:
-            return "This file type is not supported yet. OpenRAW Studio V0.1 can render supported DNG files and import Nikon RAW metadata."
+            return "This file type is not supported yet. OpenRAW Studio V0.1 can render supported DNG files, import Nikon RAW metadata, and preview Nikon RAW files that include embedded JPEGs."
         if "Source file does not exist" in message:
             return "The selected photo could not be found. It may have been moved or deleted."
     if isinstance(error, BackendUnavailableError):
@@ -389,10 +399,12 @@ def _friendly_error_message(error: BaseException) -> str:
             or "only uncompressed strips or tiles are supported" in message
         ):
             return "This DNG uses a structure that OpenRAW Native does not support yet. Try the built-in sample DNG for the current V0.1 path."
+        if "Nikon RAW embedded preview" in message or "Nikon preview failed" in message:
+            return "Nikon RAW metadata import is ready, but this file does not include a readable embedded preview yet. Full NEF/NRW export decoding is still in progress."
         if "Nikon RAW metadata" in message or "NEF/NRW" in message:
-            return "Nikon RAW metadata import is ready, but NEF/NRW preview and export decoding are still in progress."
+            return "Nikon RAW preview import is ready, but full NEF/NRW export decoding is still in progress."
         if "currently starts with DNG files" in message:
-            return "Nikon RAW metadata import is ready, but NEF/NRW preview and export decoding are still in progress."
+            return "Nikon RAW preview import is ready, but full NEF/NRW export decoding is still in progress."
         return "OpenRAW Native could not render this photo yet. A recipe may still have been written in the output folder."
     if isinstance(error, OSError):
         return "OpenRAW Studio could not read or write one of the selected files. Check the folder permissions and try again."
@@ -428,6 +440,7 @@ def launch_desktop_app() -> None:
             self.after_photo: Any = None
             self.library_dir: Path | None = None
             self.library_items: list[tuple[Path, str, bool]] = []
+            self.current_can_preview: bool | None = None
             self.current_can_render: bool | None = None
             self.library_scan_counter = 0
             self.showing_after = True
@@ -740,6 +753,7 @@ def launch_desktop_app() -> None:
         def _select_source(self, source: Path, *, ready_status: str) -> None:
             self.run_counter += 1
             self.source_path = source
+            self.current_can_preview = None
             self.current_can_render = None
             self.source_var.set(source.name)
             self.photo_info_var.set("Reading photo info...")
@@ -814,8 +828,11 @@ def launch_desktop_app() -> None:
             if self.source_path != source:
                 return
             if support is not None:
+                self.current_can_preview = support.can_preview or support.can_render
                 self.current_can_render = support.can_render
-                if support.can_inspect and not support.can_render:
+                if support.can_preview and not support.can_render:
+                    self.status_var.set("RAW preview ready; export support is next")
+                elif support.can_inspect and not support.can_render:
                     self.status_var.set("RAW metadata imported; preview/export support is next")
                 self._set_busy(False)
             self.photo_info_var.set(info)
@@ -987,10 +1004,13 @@ def launch_desktop_app() -> None:
 
         def _set_busy(self, busy: bool) -> None:
             self.is_busy = busy
-            state = "normal" if not busy and self.source_path is not None and self.current_can_render is True else "disabled"
-            self.auto_adjust_button.configure(state=state)
-            self.preview_button.configure(state=state)
-            self.process_button.configure(state=state)
+            can_preview = self.current_can_preview is True or self.current_can_render is True
+            can_render = self.current_can_render is True
+            preview_state = "normal" if not busy and self.source_path is not None and can_preview else "disabled"
+            render_state = "normal" if not busy and self.source_path is not None and can_render else "disabled"
+            self.auto_adjust_button.configure(state=render_state)
+            self.preview_button.configure(state=preview_state)
+            self.process_button.configure(state=render_state)
             batch_state = "disabled" if busy or not _supported_library_sources(self.library_items) else "normal"
             self.batch_button.configure(state=batch_state)
 

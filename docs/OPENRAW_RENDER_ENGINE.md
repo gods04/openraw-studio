@@ -87,6 +87,7 @@ Status:
 - lightweight TIFF/DNG metadata reader exists
 - OpenRAW Native inspection records DNG metadata in recipes
 - Nikon NEF/NRW metadata import exists
+- Nikon NEF/NRW embedded JPEG preview extraction exists
 - first uncompressed strip- and tile-based pixel extraction exists
 - black/white level sensor normalization exists
 - simple Bayer demosaic exists
@@ -94,9 +95,10 @@ Status:
 - `openraw process --preview-only` can complete without final export
 - local JPEG export engine records final derivative exports for narrow supported uncompressed DNG files
 - DNG AsShotNeutral white balance and ColorMatrix1 transform are applied when available
-- recipe-driven exposure, contrast, and warmth controls are applied to preview and JPEG export
+- recipe-driven exposure, contrast, and warmth controls are applied to DNG preview and JPEG export
+- Nikon embedded previews are extracted as camera-authored JPEGs without applying recipe adjustments yet
 - `openraw inspect` reports current Native support status before preview/export
-- Nikon NEF embedded preview extraction or native decode, full camera-aware color conversion, and high-quality JPEG/TIFF export are next
+- native Nikon NEF sensor decode, full camera-aware color conversion, and high-quality JPEG/TIFF export are next
 
 Current native metadata scope:
 

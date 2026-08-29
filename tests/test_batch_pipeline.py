@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from fixtures_nikon import embedded_jpeg_bytes, synthetic_nikon_nef_metadata_bytes
 from openraw_studio.pipeline.batch import discover_batch_sources, run_batch_export
 from openraw_studio.raw.native.synthetic import write_synthetic_dng
 
@@ -60,6 +61,26 @@ class BatchPipelineTests(unittest.TestCase):
 
         self.assertEqual(result.previewed, 1)
         self.assertEqual(result.exported, 0)
+        self.assertTrue(preview_exists)
+        self.assertFalse(export_exists)
+
+    def test_run_batch_preview_only_processes_nikon_embedded_preview(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "b.NEF"
+            source.write_bytes(synthetic_nikon_nef_metadata_bytes(embedded_jpeg=embedded_jpeg_bytes()))
+            output = root / "output"
+
+            result = run_batch_export([source], output, preview_only=True)
+
+            preview_path = output / "previews" / "b.preview.jpg"
+            export_path = output / "exports" / "b.auto.jpg"
+            preview_exists = preview_path.exists()
+            export_exists = export_path.exists()
+
+        self.assertEqual(result.previewed, 1)
+        self.assertEqual(result.exported, 0)
+        self.assertEqual(result.items[0].message, "Embedded preview extracted")
         self.assertTrue(preview_exists)
         self.assertFalse(export_exists)
 

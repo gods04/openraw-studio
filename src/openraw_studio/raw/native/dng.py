@@ -84,6 +84,17 @@ class DngPixelData:
         return struct.unpack(endian + f"{sample_count}H", self.raw_bytes[: sample_count * 2])
 
 
+@dataclass(frozen=True)
+class EmbeddedPreview:
+    """JPEG preview stored inside a TIFF/DNG-style RAW container."""
+
+    width: int | None
+    height: int | None
+    mime_type: str
+    data: bytes
+    source_ifd_offset: int
+
+
 TIFF_TYPES: dict[int, tuple[str, int, str]] = {
     1: ("BYTE", 1, "B"),
     2: ("ASCII", 1, "c"),
@@ -121,6 +132,8 @@ TAG_NAMES = {
     324: "TileOffsets",
     325: "TileByteCounts",
     330: "SubIFDs",
+    513: "JPEGInterchangeFormat",
+    514: "JPEGInterchangeFormatLength",
     33434: "ExposureTime",
     33437: "FNumber",
     34665: "ExifIFDPointer",
@@ -181,6 +194,8 @@ SUMMARY_TAGS = {
     "TileLength": "tile_length",
     "TileOffsets": "tile_offsets",
     "TileByteCounts": "tile_byte_counts",
+    "JPEGInterchangeFormat": "jpeg_interchange_format",
+    "JPEGInterchangeFormatLength": "jpeg_interchange_format_length",
     "ExposureTime": "exposure_time",
     "FNumber": "aperture",
     "ISOSpeedRatings": "iso",
@@ -220,6 +235,29 @@ class DngMetadataReader:
             byte_order=byte_order,
             ifds=tuple(ifds),
             summary=_build_summary(ifds),
+        )
+
+    def read_embedded_jpeg_preview(self, path: str | Path) -> EmbeddedPreview:
+        """Extract an embedded JPEG preview from a TIFF/DNG-style RAW file."""
+
+        data = Path(path).read_bytes()
+        _byte_order, _endian, ifds = self._read_structure(data)
+        ifd = _select_embedded_jpeg_ifd(ifds)
+        offset = _tag_scalar_int(ifd, 513, "JPEGInterchangeFormat")
+        length = _tag_scalar_int(ifd, 514, "JPEGInterchangeFormatLength")
+        if offset <= 0 or length <= 0:
+            raise DngMetadataError("embedded JPEG preview tags are empty")
+
+        preview = _slice_checked(data, offset, length)
+        if not preview.startswith(b"\xff\xd8"):
+            raise DngMetadataError("embedded JPEG preview is not valid JPEG data")
+
+        return EmbeddedPreview(
+            width=_optional_tag_int(ifd, 256),
+            height=_optional_tag_int(ifd, 257),
+            mime_type="image/jpeg",
+            data=preview,
+            source_ifd_offset=ifd.offset,
         )
 
     def read_pixel_data(self, path: str | Path) -> DngPixelData:
@@ -487,6 +525,45 @@ def _ifd_has_tile_payload(ifd: TiffIfd) -> bool:
 
 def _ifd_has_incomplete_pixel_payload(ifd: TiffIfd) -> bool:
     return any(tag in ifd.tags for tag in (273, 279, 322, 323, 324, 325))
+
+
+def _select_embedded_jpeg_ifd(ifds: list[TiffIfd]) -> TiffIfd:
+    candidates = [ifd for ifd in ifds if 513 in ifd.tags and 514 in ifd.tags]
+    if not candidates:
+        raise DngMetadataError("no embedded JPEG preview tags found")
+    return max(candidates, key=lambda ifd: (_safe_tag_int(ifd, 514) or 0, _ifd_area(ifd)))
+
+
+def _safe_tag_int(ifd: TiffIfd, tag_code: int) -> int | None:
+    tag = ifd.tags.get(tag_code)
+    if tag is None:
+        return None
+    try:
+        return _scalar_int_value(tag.value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _tag_scalar_int(ifd: TiffIfd, tag_code: int, label: str) -> int:
+    return _scalar_int_value(_require_tag_value(ifd, tag_code, label))
+
+
+def _optional_tag_int(ifd: TiffIfd, tag_code: int) -> int | None:
+    tag = ifd.tags.get(tag_code)
+    if tag is None:
+        return None
+    try:
+        return _scalar_int_value(tag.value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _scalar_int_value(value: Any) -> int:
+    if isinstance(value, tuple):
+        if len(value) != 1:
+            raise DngMetadataError("metadata value must be scalar")
+        value = value[0]
+    return int(value)
 
 
 def _assemble_tiled_payload(

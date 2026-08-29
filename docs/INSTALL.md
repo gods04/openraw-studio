@@ -28,14 +28,15 @@ The startup script will:
 Current app flow:
 
 ```text
-Import DNG/NEF or folder -> choose output folder -> renderable DNG: Auto Adjust -> Update Preview -> refine exposure/contrast/warmth -> Export JPEG or Export Folder
+Import DNG/NEF or folder -> choose output folder -> DNG: Auto Adjust -> Update Preview -> refine exposure/contrast/warmth -> Export JPEG or Export Folder
 ```
 
 The app also shows whether the selected file is supported by the current
 OpenRAW Native path before rendering. Nikon `.NEF` / `.NRW` files can be
-imported for metadata today, but preview/export rendering is not implemented
-yet. Folder import scans RAW-like files in the selected folder and marks each
-one as renderable, import-only, or not supported yet.
+imported for metadata today; files with embedded JPEG previews can use
+`Update Preview`, but final NEF/NRW export rendering is not implemented yet.
+Folder import scans RAW-like files in the selected folder and marks each one as
+renderable, preview-only, import-only, or not supported yet.
 
 For supported simple uncompressed DNG files, the app writes:
 
@@ -43,8 +44,13 @@ For supported simple uncompressed DNG files, the app writes:
 - preview-derived JPEG
 - recipe JSON sidecar
 
+For Nikon preview-only files, the app writes:
+
+- embedded-preview JPEG
+- recipe JSON sidecar
+
 `Export Folder` processes currently renderable files from the imported folder
-using the current basic adjustments and reports skipped/import-only/failed files.
+using the current basic adjustments and reports skipped/preview-only/import-only/failed files.
 
 To try the app without using a private photo, click `Create Sample DNG` inside
 the desktop app.
@@ -141,9 +147,12 @@ can write a dry-run recipe/artifact plan for a RAW-like source file:
 - schema and preset JSON files parse correctly
 - `openraw doctor` reports the OpenRAW Native engine foundation
 - `openraw process --dry-run` writes a recipe sidecar without rendering pixels
-- `openraw inspect` can import Nikon `.NEF` / `.NRW` metadata
+- `openraw inspect` can import Nikon `.NEF` / `.NRW` metadata and detect
+  embedded JPEG preview support
 - `openraw process` writes a PNG preview and local JPEG export for
   narrow supported uncompressed DNG files
+- `openraw process --preview-only` writes a JPEG preview for Nikon files with
+  embedded previews
 
 Check the environment:
 
@@ -156,11 +165,13 @@ Expected meaning:
 ```text
 OpenRAW Native engine foundation is available.
 Nikon NEF/NRW metadata import is available.
+Nikon NEF/NRW embedded JPEG preview is available when the file contains one.
 Narrow uncompressed DNG preview and local JPEG export are available.
 ```
 
-Inspect one file before processing it. Nikon `.NEF` / `.NRW` files currently
-show as import-only when metadata can be read:
+Inspect one file before processing it. Nikon `.NEF` / `.NRW` files show
+preview-only when an embedded JPEG preview is available, or import-only when
+only metadata can be read:
 
 ```powershell
 openraw inspect "E:\Photos\input\IMG_0001.NEF"
@@ -172,10 +183,11 @@ Plan one source file:
 openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-output" --dry-run
 ```
 
-Render the first native preview-only path:
+Render the first native preview-only paths:
 
 ```powershell
 openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-output" --preview-only
+openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-output" --preview-only
 ```
 
 This writes a PNG preview only for narrow uncompressed DNG files supported by
@@ -198,8 +210,10 @@ Batch export the supported files in one folder:
 openraw batch "E:\Photos\input" --output "E:\Photos\openraw-output"
 ```
 
-The batch command skips import-only or unsupported files outside the current
-OpenRAW Native render path instead of treating the whole folder as failed.
+The normal batch command skips preview-only/import-only/unsupported files outside
+the current OpenRAW Native render path instead of treating the whole folder as
+failed. With `--preview-only`, Nikon files with embedded JPEG previews can be
+previewed in batch without final export.
 
 Expected dry-run output:
 

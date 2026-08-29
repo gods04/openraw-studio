@@ -14,6 +14,7 @@ from openraw_studio.pipeline.local import LocalPhotoPipeline
 from openraw_studio.raw.backends import BackendCheck
 from openraw_studio.raw.darktable import DarktableCliProcessor
 from openraw_studio.raw.interfaces import RawRenderRequest
+from fixtures_nikon import embedded_jpeg_bytes, synthetic_nikon_nef_metadata_bytes
 from openraw_studio.raw.native import NativeRawProcessor, write_synthetic_dng
 
 
@@ -105,8 +106,35 @@ class CliPipelineTests(unittest.TestCase):
             self.assertEqual(exit_code, 3)
             self.assertTrue(recipe_path.exists())
             self.assertEqual(recipe["source"]["metadata"]["raw_format"], "nikon-nef")
-            self.assertIn("Nikon RAW metadata", recipe["pipeline"]["message"])
+            self.assertIn("Nikon", recipe["pipeline"]["message"])
             self.assertFalse((output / "exports" / "IMG_0007.auto.jpg").exists())
+
+    def test_nikon_nef_preview_only_writes_embedded_jpeg_preview(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "IMG_0008.NEF"
+            output = root / "output"
+            source.write_bytes(synthetic_nikon_nef_metadata_bytes(embedded_jpeg=embedded_jpeg_bytes()))
+
+            with redirect_stdout(StringIO()):
+                exit_code = main(["process", str(source), "--output", str(output), "--preview-only"])
+            recipe_path = output / "recipes" / "IMG_0008.NEF.recipe.json"
+            recipe = json.loads(recipe_path.read_text(encoding="utf-8"))
+            preview_path = output / "previews" / "IMG_0008.preview.jpg"
+
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(preview_path.exists())
+            self.assertFalse((output / "exports" / "IMG_0008.auto.jpg").exists())
+            self.assertEqual(recipe["pipeline"]["mode"], "preview_only")
+            self.assertEqual(
+                recipe["pipeline"]["message"],
+                "Embedded JPEG preview was extracted; final export was skipped by request.",
+            )
+            self.assertEqual(recipe["preview"]["path"], str(preview_path))
+            self.assertEqual(recipe["preview"]["width"], 3)
+            self.assertEqual(recipe["preview"]["height"], 2)
+            self.assertEqual(recipe["planned_artifacts"]["preview"], str(preview_path))
+            self.assertEqual(recipe["exports"], [])
 
     def test_render_pipeline_uses_raw_processor(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -226,6 +254,21 @@ class CliPipelineTests(unittest.TestCase):
         self.assertIn("Import: metadata supported", text)
         self.assertIn("Native render: not supported yet", text)
         self.assertIn("Nikon RAW metadata import is supported", text)
+
+    def test_cli_inspect_reports_nikon_raw_embedded_preview(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "sample.NEF"
+            source.write_bytes(synthetic_nikon_nef_metadata_bytes(embedded_jpeg=embedded_jpeg_bytes()))
+            output = StringIO()
+
+            with redirect_stdout(output):
+                exit_code = main(["inspect", str(source)])
+
+        text = output.getvalue()
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Preview: supported", text)
+        self.assertIn("Native render: not supported yet", text)
+        self.assertIn("Preview: embedded JPEG", text)
 
     def test_cli_batch_exports_supported_folder_items(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

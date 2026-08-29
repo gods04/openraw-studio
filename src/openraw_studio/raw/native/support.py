@@ -29,6 +29,7 @@ class NativeSupportReport:
     can_render: bool
     status: str
     reason: str
+    can_preview: bool = False
     details: tuple[str, ...] = ()
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
@@ -37,6 +38,7 @@ class NativeSupportReport:
             "source_path": str(self.source_path),
             "file_exists": self.file_exists,
             "can_inspect": self.can_inspect,
+            "can_preview": self.can_preview,
             "can_render": self.can_render,
             "status": self.status,
             "reason": self.reason,
@@ -98,6 +100,7 @@ def inspect_native_support(source_path: str | Path, *, dng_reader: DngMetadataRe
         path,
         file_exists=True,
         can_inspect=True,
+        can_preview=True,
         can_render=True,
         status="supported",
         reason="Supported by OpenRAW Native V0.1.",
@@ -113,6 +116,7 @@ def _report(
     status: str,
     reason: str,
     can_inspect: bool = False,
+    can_preview: bool = False,
     can_render: bool = False,
     details: tuple[str, ...] = (),
     metadata: Mapping[str, Any] | None = None,
@@ -121,6 +125,7 @@ def _report(
         source_path=path,
         file_exists=file_exists,
         can_inspect=can_inspect,
+        can_preview=can_preview,
         can_render=can_render,
         status=status,
         reason=reason,
@@ -142,14 +147,37 @@ def _inspect_nikon_raw(source_path: Path, *, dng_reader: DngMetadataReader | Non
         )
 
     summary = metadata.as_dict()
+    details = _nikon_import_details(source_path, summary)
+    try:
+        preview = reader.read_embedded_jpeg_preview(source_path)
+    except (DngMetadataError, OSError):
+        details.insert(-1, "Preview: embedded JPEG not found")
+        return _report(
+            source_path,
+            file_exists=True,
+            can_inspect=True,
+            can_preview=False,
+            can_render=False,
+            status="import_only",
+            reason=(
+                "Nikon RAW metadata import is supported; embedded JPEG preview and final NEF/NRW export "
+                "rendering are not implemented for this file yet."
+            ),
+            details=tuple(details),
+            metadata=summary,
+        )
+
+    preview_label = f"Preview: embedded JPEG ({len(preview.data)} bytes)"
+    details.insert(-1, preview_label)
     return _report(
         source_path,
         file_exists=True,
         can_inspect=True,
+        can_preview=True,
         can_render=False,
-        status="import_only",
-        reason="Nikon RAW metadata import is supported; NEF/NRW preview and export rendering are not implemented yet.",
-        details=tuple(_nikon_import_details(source_path, summary)),
+        status="preview_only",
+        reason="Nikon RAW embedded preview is supported; final NEF/NRW export rendering is not implemented yet.",
+        details=tuple(details),
         metadata=summary,
     )
 

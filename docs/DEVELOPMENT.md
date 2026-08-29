@@ -28,6 +28,7 @@ Already present:
 - OpenRAW Native RAW engine scaffold
 - local JPEG `ExportEngine`
 - Nikon `.NEF` / `.NRW` metadata import
+- Nikon `.NEF` / `.NRW` embedded JPEG preview extraction
 
 ## Module Ownership
 

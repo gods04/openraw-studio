@@ -1,9 +1,10 @@
-import struct
 import tempfile
 import unittest
 from pathlib import Path
 
+from fixtures_nikon import embedded_jpeg_bytes, synthetic_nikon_nef_metadata_bytes
 from openraw_studio.core.domain import ImageAsset
+from openraw_studio.core.image_info import read_image_size
 from openraw_studio.raw.native.engine import NativeRawProcessor
 from openraw_studio.raw.native.support import inspect_native_support
 from openraw_studio.raw.native.synthetic import write_synthetic_dng
@@ -41,7 +42,7 @@ class NativeSupportTests(unittest.TestCase):
     def test_nikon_nef_reports_importable_metadata_without_rendering(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             source = Path(temp) / "sample.NEF"
-            source.write_bytes(_synthetic_nikon_nef_metadata_bytes())
+            source.write_bytes(synthetic_nikon_nef_metadata_bytes())
 
             report = inspect_native_support(source)
 
@@ -58,6 +59,40 @@ class NativeSupportTests(unittest.TestCase):
         self.assertIn("Camera: NIKON CORPORATION NIKON Z 6II", report.details)
         self.assertIn("Render: NEF/NRW decoding is future work", report.details)
 
+    def test_nikon_nef_reports_preview_only_when_embedded_jpeg_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            embedded_jpeg = embedded_jpeg_bytes()
+            source = Path(temp) / "sample.NEF"
+            source.write_bytes(synthetic_nikon_nef_metadata_bytes(embedded_jpeg=embedded_jpeg))
+
+            report = inspect_native_support(source)
+
+        self.assertTrue(report.file_exists)
+        self.assertTrue(report.can_inspect)
+        self.assertTrue(report.can_preview)
+        self.assertFalse(report.can_render)
+        self.assertEqual(report.status, "preview_only")
+        self.assertEqual(report.metadata["jpeg_interchange_format_length"], len(embedded_jpeg))
+        self.assertIn("Preview: embedded JPEG", "\n".join(report.details))
+        self.assertIn("final NEF/NRW export rendering is not implemented yet", report.reason)
+
+    def test_native_processor_writes_nikon_embedded_jpeg_preview(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "sample.NEF"
+            preview_path = root / "preview.jpg"
+            source.write_bytes(synthetic_nikon_nef_metadata_bytes(embedded_jpeg=embedded_jpeg_bytes()))
+
+            preview = NativeRawProcessor().create_preview(ImageAsset(source), preview_path, max_dimension=2048)
+
+            self.assertEqual(preview.path, preview_path)
+            self.assertEqual(preview.width, 3)
+            self.assertEqual(preview.height, 2)
+            self.assertEqual(preview.color_space, "embedded-jpeg")
+            self.assertEqual(preview.role, "preview")
+            self.assertEqual(read_image_size(preview_path), (3, 2))
+            self.assertTrue(preview_path.read_bytes().startswith(b"\xff\xd8"))
+
     def test_invalid_nikon_nef_reports_metadata_error(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             source = Path(temp) / "broken.NEF"
@@ -73,7 +108,7 @@ class NativeSupportTests(unittest.TestCase):
     def test_native_processor_inspects_nikon_nef_metadata_for_recipes(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             source = Path(temp) / "sample.NEF"
-            source.write_bytes(_synthetic_nikon_nef_metadata_bytes())
+            source.write_bytes(synthetic_nikon_nef_metadata_bytes())
 
             inspection = NativeRawProcessor().inspect(ImageAsset(source))
 
@@ -110,58 +145,9 @@ class NativeSupportTests(unittest.TestCase):
             payload = inspect_native_support(source).as_dict()
 
         self.assertEqual(payload["status"], "supported")
+        self.assertTrue(payload["can_preview"])
         self.assertIsInstance(payload["details"], list)
         self.assertEqual(payload["metadata"]["width"], 4)
-
-def _synthetic_nikon_nef_metadata_bytes(width: int = 6048, height: int = 4024) -> bytes:
-    ifd0_defs = [
-        (256, 4, 1, struct.pack("<I", width)),
-        (257, 4, 1, struct.pack("<I", height)),
-        (258, 3, 1, struct.pack("<H", 14)),
-        (259, 3, 1, struct.pack("<H", 34713)),
-        (271, 2, len(b"NIKON CORPORATION\x00"), b"NIKON CORPORATION\x00"),
-        (272, 2, len(b"NIKON Z 6II\x00"), b"NIKON Z 6II\x00"),
-        (274, 3, 1, struct.pack("<H", 1)),
-        (277, 3, 1, struct.pack("<H", 1)),
-    ]
-    exif_defs = [
-        (33434, 5, 1, _pack_rational(1, 125)),
-        (33437, 5, 1, _pack_rational(28, 10)),
-        (34855, 3, 1, struct.pack("<H", 400)),
-        (36867, 2, len(b"2026:08:28 12:34:56\x00"), b"2026:08:28 12:34:56\x00"),
-        (37386, 5, 1, _pack_rational(50, 1)),
-        (42036, 2, len(b"NIKKOR Z 50mm f/1.8 S\x00"), b"NIKKOR Z 50mm f/1.8 S\x00"),
-    ]
-
-    ifd0_count = len(ifd0_defs) + 1
-    ifd0_size = 2 + ifd0_count * 12 + 4
-    exif_offset = 8 + ifd0_size
-    exif_size = 2 + len(exif_defs) * 12 + 4
-    external_base = exif_offset + exif_size
-    external_data = bytearray()
-
-    def encode(tag: int, field_type: int, count: int, payload: bytes) -> bytes:
-        type_size = {2: 1, 3: 2, 4: 4, 5: 8}[field_type]
-        byte_count = type_size * count
-        if byte_count <= 4:
-            return struct.pack("<HHI", tag, field_type, count) + payload.ljust(4, b"\x00")
-        offset = external_base + len(external_data)
-        external_data.extend(payload)
-        if len(external_data) % 2:
-            external_data.extend(b"\x00")
-        return struct.pack("<HHII", tag, field_type, count, offset)
-
-    ifd0_entries = [encode(*entry) for entry in ifd0_defs]
-    ifd0_entries.append(encode(34665, 4, 1, struct.pack("<I", exif_offset)))
-    exif_entries = [encode(*entry) for entry in exif_defs]
-    header = b"II" + struct.pack("<H", 42) + struct.pack("<I", 8)
-    ifd0 = struct.pack("<H", ifd0_count) + b"".join(ifd0_entries) + struct.pack("<I", 0)
-    exif = struct.pack("<H", len(exif_entries)) + b"".join(exif_entries) + struct.pack("<I", 0)
-    return header + ifd0 + exif + bytes(external_data)
-
-
-def _pack_rational(numerator: int, denominator: int) -> bytes:
-    return struct.pack("<II", numerator, denominator)
 
 
 if __name__ == "__main__":

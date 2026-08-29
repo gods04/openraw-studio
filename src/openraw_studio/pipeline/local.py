@@ -23,6 +23,9 @@ from openraw_studio.raw.native import NativeRawProcessor
 from openraw_studio.vision.heuristic import HeuristicVisionEngine
 
 
+NIKON_RAW_EXTENSIONS = {".nef", ".nrw"}
+
+
 class LocalPhotoPipeline:
     """A dependency-free pipeline spine for V0.1 development."""
 
@@ -50,6 +53,8 @@ class LocalPhotoPipeline:
 
         plan = ArtifactPlan.for_source(source, request.output_dir)
         plan.ensure_directories()
+        preview_path = _preview_path_for_source(plan, source, self.raw_processor)
+        planned_artifacts = _planned_artifacts_with_preview(plan, preview_path)
 
         source_asset = ImageAsset(path=source.resolve())
         inspection = self.raw_processor.inspect(source_asset)
@@ -59,7 +64,7 @@ class LocalPhotoPipeline:
         source_asset = ImageAsset(path=source.resolve(), checksum_sha256=metadata_dict["checksum_sha256"])
 
         preview_ref = ImageRef(
-            path=plan.preview_path,
+            path=preview_path,
             width=0,
             height=0,
             color_space="unknown",
@@ -133,7 +138,7 @@ class LocalPhotoPipeline:
             "status": "not_run",
             "reason": "V0.1 QC is not implemented yet.",
         }
-        recipe["planned_artifacts"] = plan.as_dict()
+        recipe["planned_artifacts"] = planned_artifacts
 
         recipe["pipeline"] = {
             "mode": _pipeline_mode(request),
@@ -149,7 +154,7 @@ class LocalPhotoPipeline:
                 preview_ref = _create_preview_with_recipe(
                     self.raw_processor,
                     source_asset,
-                    plan.preview_path,
+                    preview_path,
                     recipe,
                 )
                 if request.preview_only:
@@ -158,7 +163,7 @@ class LocalPhotoPipeline:
                         "rendered": True,
                         "preview_rendered": True,
                         "export_rendered": False,
-                        "message": "Preview was rendered; final export was skipped by request.",
+                        "message": _preview_only_message(preview_ref),
                     }
                     recipe["preview"] = {
                         "path": str(preview_ref.path),
@@ -174,7 +179,7 @@ class LocalPhotoPipeline:
                             "dry_run": False,
                             "preview_only": True,
                             "recipe_path": str(recipe_path),
-                            "planned_artifacts": plan.as_dict(),
+                            "planned_artifacts": planned_artifacts,
                         },
                     )
                 rendered_ref = self.raw_processor.render_base(
@@ -203,6 +208,12 @@ class LocalPhotoPipeline:
                     "rendered": False,
                     "message": str(exc),
                 }
+                if preview_ref.role == "preview" and preview_ref.path.exists():
+                    recipe["preview"] = {
+                        "path": str(preview_ref.path),
+                        "width": preview_ref.width,
+                        "height": preview_ref.height,
+                    }
                 write_recipe(recipe, plan.recipe_path)
                 raise BackendUnavailableError(
                     f"{exc} A recipe was written to {plan.recipe_path}. "
@@ -245,7 +256,7 @@ class LocalPhotoPipeline:
                 diagnostics={
                     "dry_run": False,
                     "recipe_path": str(recipe_path),
-                    "planned_artifacts": plan.as_dict(),
+                    "planned_artifacts": planned_artifacts,
                 },
             )
 
@@ -259,7 +270,7 @@ class LocalPhotoPipeline:
                 "dry_run": True,
                 "preview_only": False,
                 "recipe_path": str(recipe_path),
-                "planned_artifacts": plan.as_dict(),
+                "planned_artifacts": planned_artifacts,
             },
         )
 
@@ -270,6 +281,24 @@ def _pipeline_mode(request: PipelineRequest) -> str:
     if request.preview_only:
         return "preview_only"
     return "render"
+
+
+def _preview_path_for_source(plan: ArtifactPlan, source: Path, raw_processor: RawProcessor) -> Path:
+    if isinstance(raw_processor, NativeRawProcessor) and source.suffix.lower() in NIKON_RAW_EXTENSIONS:
+        return plan.preview_path.with_name(f"{source.stem}.preview.jpg")
+    return plan.preview_path
+
+
+def _planned_artifacts_with_preview(plan: ArtifactPlan, preview_path: Path) -> dict[str, str]:
+    planned = plan.as_dict()
+    planned["preview"] = str(preview_path)
+    return planned
+
+
+def _preview_only_message(preview: ImageRef) -> str:
+    if preview.color_space == "embedded-jpeg":
+        return "Embedded JPEG preview was extracted; final export was skipped by request."
+    return "Preview was rendered; final export was skipped by request."
 
 
 def _create_preview_with_recipe(raw_processor: RawProcessor, source: ImageAsset, output_path: Path, recipe: Mapping[str, Any]) -> ImageRef:

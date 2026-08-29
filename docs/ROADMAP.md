@@ -66,7 +66,8 @@ Suggested implementation order:
 21. [done] add desktop folder import with a lightweight photo list
 22. [done] add batch folder export through CLI and desktop app
 23. [done] add Nikon NEF/NRW metadata import and import-only desktop state
-24. add first Nikon NEF embedded preview extraction or native decode path
+24. [done] add first Nikon NEF/NRW embedded preview extraction
+25. add first native Nikon NEF sensor decode path for final export
 
 Exit criteria:
 

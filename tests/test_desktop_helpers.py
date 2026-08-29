@@ -124,6 +124,22 @@ class DesktopHelperTests(unittest.TestCase):
         self.assertIn("Support: Import supported", summary)
         self.assertIn("NEF/NRW preview", summary)
 
+    def test_format_native_support_summary_explains_preview_only_files(self) -> None:
+        report = NativeSupportReport(
+            source_path=Path("sample.NEF"),
+            file_exists=True,
+            can_inspect=True,
+            can_preview=True,
+            can_render=False,
+            status="preview_only",
+            reason="Nikon RAW embedded preview is supported; final NEF/NRW export rendering is not implemented yet.",
+        )
+
+        summary = _format_native_support_summary(report)
+
+        self.assertIn("Support: Preview supported", summary)
+        self.assertIn("export not supported yet", summary)
+
     def test_candidate_raw_files_lists_raw_like_files_in_name_order(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -160,8 +176,18 @@ class DesktopHelperTests(unittest.TestCase):
             status="import_only",
             reason="Nikon RAW metadata import is supported; NEF/NRW preview and export rendering are not implemented yet.",
         )
+        preview_only = NativeSupportReport(
+            source_path=Path("sample.NEF"),
+            file_exists=True,
+            can_inspect=True,
+            can_preview=True,
+            can_render=False,
+            status="preview_only",
+            reason="Nikon RAW embedded preview is supported; final NEF/NRW export rendering is not implemented yet.",
+        )
 
         self.assertEqual(_library_item_label(Path("sample.DNG"), supported), "[OK] sample.DNG")
+        self.assertEqual(_library_item_label(Path("sample.NEF"), preview_only), "[PREVIEW] sample.NEF")
         self.assertEqual(_library_item_label(Path("sample.NEF"), import_only), "[IMPORT] sample.NEF")
         self.assertEqual(_library_item_label(Path("sample.NEF"), unsupported), "[NO] sample.NEF")
 
@@ -216,6 +242,13 @@ class DesktopHelperTests(unittest.TestCase):
         self.assertIn(f"Preview: {Path('previews') / 'IMG_0001.preview.png'}", summary)
         self.assertIn(f"JPEG: {Path('exports') / 'IMG_0001.auto.jpg'}", summary)
         self.assertIn(f"Recipe: {Path('recipes') / 'IMG_0001.DNG.recipe.json'}", summary)
+
+    def test_planned_output_summary_uses_jpeg_preview_for_nikon_raw(self) -> None:
+        summary = _planned_output_summary(Path("IMG_0001.NEF"), Path("openraw-output"))
+
+        self.assertIn(f"Preview: {Path('previews') / 'IMG_0001.preview.jpg'}", summary)
+        self.assertIn(f"JPEG: {Path('exports') / 'IMG_0001.auto.jpg'}", summary)
+        self.assertIn(f"Recipe: {Path('recipes') / 'IMG_0001.NEF.recipe.json'}", summary)
 
     def test_recipe_adjustment_overrides_defaults_and_clamps_for_ui(self) -> None:
         recipe = new_recipe("IMG_0001.DNG")

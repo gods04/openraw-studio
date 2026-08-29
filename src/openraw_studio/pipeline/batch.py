@@ -28,9 +28,14 @@ class BatchSource:
     def can_render(self) -> bool:
         return self.support.can_render
 
+    @property
+    def can_preview(self) -> bool:
+        return self.support.can_preview or self.support.can_render
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "path": str(self.path),
+            "can_preview": self.can_preview,
             "can_render": self.can_render,
             "support": self.support.as_dict(),
         }
@@ -139,7 +144,7 @@ def run_batch_export(
 
     for index, source in enumerate(normalized_sources, start=1):
         support = inspect_native_support(source)
-        if not support.can_render:
+        if not support.can_render and not (preview_only and support.can_preview):
             item = BatchItemResult(
                 source_path=source,
                 status="skipped",
@@ -191,10 +196,13 @@ def _process_batch_item(
 
     recipe_path = result.diagnostics.get("recipe_path")
     if preview_only:
+        message = "Preview rendered"
+        if result.preview is not None and result.preview.color_space == "embedded-jpeg":
+            message = "Embedded preview extracted"
         return BatchItemResult(
             source_path=source,
             status="previewed",
-            message="Preview rendered",
+            message=message,
             preview_path=result.preview.path if result.preview is not None else None,
             recipe_path=Path(recipe_path) if isinstance(recipe_path, str) else None,
         )

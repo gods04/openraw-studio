@@ -89,8 +89,8 @@ def _run_doctor(include_experimental_backends: bool, darktable_cli: str | None) 
     print("Python package: available")
     print(f"{native.name}: available")
     print(
-        "  status: foundation ready; Nikon NEF/NRW metadata import plus simple PNG "
-        "preview/native render and local JPEG export for narrow uncompressed DNG files"
+        "  status: foundation ready; Nikon NEF/NRW metadata import and embedded JPEG preview; "
+        "simple PNG preview/native render and local JPEG export for narrow uncompressed DNG files"
     )
     if include_experimental_backends or darktable_cli:
         check = check_darktable_cli(darktable_cli)
@@ -112,19 +112,21 @@ def _run_inspect(args: argparse.Namespace) -> int:
         print(_format_inspect_report(report))
     if not report.file_exists:
         return 2
-    return 0 if report.can_render else 1
+    return 0 if report.can_render or report.can_preview else 1
 
 
 def _format_inspect_report(report: NativeSupportReport) -> str:
+    preview_status = "supported" if report.can_preview or report.can_render else "not supported yet"
     render_status = "supported" if report.can_render else "not supported yet"
     lines = [
         "OpenRAW inspect",
         f"Source: {report.source_path}",
+        f"Preview: {preview_status}",
         f"Native render: {render_status}",
         f"Reason: {report.reason}",
     ]
     if report.can_inspect and not report.can_render:
-        lines.insert(3, "Import: metadata supported")
+        lines.insert(4, "Import: metadata supported")
 
     if camera := _camera_from_metadata(report.metadata):
         lines.append(f"Camera: {camera}")

@@ -38,10 +38,12 @@ Current native preview command:
 
 ```powershell
 openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-output" --preview-only
+openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-output" --preview-only
 ```
 
 The preview-only path writes a `.preview.png` file for narrow supported
-uncompressed DNG files and skips final export.
+uncompressed DNG files, or a `.preview.jpg` file for Nikon RAW files with
+embedded JPEG previews, and skips final export.
 
 Current native render command for narrow supported uncompressed DNG files:
 
@@ -51,9 +53,10 @@ openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-outpu
 
 This path writes a `.preview.png` preview, a preview-derived `.auto.jpg` export,
 and a recipe sidecar for supported simple uncompressed DNG files. Nikon `.NEF` /
-`.NRW` files can be inspected for metadata, but preview/export decoding is not
-implemented yet. It is an honest V0.1 render proof, not the final camera-aware
-color pipeline.
+`.NRW` files can be inspected for metadata and previewed when an embedded JPEG
+preview is present, but final native NEF/NRW export rendering is not implemented
+yet. It is an honest V0.1 render proof, not the final camera-aware color
+pipeline.
 
 Current native batch command:
 
@@ -63,8 +66,9 @@ openraw batch "E:\Photos\input" --output "E:\Photos\openraw-output"
 
 The batch command discovers RAW-like files in one folder, checks current Native
 support for each source, processes supported files through the normal
-single-photo pipeline, and reports skipped/import-only/failed files without
-stopping the whole batch.
+single-photo pipeline, can process preview-only Nikon sources when
+`--preview-only` is requested, and reports skipped/preview-only/import-only/failed
+files without stopping the whole batch.
 
 ## Inputs
 
@@ -84,6 +88,7 @@ Recommended artifact layout for each processed source:
 output/
   previews/
     IMG_0001.preview.png
+    IMG_0001.preview.jpg
   intermediates/
     IMG_0001.base.tif
   exports/

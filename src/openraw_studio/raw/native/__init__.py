@@ -1,6 +1,6 @@
 """OpenRAW Native RAW engine package."""
 
-from openraw_studio.raw.native.dng import DngMetadataReader
+from openraw_studio.raw.native.dng import DngMetadataReader, EmbeddedPreview
 from openraw_studio.raw.native.color import ColorTransformError, apply_as_shot_neutral, apply_camera_matrix
 from openraw_studio.raw.native.decoder import NativeRawDecoder
 from openraw_studio.raw.native.demosaic import LinearRgbImage, demosaic_simple
@@ -15,6 +15,7 @@ from openraw_studio.raw.native.tone import PreviewRgbImage, tone_map_preview
 
 __all__ = [
     "DngMetadataReader",
+    "EmbeddedPreview",
     "ColorTransformError",
     "LinearRgbImage",
     "LinearSensorImage",

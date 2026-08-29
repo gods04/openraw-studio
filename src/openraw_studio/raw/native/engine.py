@@ -8,6 +8,7 @@ from typing import Any, Mapping
 
 from openraw_studio.core.domain import EngineInfo, ImageAsset, ImageMetadata, ImageRef, RawInspection
 from openraw_studio.core.files import sha256_file, source_file_metadata
+from openraw_studio.core.image_info import read_image_size
 from openraw_studio.raw.errors import RawProcessingError
 from openraw_studio.raw.interfaces import RawRenderRequest
 from openraw_studio.raw.native.dng import DngMetadataError, DngMetadataReader
@@ -36,7 +37,7 @@ class NativeRawProcessor:
             backend="native-foundation",
             capabilities={
                 "metadata": "filesystem-and-dng-v0.1",
-                "preview": "simple-png-dng-v0.1",
+                "preview": "simple-png-dng-and-nikon-embedded-jpeg-v0.1",
                 "base_render": "preview-derived-jpeg-dng-v0.1",
                 "jpeg_export": "pillow-jpeg-v0.1",
                 "white_balance": "dng-as-shot-neutral-v0.1",
@@ -45,6 +46,7 @@ class NativeRawProcessor:
                 "dng_metadata": True,
                 "nikon_nef_metadata": True,
                 "nikon_nrw_metadata": True,
+                "nikon_embedded_jpeg_preview": True,
                 "dng_uncompressed_strips": True,
                 "dng_uncompressed_tiles": True,
                 "recipe_planning": True,
@@ -100,7 +102,7 @@ class NativeRawProcessor:
         recipe: Mapping[str, Any] | None = None,
     ) -> ImageRef:
         if source.path.suffix.lower() in NIKON_RAW_EXTENSIONS:
-            raise RawProcessingError("OpenRAW Native can import Nikon RAW metadata, but NEF/NRW preview rendering is not implemented yet")
+            return self._create_nikon_embedded_preview(source, output_path)
         if output_path.suffix.lower() != ".png":
             raise RawProcessingError("OpenRAW Native preview currently writes PNG files; output path must end in .png")
         try:
@@ -155,6 +157,27 @@ class NativeRawProcessor:
 
     def export_intermediate(self, request: RawRenderRequest) -> ImageRef:
         return self.render_base(request)
+
+    def _create_nikon_embedded_preview(self, source: ImageAsset, output_path: Path) -> ImageRef:
+        if output_path.suffix.lower() not in {".jpg", ".jpeg"}:
+            raise RawProcessingError(
+                "OpenRAW Native Nikon embedded previews currently write JPEG files; output path must end in .jpg"
+            )
+        try:
+            preview = self._dng_reader.read_embedded_jpeg_preview(source.path)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_bytes(preview.data)
+            width, height = read_image_size(output_path)
+        except (DngMetadataError, OSError, ValueError) as exc:
+            raise RawProcessingError(f"OpenRAW Native Nikon preview failed: {exc}") from exc
+
+        return ImageRef(
+            path=output_path,
+            width=width or preview.width or 0,
+            height=height or preview.height or 0,
+            color_space="embedded-jpeg",
+            role="preview",
+        )
 
 
 def _image_metadata_from_tiff_summary(summary: Mapping[str, Any]) -> dict[str, Any]:
