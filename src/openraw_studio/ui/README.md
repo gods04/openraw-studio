@@ -12,6 +12,7 @@ The UI should keep the image workspace first:
 
 - import/watch status
 - folder import and photo list
+- Nikon `.NEF` / `.NRW` metadata import with import-only state
 - selected photo metadata summary
 - current OpenRAW Native support status
 - planned preview/JPEG/recipe output paths
@@ -33,4 +34,5 @@ The UI should keep the image workspace first:
 
 The UI consumes the pipeline and recipe contracts rather than directly calling
 RAW, vision, portrait, color, film, QC, or export implementations. The current
-shell is intentionally DNG-first and keeps advanced controls for later stages.
+shell can preview/export supported DNG files and import Nikon RAW metadata while
+keeping advanced controls for later stages.

@@ -27,6 +27,7 @@ Already present:
 - `recipe.v1` sidecar writing
 - OpenRAW Native RAW engine scaffold
 - local JPEG `ExportEngine`
+- Nikon `.NEF` / `.NRW` metadata import
 
 ## Module Ownership
 

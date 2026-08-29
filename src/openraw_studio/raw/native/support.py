@@ -16,6 +16,7 @@ SUPPORTED_CFA_PATTERNS = {
     (1, 2, 0, 1): "GBRG",
     (2, 1, 1, 0): "BGGR",
 }
+NIKON_RAW_EXTENSIONS = {".nef", ".nrw"}
 
 
 @dataclass(frozen=True)
@@ -56,13 +57,16 @@ def inspect_native_support(source_path: str | Path, *, dng_reader: DngMetadataRe
     except OSError as exc:
         return _report(path, file_exists=False, status="unreadable", reason=f"Source path could not be checked: {exc}")
 
-    if path.suffix.lower() != ".dng":
+    suffix_lower = path.suffix.lower()
+    if suffix_lower in NIKON_RAW_EXTENSIONS:
+        return _inspect_nikon_raw(path, dng_reader=dng_reader)
+    if suffix_lower != ".dng":
         suffix = path.suffix or "<none>"
         return _report(
             path,
             file_exists=True,
             status="unsupported",
-            reason="OpenRAW Native V0.1 currently starts with DNG files.",
+            reason="OpenRAW Native V0.1 can currently render DNG files and import Nikon RAW metadata.",
             details=(f"File type: {suffix}",),
         )
 
@@ -123,6 +127,56 @@ def _report(
         details=details,
         metadata=dict(metadata or {}),
     )
+
+
+def _inspect_nikon_raw(source_path: Path, *, dng_reader: DngMetadataReader | None) -> NativeSupportReport:
+    reader = dng_reader or DngMetadataReader()
+    try:
+        metadata = reader.read(source_path)
+    except (DngMetadataError, OSError) as exc:
+        return _report(
+            source_path,
+            file_exists=True,
+            status="unsupported",
+            reason=f"Nikon RAW metadata could not be read: {exc}",
+        )
+
+    summary = metadata.as_dict()
+    return _report(
+        source_path,
+        file_exists=True,
+        can_inspect=True,
+        can_render=False,
+        status="import_only",
+        reason="Nikon RAW metadata import is supported; NEF/NRW preview and export rendering are not implemented yet.",
+        details=tuple(_nikon_import_details(source_path, summary)),
+        metadata=summary,
+    )
+
+
+def _nikon_import_details(source_path: Path, summary: Mapping[str, Any]) -> list[str]:
+    details = [f"Format: Nikon {source_path.suffix.lstrip('.').upper()}/TIFF"]
+    width = _scalar_int(summary.get("width"))
+    height = _scalar_int(summary.get("height"))
+    if width is not None and height is not None:
+        details.append(f"Dimensions: {width} x {height}")
+    camera = _camera_label(summary)
+    if camera:
+        details.append(f"Camera: {camera}")
+    iso = _scalar_int(summary.get("iso"))
+    if iso is not None:
+        details.append(f"ISO: {iso}")
+    exposure_time = _scalar_float(summary.get("exposure_time"))
+    if exposure_time is not None and exposure_time > 0:
+        details.append(f"Exposure: {_format_exposure_time(exposure_time)}")
+    aperture = _scalar_float(summary.get("aperture"))
+    if aperture is not None and aperture > 0:
+        details.append(f"Aperture: f/{aperture:g}")
+    focal_length = _scalar_float(summary.get("focal_length_mm"))
+    if focal_length is not None and focal_length > 0:
+        details.append(f"Focal length: {focal_length:g} mm")
+    details.append("Render: NEF/NRW decoding is future work")
+    return details
 
 
 def _evaluate_dng_summary(ifds: tuple[TiffIfd, ...], summary: Mapping[str, Any]) -> tuple[list[str], list[str]]:
@@ -288,6 +342,27 @@ def _tuple_int(value: Any) -> tuple[int, ...]:
 
 def _ceil_div(value: int, divisor: int) -> int:
     return (value + divisor - 1) // divisor
+
+
+def _camera_label(summary: Mapping[str, Any]) -> str | None:
+    unique = summary.get("unique_camera_model")
+    if isinstance(unique, str) and unique.strip():
+        return unique.strip()
+    parts = [
+        value.strip()
+        for value in (summary.get("make"), summary.get("model"))
+        if isinstance(value, str) and value.strip()
+    ]
+    return " ".join(parts) if parts else None
+
+
+def _format_exposure_time(seconds: float) -> str:
+    if seconds <= 0:
+        return f"{seconds:g}s"
+    if seconds < 1:
+        denominator = round(1 / seconds)
+        return f"1/{denominator}s" if denominator > 1 else f"{seconds:g}s"
+    return f"{seconds:g}s"
 
 
 def _plural(word: str, count: int) -> str:

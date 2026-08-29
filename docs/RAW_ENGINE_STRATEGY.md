@@ -85,10 +85,12 @@ Deeper custom demosaicing and camera-format parsing can come later.
 2. Keep `openraw-native` as the default backend identity.
 3. Keep darktable optional and developer-facing.
 4. Expand DNG-first metadata extraction.
-5. Expand DNG-first pixel extraction.
-6. Add tone mapping and preview encoding.
-7. Research LibRaw/rawpy as optional decoder references or fallback inputs.
-8. Move more processing into OpenRAW-owned rendering over time.
+5. Import Nikon NEF/NRW metadata through the native TIFF reader.
+6. Expand DNG-first pixel extraction.
+7. Add tone mapping and preview encoding.
+8. Add first Nikon NEF embedded preview extraction or native decode path.
+9. Research LibRaw/rawpy as optional decoder references or fallback inputs.
+10. Move more processing into OpenRAW-owned rendering over time.
 
 ## User Experience Rule
 

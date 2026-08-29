@@ -28,12 +28,14 @@ The startup script will:
 Current app flow:
 
 ```text
-Import DNG or folder -> choose output folder -> Auto Adjust -> Update Preview -> refine exposure/contrast/warmth -> Export JPEG or Export Folder
+Import DNG/NEF or folder -> choose output folder -> renderable DNG: Auto Adjust -> Update Preview -> refine exposure/contrast/warmth -> Export JPEG or Export Folder
 ```
 
 The app also shows whether the selected file is supported by the current
-OpenRAW Native path before rendering. Folder import scans RAW-like files in the
-selected folder and marks each one as currently supported or not supported yet.
+OpenRAW Native path before rendering. Nikon `.NEF` / `.NRW` files can be
+imported for metadata today, but preview/export rendering is not implemented
+yet. Folder import scans RAW-like files in the selected folder and marks each
+one as renderable, import-only, or not supported yet.
 
 For supported simple uncompressed DNG files, the app writes:
 
@@ -41,8 +43,8 @@ For supported simple uncompressed DNG files, the app writes:
 - preview-derived JPEG
 - recipe JSON sidecar
 
-`Export Folder` processes currently supported files from the imported folder
-using the current basic adjustments and reports skipped/failed files.
+`Export Folder` processes currently renderable files from the imported folder
+using the current basic adjustments and reports skipped/import-only/failed files.
 
 To try the app without using a private photo, click `Create Sample DNG` inside
 the desktop app.
@@ -139,7 +141,8 @@ can write a dry-run recipe/artifact plan for a RAW-like source file:
 - schema and preset JSON files parse correctly
 - `openraw doctor` reports the OpenRAW Native engine foundation
 - `openraw process --dry-run` writes a recipe sidecar without rendering pixels
-- `openraw process` writes a PNG preview and preview-derived JPEG export for
+- `openraw inspect` can import Nikon `.NEF` / `.NRW` metadata
+- `openraw process` writes a PNG preview and local JPEG export for
   narrow supported uncompressed DNG files
 
 Check the environment:
@@ -152,13 +155,15 @@ Expected meaning:
 
 ```text
 OpenRAW Native engine foundation is available.
-Narrow uncompressed DNG preview and preview-derived JPEG export are available.
+Nikon NEF/NRW metadata import is available.
+Narrow uncompressed DNG preview and local JPEG export are available.
 ```
 
-Inspect one file before processing it:
+Inspect one file before processing it. Nikon `.NEF` / `.NRW` files currently
+show as import-only when metadata can be read:
 
 ```powershell
-openraw inspect "E:\Photos\input\IMG_0001.DNG"
+openraw inspect "E:\Photos\input\IMG_0001.NEF"
 ```
 
 Plan one source file:
@@ -183,8 +188,9 @@ openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-outpu
 ```
 
 For supported simple uncompressed DNG files, this writes both
-`IMG_0001.preview.png` and `IMG_0001.auto.jpg`. The JPEG is preview-derived and
-does not represent final camera-aware color science yet.
+`IMG_0001.preview.png` and `IMG_0001.auto.jpg`. The JPEG is written through the
+local export engine, but the image data is still V0.1 preview-derived and does
+not represent final camera-aware color science yet.
 
 Batch export the supported files in one folder:
 
@@ -192,8 +198,8 @@ Batch export the supported files in one folder:
 openraw batch "E:\Photos\input" --output "E:\Photos\openraw-output"
 ```
 
-The batch command skips files outside the current OpenRAW Native support path
-instead of treating the whole folder as failed.
+The batch command skips import-only or unsupported files outside the current
+OpenRAW Native render path instead of treating the whole folder as failed.
 
 Expected dry-run output:
 

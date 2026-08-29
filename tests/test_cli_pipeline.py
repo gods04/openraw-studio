@@ -76,13 +76,13 @@ class CliPipelineTests(unittest.TestCase):
     def test_native_render_attempt_writes_recipe_before_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            source = root / "IMG_0005.NEF"
+            source = root / "IMG_0005.DNG"
             output = root / "output"
             source.write_bytes(b"fake raw bytes")
 
             with redirect_stderr(StringIO()):
                 exit_code = main(["process", str(source), "--output", str(output)])
-            recipe_path = output / "recipes" / "IMG_0005.NEF.recipe.json"
+            recipe_path = output / "recipes" / "IMG_0005.DNG.recipe.json"
             recipe = json.loads(recipe_path.read_text(encoding="utf-8"))
 
             self.assertEqual(exit_code, 3)
@@ -90,6 +90,23 @@ class CliPipelineTests(unittest.TestCase):
             self.assertEqual(recipe["engines"][2]["name"], "openraw-native")
             self.assertFalse(recipe["pipeline"]["rendered"])
             self.assertIn("OpenRAW Native preview failed", recipe["pipeline"]["message"])
+
+    def test_nikon_nef_render_is_blocked_after_metadata_import(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = write_synthetic_dng(root / "IMG_0007.NEF", width=8, height=8)
+            output = root / "output"
+
+            with redirect_stderr(StringIO()):
+                exit_code = main(["process", str(source), "--output", str(output)])
+            recipe_path = output / "recipes" / "IMG_0007.NEF.recipe.json"
+            recipe = json.loads(recipe_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(exit_code, 3)
+            self.assertTrue(recipe_path.exists())
+            self.assertEqual(recipe["source"]["metadata"]["raw_format"], "nikon-nef")
+            self.assertIn("Nikon RAW metadata", recipe["pipeline"]["message"])
+            self.assertFalse((output / "exports" / "IMG_0007.auto.jpg").exists())
 
     def test_render_pipeline_uses_raw_processor(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -196,10 +213,9 @@ class CliPipelineTests(unittest.TestCase):
         self.assertIn("Supported by OpenRAW Native V0.1", text)
         self.assertIn("Storage: 1 strip", text)
 
-    def test_cli_inspect_reports_unsupported_extension(self) -> None:
+    def test_cli_inspect_reports_nikon_raw_import_only(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
-            source = Path(temp) / "sample.NEF"
-            source.write_bytes(b"fake raw bytes")
+            source = write_synthetic_dng(Path(temp) / "sample.NEF", width=8, height=8)
             output = StringIO()
 
             with redirect_stdout(output):
@@ -207,8 +223,9 @@ class CliPipelineTests(unittest.TestCase):
 
         text = output.getvalue()
         self.assertEqual(exit_code, 1)
+        self.assertIn("Import: metadata supported", text)
         self.assertIn("Native render: not supported yet", text)
-        self.assertIn("DNG files", text)
+        self.assertIn("Nikon RAW metadata import is supported", text)
 
     def test_cli_batch_exports_supported_folder_items(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

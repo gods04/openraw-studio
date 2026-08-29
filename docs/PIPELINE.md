@@ -50,8 +50,10 @@ openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-outpu
 ```
 
 This path writes a `.preview.png` preview, a preview-derived `.auto.jpg` export,
-and a recipe sidecar. It is an honest V0.1 render proof, not the final
-camera-aware color pipeline.
+and a recipe sidecar for supported simple uncompressed DNG files. Nikon `.NEF` /
+`.NRW` files can be inspected for metadata, but preview/export decoding is not
+implemented yet. It is an honest V0.1 render proof, not the final camera-aware
+color pipeline.
 
 Current native batch command:
 
@@ -61,8 +63,8 @@ openraw batch "E:\Photos\input" --output "E:\Photos\openraw-output"
 
 The batch command discovers RAW-like files in one folder, checks current Native
 support for each source, processes supported files through the normal
-single-photo pipeline, and reports skipped/failed files without stopping the
-whole batch.
+single-photo pipeline, and reports skipped/import-only/failed files without
+stopping the whole batch.
 
 ## Inputs
 

@@ -106,6 +106,26 @@ def _format_photo_info(path: Path, metadata: Mapping[str, Any], *, size_bytes: i
     elif path.suffix:
         lines.append(f"Type: {path.suffix.lstrip('.').upper()}")
 
+    iso = metadata.get("iso")
+    if iso is not None:
+        lines.append(f"ISO: {int(iso)}")
+
+    exposure_time = _metadata_float(metadata.get("exposure_time"))
+    if exposure_time is not None and exposure_time > 0:
+        lines.append(f"Shutter: {_format_shutter_speed(exposure_time)}")
+
+    aperture = _metadata_float(metadata.get("aperture"))
+    if aperture is not None and aperture > 0:
+        lines.append(f"Aperture: f/{aperture:g}")
+
+    focal_length = _metadata_float(metadata.get("focal_length_mm"))
+    if focal_length is not None and focal_length > 0:
+        lines.append(f"Focal: {focal_length:g} mm")
+
+    lens = _format_metadata_value(metadata.get("lens_model"))
+    if lens:
+        lines.append(f"Lens: {lens}")
+
     version = _format_metadata_value(metadata.get("dng_version_text"))
     if version:
         lines.append(f"DNG: {version}")
@@ -116,15 +136,46 @@ def _format_photo_info(path: Path, metadata: Mapping[str, Any], *, size_bytes: i
     return "\n".join(lines)
 
 
+def _metadata_float(value: Any) -> float | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, tuple):
+        if len(value) != 1:
+            return None
+        value = value[0]
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _format_shutter_speed(seconds: float) -> str:
+    if seconds <= 0:
+        return f"{seconds:g}s"
+    if seconds < 1:
+        denominator = round(1 / seconds)
+        return f"1/{denominator}s" if denominator > 1 else f"{seconds:g}s"
+    return f"{seconds:g}s"
+
+
 def _read_photo_info(path: Path) -> str:
+    info, _support = _read_photo_info_with_support(path)
+    return info
+
+
+def _read_photo_info_with_support(path: Path) -> tuple[str, NativeSupportReport]:
     size_bytes = path.stat().st_size
     support = inspect_native_support(path)
-    return _format_photo_info(path, support.metadata, size_bytes=size_bytes) + "\n" + _format_native_support_summary(support)
+    info = _format_photo_info(path, support.metadata, size_bytes=size_bytes) + "\n" + _format_native_support_summary(support)
+    return info, support
 
 
 def _format_native_support_summary(report: NativeSupportReport) -> str:
     if report.can_render:
         return "Support: Supported by OpenRAW Native V0.1"
+    if report.can_inspect:
+        return f"Support: Import supported; preview/export not supported yet\nReason: {report.reason}"
     return f"Support: Not supported yet\nReason: {report.reason}"
 
 
@@ -141,7 +192,7 @@ def _candidate_raw_files(folder: Path, *, limit: int = MAX_LIBRARY_FILES) -> tup
 
 
 def _library_item_label(path: Path, report: NativeSupportReport) -> str:
-    status = "OK" if report.can_render else "NO"
+    status = "OK" if report.can_render else "IMPORT" if report.can_inspect else "NO"
     return f"[{status}] {path.name}"
 
 
@@ -155,9 +206,9 @@ def _scan_library_folder(folder: Path, *, limit: int = MAX_LIBRARY_FILES) -> tup
 
 def _folder_status_text(folder: Path, item_count: int, *, limit: int = MAX_LIBRARY_FILES) -> str:
     if item_count == 0:
-        return f"No RAW/DNG files found in {_short_path(folder, max_chars=46)}"
+        return f"No RAW files found in {_short_path(folder, max_chars=46)}"
     suffix = f"Showing first {limit}" if item_count >= limit else f"{item_count}"
-    return f"{suffix} RAW/DNG files in {_short_path(folder, max_chars=46)}"
+    return f"{suffix} RAW files in {_short_path(folder, max_chars=46)}"
 
 
 def _supported_library_sources(items: Sequence[tuple[Path, str, bool]]) -> tuple[Path, ...]:
@@ -174,7 +225,7 @@ def _batch_progress_text(done: int, total: int, item: BatchItemResult) -> str:
 
 def _batch_result_status(result: BatchResult) -> str:
     if result.total == 0:
-        return "No RAW/DNG files to export"
+        return "No RAW files to export"
     if result.failed:
         return f"Batch finished with {result.failed} failed, {result.processed} processed, {result.skipped} skipped"
     return f"Batch finished: {result.processed} processed, {result.skipped} skipped"
@@ -329,7 +380,7 @@ def _friendly_error_message(error: BaseException) -> str:
     message = str(error)
     if isinstance(error, SourceFileError):
         if "Unsupported RAW extension" in message:
-            return "This file type is not supported yet. OpenRAW Studio V0.1 is DNG-first."
+            return "This file type is not supported yet. OpenRAW Studio V0.1 can render supported DNG files and import Nikon RAW metadata."
         if "Source file does not exist" in message:
             return "The selected photo could not be found. It may have been moved or deleted."
     if isinstance(error, BackendUnavailableError):
@@ -338,8 +389,10 @@ def _friendly_error_message(error: BaseException) -> str:
             or "only uncompressed strips or tiles are supported" in message
         ):
             return "This DNG uses a structure that OpenRAW Native does not support yet. Try the built-in sample DNG for the current V0.1 path."
+        if "Nikon RAW metadata" in message or "NEF/NRW" in message:
+            return "Nikon RAW metadata import is ready, but NEF/NRW preview and export decoding are still in progress."
         if "currently starts with DNG files" in message:
-            return "OpenRAW Native currently processes DNG files first. Broader camera RAW formats are still on the roadmap."
+            return "Nikon RAW metadata import is ready, but NEF/NRW preview and export decoding are still in progress."
         return "OpenRAW Native could not render this photo yet. A recipe may still have been written in the output folder."
     if isinstance(error, OSError):
         return "OpenRAW Studio could not read or write one of the selected files. Check the folder permissions and try again."
@@ -375,6 +428,7 @@ def launch_desktop_app() -> None:
             self.after_photo: Any = None
             self.library_dir: Path | None = None
             self.library_items: list[tuple[Path, str, bool]] = []
+            self.current_can_render: bool | None = None
             self.library_scan_counter = 0
             self.showing_after = True
             self.last_export_path: Path | None = None
@@ -610,7 +664,12 @@ def launch_desktop_app() -> None:
         def _choose_source(self) -> None:
             selected = self.filedialog.askopenfilename(
                 title="Import RAW photo",
-                filetypes=[("DNG RAW", "*.dng *.DNG"), ("All files", "*.*")],
+                filetypes=[
+                    ("RAW photos", "*.dng *.DNG *.nef *.NEF *.nrw *.NRW"),
+                    ("Nikon RAW", "*.nef *.NEF *.nrw *.NRW"),
+                    ("DNG RAW", "*.dng *.DNG"),
+                    ("All files", "*.*"),
+                ],
             )
             if not selected:
                 return
@@ -681,6 +740,7 @@ def launch_desktop_app() -> None:
         def _select_source(self, source: Path, *, ready_status: str) -> None:
             self.run_counter += 1
             self.source_path = source
+            self.current_can_render = None
             self.source_var.set(source.name)
             self.photo_info_var.set("Reading photo info...")
             if self.output_dir is None:
@@ -744,14 +804,20 @@ def launch_desktop_app() -> None:
 
         def _photo_info_worker(self, source: Path) -> None:
             try:
-                info = _read_photo_info(source)
+                info, support = _read_photo_info_with_support(source)
             except OSError:
                 info = "Photo info unavailable"
-            self.root.after(0, lambda: self._show_photo_info(source, info))
+                support = None
+            self.root.after(0, lambda: self._show_photo_info(source, info, support))
 
-        def _show_photo_info(self, source: Path, info: str) -> None:
+        def _show_photo_info(self, source: Path, info: str, support: NativeSupportReport | None) -> None:
             if self.source_path != source:
                 return
+            if support is not None:
+                self.current_can_render = support.can_render
+                if support.can_inspect and not support.can_render:
+                    self.status_var.set("RAW metadata imported; preview/export support is next")
+                self._set_busy(False)
             self.photo_info_var.set(info)
 
         def _sync_adjustment_labels(self, *_: Any, update_status: bool = True) -> None:
@@ -921,7 +987,7 @@ def launch_desktop_app() -> None:
 
         def _set_busy(self, busy: bool) -> None:
             self.is_busy = busy
-            state = "disabled" if busy or self.source_path is None else "normal"
+            state = "normal" if not busy and self.source_path is not None and self.current_can_render is True else "disabled"
             self.auto_adjust_button.configure(state=state)
             self.preview_button.configure(state=state)
             self.process_button.configure(state=state)

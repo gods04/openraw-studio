@@ -150,6 +150,7 @@ Current status:
 - `openraw inspect` reports whether a file fits the current Native render path
 - OpenRAW Native is the default RAW engine identity
 - DNG/TIFF metadata reader exists
+- Nikon `.NEF` / `.NRW` metadata import exists
 - simple uncompressed DNG strip and tile pixel extraction exists
 - black/white level sensor normalization exists
 - simple Bayer demosaic exists
@@ -209,7 +210,8 @@ The first local desktop shell is now available through:
 .\scripts\run_app.ps1
 ```
 
-It supports importing a DNG, importing a folder of RAW-like files, choosing an
+It supports importing a DNG for preview/export, importing Nikon `.NEF` / `.NRW`
+files for metadata inspection, importing a folder of RAW-like files, choosing an
 output folder, running AUTO, viewing the generated preview, checking
 selected-photo information and planned output paths, comparing before/after,
 adjusting exposure, creating a safe sample DNG, adjusting contrast/warmth,
@@ -217,8 +219,8 @@ opening the exported JPEG, exporting supported photos from the imported folder,
 and opening the output folder. When adjustments change, the UI marks the preview
 as needing an update until the next preview/export render. If the current output
 folder already has a matching recipe for the selected photo, the UI restores the
-saved basic adjustments. It currently uses the same local pipeline as the CLI
-and is intentionally DNG-first.
+saved basic adjustments. It currently uses the same local pipeline as the CLI;
+NEF/NRW preview and export decoding remain future work.
 
 ### Step 4 - Real RAW Backend
 

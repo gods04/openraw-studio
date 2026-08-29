@@ -121,6 +121,13 @@ TAG_NAMES = {
     324: "TileOffsets",
     325: "TileByteCounts",
     330: "SubIFDs",
+    33434: "ExposureTime",
+    33437: "FNumber",
+    34665: "ExifIFDPointer",
+    34855: "ISOSpeedRatings",
+    36867: "DateTimeOriginal",
+    37386: "FocalLength",
+    42036: "LensModel",
     33421: "CFARepeatPatternDim",
     33422: "CFAPattern",
     50706: "DNGVersion",
@@ -174,6 +181,12 @@ SUMMARY_TAGS = {
     "TileLength": "tile_length",
     "TileOffsets": "tile_offsets",
     "TileByteCounts": "tile_byte_counts",
+    "ExposureTime": "exposure_time",
+    "FNumber": "aperture",
+    "ISOSpeedRatings": "iso",
+    "DateTimeOriginal": "captured_at",
+    "FocalLength": "focal_length_mm",
+    "LensModel": "lens_model",
     "CFARepeatPatternDim": "cfa_repeat_pattern_dim",
     "CFAPattern": "cfa_pattern",
     "DNGVersion": "dng_version",
@@ -326,10 +339,10 @@ class DngMetadataReader:
             ifds.append(ifd)
             if ifd.next_ifd_offset:
                 pending.append(ifd.next_ifd_offset)
-            sub_ifds = ifd.tags.get(330)
-            if sub_ifds is not None:
-                values = sub_ifds.value if isinstance(sub_ifds.value, tuple) else (sub_ifds.value,)
-                pending.extend(int(value) for value in values if int(value) > 0)
+            for pointer_tag in (330, 34665):
+                pointer = ifd.tags.get(pointer_tag)
+                if pointer is not None:
+                    pending.extend(_positive_offsets(pointer.value))
 
         return ifds
 
@@ -406,6 +419,21 @@ def _collapse(values: list[Any]) -> Any:
     if len(values) == 1:
         return values[0]
     return tuple(values)
+
+
+def _positive_offsets(value: Any) -> tuple[int, ...]:
+    if value is None or isinstance(value, bool):
+        return ()
+    values = value if isinstance(value, tuple) else (value,)
+    offsets: list[int] = []
+    for item in values:
+        try:
+            offset = int(item)
+        except (TypeError, ValueError):
+            continue
+        if offset > 0:
+            offsets.append(offset)
+    return tuple(offsets)
 
 
 def _build_summary(ifds: list[TiffIfd]) -> dict[str, Any]:

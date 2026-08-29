@@ -75,6 +75,11 @@ class DesktopHelperTests(unittest.TestCase):
                 "height": 4000,
                 "unique_camera_model": "OpenRAW NativeCam",
                 "bits_per_sample": 16,
+                "iso": 400,
+                "exposure_time": 0.008,
+                "aperture": 2.8,
+                "focal_length_mm": 50.0,
+                "lens_model": "NIKKOR Z 50mm f/1.8 S",
                 "dng_version_text": "1.4.0.0",
             },
             size_bytes=1536,
@@ -84,6 +89,11 @@ class DesktopHelperTests(unittest.TestCase):
         self.assertIn("Dimensions: 6000 x 4000", info)
         self.assertIn("Camera: OpenRAW NativeCam", info)
         self.assertIn("RAW: 16-bit", info)
+        self.assertIn("ISO: 400", info)
+        self.assertIn("Shutter: 1/125s", info)
+        self.assertIn("Aperture: f/2.8", info)
+        self.assertIn("Focal: 50 mm", info)
+        self.assertIn("Lens: NIKKOR Z 50mm f/1.8 S", info)
         self.assertIn("DNG: 1.4.0.0", info)
         self.assertIn("Size: 1.5 KB", info)
 
@@ -103,16 +113,16 @@ class DesktopHelperTests(unittest.TestCase):
         report = NativeSupportReport(
             source_path=Path("sample.NEF"),
             file_exists=True,
-            can_inspect=False,
+            can_inspect=True,
             can_render=False,
-            status="unsupported",
-            reason="OpenRAW Native V0.1 currently starts with DNG files.",
+            status="import_only",
+            reason="Nikon RAW metadata import is supported; NEF/NRW preview and export rendering are not implemented yet.",
         )
 
         summary = _format_native_support_summary(report)
 
-        self.assertIn("Support: Not supported yet", summary)
-        self.assertIn("DNG files", summary)
+        self.assertIn("Support: Import supported", summary)
+        self.assertIn("NEF/NRW preview", summary)
 
     def test_candidate_raw_files_lists_raw_like_files_in_name_order(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -142,8 +152,17 @@ class DesktopHelperTests(unittest.TestCase):
             status="unsupported",
             reason="OpenRAW Native V0.1 currently starts with DNG files.",
         )
+        import_only = NativeSupportReport(
+            source_path=Path("sample.NEF"),
+            file_exists=True,
+            can_inspect=True,
+            can_render=False,
+            status="import_only",
+            reason="Nikon RAW metadata import is supported; NEF/NRW preview and export rendering are not implemented yet.",
+        )
 
         self.assertEqual(_library_item_label(Path("sample.DNG"), supported), "[OK] sample.DNG")
+        self.assertEqual(_library_item_label(Path("sample.NEF"), import_only), "[IMPORT] sample.NEF")
         self.assertEqual(_library_item_label(Path("sample.NEF"), unsupported), "[NO] sample.NEF")
 
     def test_scan_library_folder_reports_supported_and_unsupported_items(self) -> None:
@@ -161,8 +180,8 @@ class DesktopHelperTests(unittest.TestCase):
         self.assertFalse(items[1][2])
 
     def test_folder_status_text_summarizes_empty_and_nonempty_folders(self) -> None:
-        self.assertIn("No RAW/DNG files", _folder_status_text(Path("empty"), 0))
-        self.assertIn("2 RAW/DNG files", _folder_status_text(Path("photos"), 2))
+        self.assertIn("No RAW files", _folder_status_text(Path("empty"), 0))
+        self.assertIn("2 RAW files", _folder_status_text(Path("photos"), 2))
 
     def test_supported_library_sources_filters_to_renderable_items(self) -> None:
         items = (
@@ -300,7 +319,8 @@ class DesktopHelperTests(unittest.TestCase):
         message = _friendly_error_message(SourceFileError("Unsupported RAW extension: .jpg"))
 
         self.assertIn("not supported yet", message)
-        self.assertIn("DNG-first", message)
+        self.assertIn("supported DNG", message)
+        self.assertIn("Nikon RAW metadata", message)
 
     def test_friendly_error_message_explains_native_dng_limit(self) -> None:
         message = _friendly_error_message(

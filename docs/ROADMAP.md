@@ -65,6 +65,8 @@ Suggested implementation order:
 20. [done] add Native support reporting through CLI and desktop photo info
 21. [done] add desktop folder import with a lightweight photo list
 22. [done] add batch folder export through CLI and desktop app
+23. [done] add Nikon NEF/NRW metadata import and import-only desktop state
+24. add first Nikon NEF embedded preview extraction or native decode path
 
 Exit criteria:
 

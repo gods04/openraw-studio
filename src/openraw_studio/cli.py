@@ -35,12 +35,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     doctor.add_argument("--darktable-cli", help="Optional explicit darktable-cli executable path.")
 
-    inspect_command = subparsers.add_parser("inspect", help="Explain whether one RAW/DNG can be rendered by OpenRAW Native.")
-    inspect_command.add_argument("source", help="Path to a RAW/DNG file.")
+    inspect_command = subparsers.add_parser(
+        "inspect",
+        help="Explain whether one RAW file can be imported or rendered by OpenRAW Native.",
+    )
+    inspect_command.add_argument("source", help="Path to a RAW file.")
     inspect_command.add_argument("--json", action="store_true", help="Print a machine-readable support report.")
 
-    batch = subparsers.add_parser("batch", help="Batch export supported RAW/DNG files from one folder.")
-    batch.add_argument("source_dir", help="Folder containing RAW/DNG files.")
+    batch = subparsers.add_parser("batch", help="Batch export currently renderable RAW files from one folder.")
+    batch.add_argument("source_dir", help="Folder containing RAW files.")
     batch.add_argument("--output", "-o", required=True, help="Output directory for batch artifacts.")
     batch.add_argument("--processing-profile", default=None, help="Processing profile ID.")
     batch.add_argument("--creative-look", default=None, help="Creative look ID.")
@@ -86,8 +89,8 @@ def _run_doctor(include_experimental_backends: bool, darktable_cli: str | None) 
     print("Python package: available")
     print(f"{native.name}: available")
     print(
-        "  status: foundation ready; simple PNG preview/native render plus local JPEG export "
-        "support for narrow uncompressed DNG files with strip/tile payloads"
+        "  status: foundation ready; Nikon NEF/NRW metadata import plus simple PNG "
+        "preview/native render and local JPEG export for narrow uncompressed DNG files"
     )
     if include_experimental_backends or darktable_cli:
         check = check_darktable_cli(darktable_cli)
@@ -120,6 +123,8 @@ def _format_inspect_report(report: NativeSupportReport) -> str:
         f"Native render: {render_status}",
         f"Reason: {report.reason}",
     ]
+    if report.can_inspect and not report.can_render:
+        lines.insert(3, "Import: metadata supported")
 
     if camera := _camera_from_metadata(report.metadata):
         lines.append(f"Camera: {camera}")
@@ -227,7 +232,7 @@ def _format_batch_report(source_dir: Path, result: BatchResult) -> str:
         "OpenRAW batch complete.",
         f"Source folder: {source_dir}",
         f"Output folder: {result.output_dir}",
-        f"Found: {result.total} RAW/DNG files",
+        f"Found: {result.total} RAW files",
         f"Processed: {result.processed}",
         f"Exported: {result.exported}",
         f"Previewed: {result.previewed}",

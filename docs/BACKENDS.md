@@ -14,9 +14,11 @@ Status:
 
 ```text
 foundation ready
+Nikon NEF/NRW metadata import support
 simple PNG preview support for narrow uncompressed DNG files
-preview-derived JPEG export support for narrow uncompressed DNG files
+local JPEG export engine support for narrow uncompressed DNG files
 strip and tile pixel payloads supported for the current 16-bit DNG path
+Nikon NEF/NRW preview and export not implemented yet
 high-quality JPEG/TIFF export not implemented yet
 ```
 
@@ -28,7 +30,8 @@ src/openraw_studio/raw/native/
 
 See `docs/OPENRAW_RENDER_ENGINE.md` for the implementation route.
 Use `openraw inspect <path-to-photo>` to check whether one file fits the current
-Native render path before processing.
+Native render path, or whether it can be imported for metadata only, before
+processing.
 
 ## Experimental Backend: darktable-cli
 
@@ -82,7 +85,7 @@ For full-size JPEG export, the adapter omits width/height limits.
 - no OpenRAW-generated XMP sidecar yet
 - no darktable style integration yet
 - no advanced RAW exposure/color recipe translation yet
-- metadata extraction is filesystem-only in V0.1
+- experimental backend metadata translation is minimal in V0.1
 - errors are surfaced, but retry/recovery policy is not built yet
 
 This is enough for the first real preview/export milestone. Later versions can

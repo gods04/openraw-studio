@@ -16,6 +16,9 @@ from openraw_studio.raw.native.pipeline import build_native_render_plan
 from openraw_studio.raw.native.preview import render_png_preview, render_preview_image
 
 
+NIKON_RAW_EXTENSIONS = {".nef", ".nrw"}
+
+
 class NativeRawProcessor:
     """OpenRAW-owned RAW processor foundation.
 
@@ -40,6 +43,8 @@ class NativeRawProcessor:
                 "camera_color_matrix": "dng-color-matrix-1-v0.1",
                 "tone_adjustments": "exposure-contrast-warmth-v0.1",
                 "dng_metadata": True,
+                "nikon_nef_metadata": True,
+                "nikon_nrw_metadata": True,
                 "dng_uncompressed_strips": True,
                 "dng_uncompressed_tiles": True,
                 "recipe_planning": True,
@@ -51,14 +56,23 @@ class NativeRawProcessor:
         metadata = source_file_metadata(source.path)
         metadata["checksum_sha256"] = source.checksum_sha256 or sha256_file(source.path)
         metadata["native_engine_status"] = "foundation"
-        if source.path.suffix.lower() == ".dng":
+        suffix = source.path.suffix.lower()
+        if suffix in {".dng", *NIKON_RAW_EXTENSIONS}:
             try:
-                dng_metadata = self._dng_reader.read(source.path).as_dict()
+                raw_metadata = self._dng_reader.read(source.path).as_dict()
             except DngMetadataError as exc:
-                metadata["dng_parse_error"] = str(exc)
+                metadata["raw_parse_error"] = str(exc)
+                if suffix == ".dng":
+                    metadata["dng_parse_error"] = str(exc)
             else:
-                metadata["dng"] = dng_metadata
-                metadata.update(_camera_metadata_from_dng(dng_metadata))
+                if suffix == ".dng":
+                    metadata["dng"] = raw_metadata
+                    metadata["raw_format"] = "dng"
+                else:
+                    metadata["nikon_raw"] = raw_metadata
+                    metadata["raw_format"] = "nikon-nef" if suffix == ".nef" else "nikon-nrw"
+                metadata["raw_container"] = "tiff"
+                metadata.update(_image_metadata_from_tiff_summary(raw_metadata))
         return RawInspection(
             source=source,
             metadata=ImageMetadata(
@@ -66,6 +80,13 @@ class NativeRawProcessor:
                 height=metadata.get("height"),
                 camera_make=metadata.get("camera_make"),
                 camera_model=metadata.get("camera_model"),
+                lens_model=metadata.get("lens_model"),
+                iso=_optional_int(metadata.get("iso")),
+                exposure_time=_optional_str(metadata.get("exposure_time")),
+                aperture=_optional_float(metadata.get("aperture")),
+                focal_length_mm=_optional_float(metadata.get("focal_length_mm")),
+                captured_at=_optional_str(metadata.get("captured_at")),
+                orientation=_optional_str(metadata.get("orientation")),
                 raw=metadata,
             ),
             engine=self.engine_info(),
@@ -78,6 +99,8 @@ class NativeRawProcessor:
         max_dimension: int,
         recipe: Mapping[str, Any] | None = None,
     ) -> ImageRef:
+        if source.path.suffix.lower() in NIKON_RAW_EXTENSIONS:
+            raise RawProcessingError("OpenRAW Native can import Nikon RAW metadata, but NEF/NRW preview rendering is not implemented yet")
         if output_path.suffix.lower() != ".png":
             raise RawProcessingError("OpenRAW Native preview currently writes PNG files; output path must end in .png")
         try:
@@ -101,6 +124,8 @@ class NativeRawProcessor:
         )
 
     def render_base(self, request: RawRenderRequest) -> ImageRef:
+        if request.source.path.suffix.lower() in NIKON_RAW_EXTENSIONS:
+            raise RawProcessingError("OpenRAW Native can import Nikon RAW metadata, but NEF/NRW export rendering is not implemented yet")
         plan = build_native_render_plan(
             request.source.path,
             request.output_path,
@@ -131,12 +156,20 @@ class NativeRawProcessor:
     def export_intermediate(self, request: RawRenderRequest) -> ImageRef:
         return self.render_base(request)
 
-def _camera_metadata_from_dng(dng: Mapping[str, Any]) -> dict[str, Any]:
+
+def _image_metadata_from_tiff_summary(summary: Mapping[str, Any]) -> dict[str, Any]:
     return {
-        "width": dng.get("width"),
-        "height": dng.get("height"),
-        "camera_make": dng.get("make"),
-        "camera_model": dng.get("unique_camera_model") or dng.get("model"),
+        "width": summary.get("width"),
+        "height": summary.get("height"),
+        "camera_make": summary.get("make"),
+        "camera_model": summary.get("unique_camera_model") or summary.get("model"),
+        "lens_model": summary.get("lens_model"),
+        "iso": summary.get("iso"),
+        "exposure_time": summary.get("exposure_time"),
+        "aperture": summary.get("aperture"),
+        "focal_length_mm": summary.get("focal_length_mm"),
+        "captured_at": summary.get("captured_at"),
+        "orientation": summary.get("orientation"),
     }
 
 
@@ -164,3 +197,28 @@ def _bounded_float(value: Any, *, minimum: float, maximum: float) -> float:
         return max(minimum, min(maximum, float(value)))
     except (TypeError, ValueError):
         return 0.0
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _optional_float(value: Any) -> float | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _optional_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
