@@ -52,6 +52,8 @@ Before creating a GitHub Release:
 - open the packaged app on Windows
 - click `Create Sample DNG`
 - process the synthetic DNG through the packaged app
+- click `Create Sample NEF`
+- process the synthetic Nikon NEF through the packaged app
 - confirm preview PNG, JPEG export, and recipe JSON are created
 - confirm README still describes the true current limitations
 - confirm no private photos, model weights, LUTs, or generated outputs are committed

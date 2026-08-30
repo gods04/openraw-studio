@@ -154,13 +154,14 @@ def _inspect_nikon_raw(source_path: Path, *, dng_reader: DngMetadataReader | Non
     try:
         preview = reader.read_embedded_jpeg_preview(source_path)
     except (DngMetadataError, OSError):
-        preview_label = "Preview: embedded JPEG not found"
+        embedded_preview_label = None
     else:
-        preview_label = f"Preview: embedded JPEG ({len(preview.data)} bytes)"
+        embedded_preview_label = f"Preview: embedded JPEG ({len(preview.data)} bytes)"
 
     if not render_issues:
-        if preview_label:
-            details.append(preview_label)
+        if embedded_preview_label:
+            details.append(embedded_preview_label)
+        details.append("Preview: native sensor render")
         details.append("Render: native TIFF-style sensor decode")
         return _report(
             source_path,
@@ -174,8 +175,8 @@ def _inspect_nikon_raw(source_path: Path, *, dng_reader: DngMetadataReader | Non
             metadata=summary,
         )
 
-    if preview_label == "Preview: embedded JPEG not found":
-        details.append(preview_label)
+    if embedded_preview_label is None:
+        details.append("Preview: embedded JPEG not found")
         details.append(f"Render: {render_issues[0]}")
         return _report(
             source_path,
@@ -192,7 +193,7 @@ def _inspect_nikon_raw(source_path: Path, *, dng_reader: DngMetadataReader | Non
             metadata=summary,
         )
 
-    details.append(preview_label)
+    details.append(embedded_preview_label)
     details.append(f"Render: {render_issues[0]}")
     return _report(
         source_path,

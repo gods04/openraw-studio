@@ -222,8 +222,8 @@ native sensor preview/export when the file exposes TIFF-style uncompressed Bayer
 data, including row-aligned 12/14-bit packed strip payloads. It can import a
 folder of RAW-like files, choose an output folder, run AUTO for renderable files,
 view the generated preview, check selected-photo information and planned output
-paths, compare before/after, adjust exposure, create a safe sample DNG, adjust
-contrast/warmth, open the exported JPEG, export supported photos from the
+paths, compare before/after, adjust exposure, create safe sample DNG/NEF files,
+adjust contrast/warmth, open the exported JPEG, export supported photos from the
 imported folder, and open the output folder. When adjustments change, the UI
 marks the preview as needing an update until the next preview/export render. If
 the current output folder already has a matching recipe for the selected photo,
@@ -260,17 +260,20 @@ Before building deeper RAW features, read:
 
 Goal: build confidence without committing private photos.
 
-The current safe test path is the `Create Sample DNG` button in the desktop app.
+The current safe test paths are the `Create Sample DNG` and `Create Sample NEF`
+buttons in the desktop app.
 
-The same sample can be created from the command line:
+The same samples can be created from the command line:
 
 ```powershell
 python scripts\create_sample_dng.py
+python scripts\create_sample_nikon_nef.py
 ```
 
-This creates `sample-data\openraw-synthetic.DNG`, a tiny generated DNG that can
-be imported into the desktop app. It is not a real camera sample, but it is
-useful for checking that the first local pipeline runs end to end.
+This creates `sample-data\openraw-synthetic.DNG` and
+`sample-data\openraw-synthetic-nikon.NEF`, tiny generated RAW-like files that
+can be imported into the desktop app. They are not real camera samples, but they
+are useful for checking that the first local DNG and Nikon paths run end to end.
 
 Create a test asset policy before adding images:
 

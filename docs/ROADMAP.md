@@ -53,7 +53,7 @@ Suggested implementation order:
 8. add command-line smoke flow documentation using a local RAW file
 9. add fixture-free tests around recipe, decisions, and artifact paths
 10. add source discovery and import-folder watcher contract
-11. [done] add locally generated synthetic DNG for safe smoke tests
+11. [done] add locally generated synthetic DNG/Nikon NEF files for safe smoke tests
 12. [done] add first Windows ZIP packaging workflow
 13. [done] add basic exposure, contrast, and warmth controls to preview/export recipes
 14. [done] split desktop preview refresh from final JPEG export
@@ -74,7 +74,7 @@ Suggested implementation order:
 Exit criteria:
 
 - one public or local test RAW can be processed end to end
-- a generated synthetic DNG can be created locally for onboarding smoke tests
+- generated synthetic DNG/Nikon NEF samples can be created locally for onboarding smoke tests
 - a Windows ZIP package can be built by maintainers
 - original RAW remains byte-identical
 - export and recipe are written

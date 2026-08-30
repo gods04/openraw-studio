@@ -38,16 +38,18 @@ The script creates `.venv`, installs OpenRAW Studio locally, and opens the app.
 When release builds are published, this section will link to GitHub Releases
 with a normal Windows download.
 
-To try the app without using a private photo, click `Create Sample DNG` inside
-the app. You can also generate the same tiny synthetic DNG from the command
-line:
+To try the app without using a private photo, click `Create Sample DNG` or
+`Create Sample NEF` inside the app. You can also generate the same tiny
+synthetic samples from the command line:
 
 ```powershell
 python scripts\create_sample_dng.py
+python scripts\create_sample_nikon_nef.py
 .\scripts\run_app.ps1
 ```
 
-Then import `sample-data\openraw-synthetic.DNG` in the app.
+Then import `sample-data\openraw-synthetic.DNG` or
+`sample-data\openraw-synthetic-nikon.NEF` in the app.
 
 ## What Works Today?
 
@@ -80,7 +82,7 @@ Then import `sample-data\openraw-synthetic.DNG` in the app.
   and direct output opening
 - Saved recipe detection that restores basic desktop adjustments for the same
   photo
-- Synthetic DNG generator for safe local smoke tests
+- Synthetic DNG/Nikon NEF generators for safe local smoke tests
 - Windows ZIP build script and GitHub Actions packaging workflow
 - Contract tests for the initial foundation
 
@@ -123,14 +125,16 @@ Fastest Windows app launch:
 
 That script creates the virtual environment and starts the desktop app.
 
-Create a safe sample DNG for testing from the command line:
+Create safe sample RAW files for testing from the command line:
 
 ```powershell
 python scripts\create_sample_dng.py
+python scripts\create_sample_nikon_nef.py
 ```
 
-The generated sample is written to `sample-data\openraw-synthetic.DNG` and is
-ignored by Git like other RAW files.
+The generated samples are written to `sample-data\openraw-synthetic.DNG` and
+`sample-data\openraw-synthetic-nikon.NEF`. They are ignored by Git like other
+RAW files.
 
 Manual developer setup:
 
@@ -167,8 +171,8 @@ Import a supported DNG for preview/export, import a Nikon `.NEF` / `.NRW` to
 read metadata, show an embedded JPEG preview when the file provides one, or
 render through the guarded native Nikon sensor path when the file exposes a
 supported uncompressed Bayer payload. Import a folder to browse RAW-like files,
-or click `Create Sample DNG`, then click `Auto Adjust` for a conservative
-starter look.
+or click `Create Sample DNG` / `Create Sample NEF`, then click `Auto Adjust`
+for a conservative starter look.
 Use `Update Preview` to refresh the preview with the current adjustments. When
 the image looks right, click `Export JPEG`. After importing a folder, click
 `Export Folder` to export every currently supported file using the current basic

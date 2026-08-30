@@ -16,6 +16,7 @@ from openraw_studio.ui.desktop import (
     _batch_result_status,
     _candidate_raw_files,
     _default_sample_path,
+    _default_sample_nikon_nef_path,
     _flatten_rgb_pixels,
     _folder_status_text,
     _format_adjustment_label,
@@ -39,7 +40,7 @@ from openraw_studio.ui.desktop import (
     _short_path,
     _supported_library_sources,
 )
-from openraw_studio.raw.native.synthetic import write_synthetic_dng
+from openraw_studio.raw.native.synthetic import write_synthetic_dng, write_synthetic_nikon_nef
 from openraw_studio.raw.native.support import NativeSupportReport
 
 
@@ -108,6 +109,18 @@ class DesktopHelperTests(unittest.TestCase):
         self.assertIn("Dimensions: 18 x 12", info)
         self.assertIn("Camera: OpenRAW Synthetic NativeCam", info)
         self.assertIn("RAW: 16-bit", info)
+        self.assertIn("Support: Supported by OpenRAW Native V0.1", info)
+
+    def test_read_photo_info_reads_synthetic_nikon_nef_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            path = write_synthetic_nikon_nef(Path(temp) / "sample.NEF", width=18, height=12)
+
+            info = _read_photo_info(path)
+
+        self.assertIn("File: sample.NEF", info)
+        self.assertIn("Dimensions: 18 x 12", info)
+        self.assertIn("Camera: NIKON CORPORATION OpenRAW Synthetic NEF", info)
+        self.assertIn("RAW: 14-bit", info)
         self.assertIn("Support: Supported by OpenRAW Native V0.1", info)
 
     def test_format_native_support_summary_explains_unsupported_files(self) -> None:
@@ -360,6 +373,11 @@ class DesktopHelperTests(unittest.TestCase):
         sample_path = _default_sample_path(Path("C:/Users/Example"))
 
         self.assertEqual(sample_path, Path("C:/Users/Example/Pictures/OpenRAW Studio Samples/openraw-synthetic.DNG"))
+
+    def test_default_sample_nikon_nef_path_uses_pictures_folder(self) -> None:
+        sample_path = _default_sample_nikon_nef_path(Path("C:/Users/Example"))
+
+        self.assertEqual(sample_path, Path("C:/Users/Example/Pictures/OpenRAW Studio Samples/openraw-synthetic-nikon.NEF"))
 
     def test_friendly_error_message_explains_unsupported_extension(self) -> None:
         message = _friendly_error_message(SourceFileError("Unsupported RAW extension: .jpg"))

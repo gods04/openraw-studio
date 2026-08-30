@@ -10,7 +10,12 @@ from openraw_studio.raw.native.png import encode_png_rgb8, write_png
 from openraw_studio.raw.native.preview import render_png_preview, render_ppm_preview, render_preview_image, resize_preview, write_ppm
 from openraw_studio.raw.native.sensor import LinearSensorImage, normalize_sensor_data
 from openraw_studio.raw.native.support import NativeSupportReport, inspect_native_support
-from openraw_studio.raw.native.synthetic import synthetic_dng_bytes, write_synthetic_dng
+from openraw_studio.raw.native.synthetic import (
+    synthetic_dng_bytes,
+    synthetic_nikon_nef_bytes,
+    write_synthetic_dng,
+    write_synthetic_nikon_nef,
+)
 from openraw_studio.raw.native.tone import PreviewRgbImage, tone_map_preview
 
 __all__ = [
@@ -34,8 +39,10 @@ __all__ = [
     "render_preview_image",
     "resize_preview",
     "synthetic_dng_bytes",
+    "synthetic_nikon_nef_bytes",
     "tone_map_preview",
     "write_synthetic_dng",
+    "write_synthetic_nikon_nef",
     "write_jpeg",
     "write_png",
     "write_ppm",

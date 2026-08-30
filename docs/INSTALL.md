@@ -56,19 +56,21 @@ For Nikon preview-only files, the app writes:
 `Export Folder` processes currently renderable files from the imported folder
 using the current basic adjustments and reports skipped/preview-only/import-only/failed files.
 
-To try the app without using a private photo, click `Create Sample DNG` inside
-the desktop app.
+To try the app without using a private photo, click `Create Sample DNG` or
+`Create Sample NEF` inside the desktop app.
 
-You can also generate the same synthetic DNG from the command line:
+You can also generate the same synthetic samples from the command line:
 
 ```powershell
 python scripts\create_sample_dng.py
+python scripts\create_sample_nikon_nef.py
 ```
 
-Then open the app and import:
+Then open the app and import either sample:
 
 ```text
 sample-data\openraw-synthetic.DNG
+sample-data\openraw-synthetic-nikon.NEF
 ```
 
 ## Future Normal User Download

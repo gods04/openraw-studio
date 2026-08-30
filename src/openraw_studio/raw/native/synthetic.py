@@ -5,9 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 import struct
 
+from openraw_studio.raw.native.bitpacking import SensorBitPackingError, pack_row_aligned_samples
+
 
 BLACK_LEVEL = 64
 WHITE_LEVEL = 4095
+NIKON_WHITE_LEVEL_14 = 16383
 
 
 def synthetic_dng_bytes(width: int = 16, height: int = 16) -> bytes:
@@ -53,8 +56,74 @@ def write_synthetic_dng(path: str | Path, *, width: int = 16, height: int = 16) 
     return output_path.resolve()
 
 
-def _synthetic_bayer_samples(width: int, height: int) -> list[int]:
-    span = WHITE_LEVEL - BLACK_LEVEL
+def synthetic_nikon_nef_bytes(width: int = 16, height: int = 16, *, bits_per_sample: int = 14) -> bytes:
+    """Create a small TIFF-style Nikon NEF sample supported by OpenRAW Native."""
+
+    if width < 2 or height < 2:
+        raise ValueError("synthetic Nikon NEF dimensions must be at least 2x2")
+    if width % 2 or height % 2:
+        raise ValueError("synthetic Nikon NEF dimensions must be even so the RGGB pattern repeats cleanly")
+    if bits_per_sample not in {12, 14, 16}:
+        raise ValueError("bits_per_sample must be 12, 14, or 16")
+
+    white_level = NIKON_WHITE_LEVEL_14 if bits_per_sample == 14 else WHITE_LEVEL
+    samples = tuple(_synthetic_bayer_samples(width, height, black_level=BLACK_LEVEL, white_level=white_level))
+    try:
+        pixel_bytes = pack_row_aligned_samples(
+            samples,
+            width=width,
+            height=height,
+            samples_per_pixel=1,
+            bits_per_sample=bits_per_sample,
+            byte_order="little",
+        )
+    except SensorBitPackingError as exc:
+        raise ValueError(str(exc)) from exc
+
+    entries = [
+        _entry_inline(256, 4, 1, _pack_long(width)),
+        _entry_inline(257, 4, 1, _pack_long(height)),
+        _entry_inline(258, 3, 1, _pack_short(bits_per_sample)),
+        _entry_inline(259, 3, 1, _pack_short(1)),
+        _entry_inline(262, 3, 1, _pack_short(32803)),
+        _entry_external(271, 2, b"NIKON CORPORATION\x00"),
+        _entry_external(272, 2, b"OpenRAW Synthetic NEF\x00"),
+        _entry_inline(274, 3, 1, _pack_short(1)),
+        _entry_inline(277, 3, 1, _pack_short(1)),
+        _entry_inline(278, 4, 1, _pack_long(height)),
+        _entry_inline(279, 4, 1, _pack_long(len(pixel_bytes))),
+        _entry_inline(33421, 3, 2, _pack_short(2) + _pack_short(2)),
+        _entry_inline(33422, 1, 4, bytes([0, 1, 1, 2])),
+        _entry_inline(50714, 3, 1, _pack_short(BLACK_LEVEL)),
+        _entry_inline(50717, 3, 1, _pack_short(white_level)),
+        _entry_pixel_offset(273),
+    ]
+    return _build_tiff(entries, trailing_payload=pixel_bytes)
+
+
+def write_synthetic_nikon_nef(
+    path: str | Path,
+    *,
+    width: int = 16,
+    height: int = 16,
+    bits_per_sample: int = 14,
+) -> Path:
+    """Write a synthetic TIFF-style Nikon NEF and return its resolved path."""
+
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(synthetic_nikon_nef_bytes(width=width, height=height, bits_per_sample=bits_per_sample))
+    return output_path.resolve()
+
+
+def _synthetic_bayer_samples(
+    width: int,
+    height: int,
+    *,
+    black_level: int = BLACK_LEVEL,
+    white_level: int = WHITE_LEVEL,
+) -> list[int]:
+    span = white_level - black_level
     samples: list[int] = []
     for row in range(height):
         vertical = row / max(1, height - 1)
@@ -68,7 +137,7 @@ def _synthetic_bayer_samples(width: int, height: int) -> list[int]:
             else:
                 channel_scale = 1.0
             normalized = min(0.95, max(0.02, base * channel_scale))
-            samples.append(BLACK_LEVEL + int(round(span * normalized)))
+            samples.append(black_level + int(round(span * normalized)))
     return samples
 
 

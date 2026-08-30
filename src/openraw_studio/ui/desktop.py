@@ -21,7 +21,7 @@ from openraw_studio.pipeline.interfaces import PipelineRequest
 from openraw_studio.pipeline.local import LocalPhotoPipeline
 from openraw_studio.raw.native.preview import render_preview_image
 from openraw_studio.raw.native.support import NativeSupportReport, inspect_native_support
-from openraw_studio.raw.native.synthetic import write_synthetic_dng
+from openraw_studio.raw.native.synthetic import write_synthetic_dng, write_synthetic_nikon_nef
 
 
 MAX_LIBRARY_FILES = 200
@@ -392,6 +392,11 @@ def _default_sample_path(home: Path | None = None) -> Path:
     return root / "Pictures" / "OpenRAW Studio Samples" / "openraw-synthetic.DNG"
 
 
+def _default_sample_nikon_nef_path(home: Path | None = None) -> Path:
+    root = home or Path.home()
+    return root / "Pictures" / "OpenRAW Studio Samples" / "openraw-synthetic-nikon.NEF"
+
+
 def _friendly_error_message(error: BaseException) -> str:
     message = str(error)
     if isinstance(error, SourceFileError):
@@ -514,6 +519,12 @@ def launch_desktop_app() -> None:
             ttk_module.Button(controls, text="Create Sample DNG", style="Secondary.TButton", command=self._create_sample_source).pack(
                 fill="x", pady=(8, 0)
             )
+            ttk_module.Button(
+                controls,
+                text="Create Sample NEF",
+                style="Secondary.TButton",
+                command=self._create_sample_nikon_source,
+            ).pack(fill="x", pady=(8, 0))
 
             ttk_module.Label(controls, text="FOLDER", style="Muted.TLabel").pack(anchor="w", pady=(20, 0))
             library_frame = ttk_module.Frame(controls, style="Panel.TFrame")
@@ -755,6 +766,14 @@ def launch_desktop_app() -> None:
                 self._show_error(_friendly_error_message(exc))
                 return
             self._select_source(sample_path, ready_status="Sample DNG ready")
+
+        def _create_sample_nikon_source(self) -> None:
+            try:
+                sample_path = write_synthetic_nikon_nef(_default_sample_nikon_nef_path())
+            except (OSError, ValueError) as exc:
+                self._show_error(_friendly_error_message(exc))
+                return
+            self._select_source(sample_path, ready_status="Synthetic Nikon NEF ready")
 
         def _select_source(self, source: Path, *, ready_status: str) -> None:
             self.run_counter += 1

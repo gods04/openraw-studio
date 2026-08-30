@@ -20,16 +20,18 @@ scripts\run_app.cmd
 The launcher creates `.venv` when needed, installs OpenRAW Studio locally, and
 starts the desktop app with `python -m openraw_studio app`.
 
-## Create A Safe Sample DNG
+## Create Safe Sample RAW Files
 
 Use:
 
 ```powershell
 python scripts\create_sample_dng.py
+python scripts\create_sample_nikon_nef.py
 ```
 
-This writes `sample-data\openraw-synthetic.DNG`, a tiny synthetic RAW-like test
-file that is generated locally and ignored by Git.
+These write `sample-data\openraw-synthetic.DNG` and
+`sample-data\openraw-synthetic-nikon.NEF`, tiny synthetic RAW-like test files
+that are generated locally and ignored by Git.
 
 ## Build A Windows Package
 
