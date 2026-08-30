@@ -90,9 +90,10 @@ Deeper custom demosaicing and camera-format parsing can come later.
 7. Add tone mapping and preview encoding.
 8. Extract Nikon NEF/NRW embedded JPEG previews when available.
 9. Decode guarded Nikon NEF/NRW TIFF-style uncompressed Bayer payloads for final export.
-10. Add support for common compressed Nikon NEF sensor payloads.
-11. Research LibRaw/rawpy as optional decoder references or fallback inputs.
-12. Move more processing into OpenRAW-owned rendering over time.
+10. Decode row-aligned 12/14-bit packed Bayer strip payloads.
+11. Add support for common compressed Nikon NEF sensor payloads.
+12. Research LibRaw/rawpy as optional decoder references or fallback inputs.
+13. Move more processing into OpenRAW-owned rendering over time.
 
 ## User Experience Rule
 

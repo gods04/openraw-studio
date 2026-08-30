@@ -43,6 +43,7 @@ class NativeRawProcessor:
                 "white_balance": "dng-as-shot-neutral-v0.1",
                 "camera_color_matrix": "dng-color-matrix-1-v0.1",
                 "tone_adjustments": "exposure-contrast-warmth-v0.1",
+                "packed_bayer_strips": "12-14-bit-row-aligned-v0.1",
                 "dng_metadata": True,
                 "nikon_nef_metadata": True,
                 "nikon_nrw_metadata": True,

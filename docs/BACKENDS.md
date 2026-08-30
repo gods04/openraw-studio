@@ -16,9 +16,10 @@ Status:
 foundation ready
 Nikon NEF/NRW metadata import support
 Nikon NEF/NRW embedded JPEG preview support
-simple PNG preview support for narrow uncompressed DNG files
-local JPEG export engine support for narrow uncompressed DNG files and guarded Nikon sensor files
-strip and tile pixel payloads supported for the current 16-bit DNG path
+simple PNG preview support for narrow uncompressed DNG/Nikon files
+local JPEG export engine support for narrow uncompressed DNG/Nikon files
+12/14-bit packed strip payloads supported for the current DNG/Nikon path
+16-bit strip and tile payloads supported for the current DNG/Nikon path
 guarded Nikon NEF/NRW native sensor decode for TIFF-style uncompressed Bayer payloads
 common compressed/proprietary Nikon NEF/NRW sensor payloads not implemented yet
 high-quality JPEG/TIFF export not implemented yet

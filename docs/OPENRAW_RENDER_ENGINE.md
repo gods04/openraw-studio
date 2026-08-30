@@ -90,7 +90,8 @@ Status:
 - Nikon NEF/NRW embedded JPEG preview extraction exists
 - guarded Nikon NEF/NRW native sensor decode exists for TIFF-style uncompressed Bayer payloads
 - first uncompressed strip- and tile-based pixel extraction exists
-- black/white level sensor normalization exists
+- row-aligned 12/14-bit packed strip payload extraction exists
+- black/white level sensor normalization exists for 12/14/16-bit data
 - simple Bayer demosaic exists
 - simple tone mapping and PNG preview encoding exist
 - `openraw process --preview-only` can complete without final export
@@ -117,7 +118,7 @@ Current native metadata scope:
 Current native pixel scope:
 
 - `Compression=1`
-- `BitsPerSample=16`
+- `BitsPerSample=12`, `BitsPerSample=14`, or `BitsPerSample=16`
 - `SamplesPerPixel=1`
 - `StripOffsets`
 - `StripByteCounts`
@@ -125,7 +126,8 @@ Current native pixel scope:
 - `TileLength`
 - `TileOffsets`
 - `TileByteCounts`
-- simple 16-bit sample unpacking
+- simple row-aligned 12/14-bit packed sample unpacking for strip payloads
+- simple 16-bit sample unpacking for strip and tile payloads
 - scalar black/white level normalization to 0.0-1.0 linear sensor values
 - simple local-average Bayer demosaic for RGGB, GRBG, GBRG, and BGGR
 - simple gamma preview transform
@@ -136,7 +138,8 @@ Current native pixel scope:
 Not supported yet:
 
 - compressed DNG
-- packed 10/12/14-bit data
+- packed 10-bit data
+- packed 12/14-bit tiled payloads
 - multi-sample RGB DNG
 - SubIFD selection beyond the simplest payload
 - per-channel black level arrays

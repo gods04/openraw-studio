@@ -131,6 +131,27 @@ class CliPipelineTests(unittest.TestCase):
             self.assertEqual(recipe["planned_artifacts"]["preview"], str(preview_path))
             self.assertEqual(recipe["exports"][0]["path"], str(export_path))
 
+    def test_nikon_nef_14_bit_native_sensor_render_writes_jpeg_export(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "IMG_0010.NEF"
+            output = root / "output"
+            source.write_bytes(synthetic_nikon_nef_sensor_bytes(width=4, height=4, bits_per_sample=14))
+
+            with redirect_stdout(StringIO()):
+                exit_code = main(["process", str(source), "--output", str(output)])
+            recipe_path = output / "recipes" / "IMG_0010.NEF.recipe.json"
+            recipe = json.loads(recipe_path.read_text(encoding="utf-8"))
+            preview_path = output / "previews" / "IMG_0010.preview.png"
+            export_path = output / "exports" / "IMG_0010.auto.jpg"
+
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(preview_path.exists())
+            self.assertTrue(export_path.exists())
+            self.assertEqual(recipe["source"]["metadata"]["nikon_raw"]["bits_per_sample"], 14)
+            self.assertEqual(recipe["planned_artifacts"]["preview"], str(preview_path))
+            self.assertEqual(recipe["exports"][0]["path"], str(export_path))
+
     def test_nikon_nef_preview_only_writes_embedded_jpeg_preview(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -247,6 +268,7 @@ class CliPipelineTests(unittest.TestCase):
         text = output.getvalue()
         self.assertEqual(exit_code, 0)
         self.assertIn("openraw-native: available", text)
+        self.assertIn("12/14/16-bit", text)
         self.assertNotIn("darktable-cli experimental", text)
 
     def test_cli_inspect_reports_supported_synthetic_dng(self) -> None:

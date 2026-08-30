@@ -35,5 +35,6 @@ The UI should keep the image workspace first:
 The UI consumes the pipeline and recipe contracts rather than directly calling
 RAW, vision, portrait, color, film, QC, or export implementations. The current
 shell can preview/export supported DNG files and guarded TIFF-style Nikon sensor
-files, preview Nikon RAW files that include embedded JPEGs, and import Nikon RAW
-metadata while keeping advanced controls for later stages.
+files, including row-aligned 12/14-bit packed strip payloads, preview Nikon RAW
+files that include embedded JPEGs, and import Nikon RAW metadata while keeping
+advanced controls for later stages.

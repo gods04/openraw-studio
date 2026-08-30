@@ -157,8 +157,8 @@ Current status:
 - Nikon `.NEF` / `.NRW` metadata import exists
 - Nikon `.NEF` / `.NRW` embedded JPEG preview extraction exists
 - guarded Nikon `.NEF` / `.NRW` native sensor decode exists for TIFF-style uncompressed Bayer payloads
-- simple uncompressed DNG strip and tile pixel extraction exists
-- black/white level sensor normalization exists
+- simple uncompressed DNG 12/14-bit packed strip and 16-bit strip/tile pixel extraction exists
+- black/white level sensor normalization exists for 12/14/16-bit data
 - simple Bayer demosaic exists
 - simple PNG preview encoding exists
 - `--preview-only` pipeline mode exists
@@ -219,16 +219,16 @@ The first local desktop shell is now available through:
 It supports importing a DNG for preview/export, importing Nikon `.NEF` / `.NRW`
 files for metadata inspection, embedded JPEG preview when available, and guarded
 native sensor preview/export when the file exposes TIFF-style uncompressed Bayer
-data. It can import a folder of RAW-like files, choose an output folder, run AUTO
-for renderable files, view the generated preview, check selected-photo
-information and planned output paths, compare before/after, adjust exposure,
-create a safe sample DNG, adjust contrast/warmth, open the exported JPEG, export
-supported photos from the imported folder, and open the output folder. When
-adjustments change, the UI marks the preview as needing an update until the next
-preview/export render. If the current output folder already has a matching
-recipe for the selected photo, the UI restores the saved basic adjustments. It
-currently uses the same local pipeline as the CLI; common compressed Nikon
-sensor payloads remain future work.
+data, including row-aligned 12/14-bit packed strip payloads. It can import a
+folder of RAW-like files, choose an output folder, run AUTO for renderable files,
+view the generated preview, check selected-photo information and planned output
+paths, compare before/after, adjust exposure, create a safe sample DNG, adjust
+contrast/warmth, open the exported JPEG, export supported photos from the
+imported folder, and open the output folder. When adjustments change, the UI
+marks the preview as needing an update until the next preview/export render. If
+the current output folder already has a matching recipe for the selected photo,
+the UI restores the saved basic adjustments. It currently uses the same local
+pipeline as the CLI; common compressed Nikon sensor payloads remain future work.
 
 ### Step 4 - Real RAW Backend
 

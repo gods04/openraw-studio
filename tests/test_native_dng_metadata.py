@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from fixtures_nikon import synthetic_nikon_nef_sensor_bytes
+from fixtures_nikon import pack_sensor_rows, synthetic_nikon_nef_sensor_bytes
 from openraw_studio.core.domain import ImageAsset
 from openraw_studio.core.image_info import read_image_size
 from openraw_studio.pipeline.interfaces import PipelineRequest
@@ -93,6 +93,23 @@ class NativeDngMetadataTests(unittest.TestCase):
         self.assertEqual(pixel_data.white_level, 4095)
         self.assertEqual(pixel_data.samples_u16(), (64, 1024, 2048, 4095))
 
+    def test_reader_extracts_packed_12_bit_strip_pixels(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "pixels-12bit.DNG"
+            path.write_bytes(
+                _minimal_pixel_dng_bytes(
+                    bits_per_sample=12,
+                    samples=[64, 512, 2048, 4095],
+                    white_level=4095,
+                )
+            )
+
+            pixel_data = DngMetadataReader().read_pixel_data(path)
+
+        self.assertEqual(pixel_data.bits_per_sample, 12)
+        self.assertEqual(pixel_data.expected_byte_count, 6)
+        self.assertEqual(pixel_data.samples_u16(), (64, 512, 2048, 4095))
+
     def test_reader_reassembles_uncompressed_tiled_pixels(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "tiles.DNG"
@@ -153,6 +170,23 @@ class NativeDngMetadataTests(unittest.TestCase):
         self.assertEqual(len(sensor.raw_bytes), 32)
         self.assertEqual(sensor.metadata["storage_layout"], "strips")
 
+    def test_native_decoder_returns_sensor_data_for_14_bit_tiff_style_nikon_nef(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "pixels-14bit.NEF"
+            path.write_bytes(synthetic_nikon_nef_sensor_bytes(width=4, height=4, bits_per_sample=14))
+
+            sensor = NativeRawDecoder().decode(path)
+
+        self.assertEqual(sensor.width, 4)
+        self.assertEqual(sensor.height, 4)
+        self.assertEqual(sensor.color_filter_array, "RGGB")
+        self.assertEqual(sensor.bits_per_sample, 14)
+        self.assertEqual(sensor.samples_per_pixel, 1)
+        self.assertEqual(sensor.black_level, 64)
+        self.assertEqual(sensor.white_level, 16383)
+        self.assertEqual(len(sensor.raw_bytes), 28)
+        self.assertEqual(sensor.metadata["storage_layout"], "strips")
+
     def test_sensor_normalization_maps_black_and_white_levels(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "pixels.DNG"
@@ -168,6 +202,30 @@ class NativeDngMetadataTests(unittest.TestCase):
         self.assertAlmostEqual(linear.sample_at(0, 1), (1024 - 64) / (4095 - 64))
         self.assertAlmostEqual(linear.sample_at(1, 0), (2048 - 64) / (4095 - 64))
         self.assertEqual(linear.sample_at(1, 1), 1.0)
+
+    def test_sensor_normalization_decodes_14_bit_packed_rows(self) -> None:
+        raw_values = (64, 1024, 16383, 128, 4096, 8192)
+        sensor = RawSensorData(
+            source_path=Path("synthetic.NEF"),
+            width=3,
+            height=2,
+            color_filter_array="RGGB",
+            raw_bytes=pack_sensor_rows(raw_values, width=3, height=2, bits_per_sample=14),
+            bits_per_sample=14,
+            samples_per_pixel=1,
+            black_level=64,
+            white_level=16383,
+            metadata={"byte_order": "little"},
+        )
+
+        linear = normalize_sensor_data(sensor)
+
+        self.assertEqual(linear.source_bit_depth, 14)
+        self.assertEqual(linear.metadata["packed_byte_count"], 12)
+        self.assertEqual(linear.sample_at(0, 0), 0.0)
+        self.assertEqual(linear.sample_at(0, 2), 1.0)
+        self.assertAlmostEqual(linear.sample_at(1, 0), (128 - 64) / (16383 - 64))
+        self.assertAlmostEqual(linear.sample_at(1, 2), (8192 - 64) / (16383 - 64))
 
     def test_sensor_normalization_clamps_out_of_range_samples(self) -> None:
         sensor = RawSensorData(
@@ -466,6 +524,27 @@ class NativeDngMetadataTests(unittest.TestCase):
         self.assertEqual(result.recipe["source"]["metadata"]["raw_format"], "nikon-nef")
         self.assertTrue(result.recipe["pipeline"]["rendered"])
 
+    def test_native_pipeline_writes_jpeg_export_for_14_bit_tiff_style_nikon_nef(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "pixels-14bit.NEF"
+            output = root / "output"
+            source.write_bytes(synthetic_nikon_nef_sensor_bytes(width=4, height=4, bits_per_sample=14))
+
+            result = LocalPhotoPipeline().process(PipelineRequest(source, output))
+            preview_path = output / "previews" / "pixels-14bit.preview.png"
+            export_path = output / "exports" / "pixels-14bit.auto.jpg"
+            preview_exists = preview_path.exists()
+            export_exists = export_path.exists()
+            export_size = read_image_size(export_path)
+
+        self.assertTrue(preview_exists)
+        self.assertTrue(export_exists)
+        self.assertEqual(export_size, (4, 4))
+        self.assertEqual(result.preview.path, preview_path)
+        self.assertEqual(result.exports[0].path, export_path)
+        self.assertTrue(result.recipe["pipeline"]["rendered"])
+
     def test_native_pipeline_records_manual_tone_overrides(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -506,23 +585,39 @@ def _minimal_dng_bytes() -> bytes:
     return _build_tiff(entries)
 
 
-def _minimal_pixel_dng_bytes() -> bytes:
-    pixel_bytes = _pack_shorts([64, 1024, 2048, 4095])
+def _minimal_pixel_dng_bytes(
+    *,
+    width: int = 2,
+    height: int = 2,
+    bits_per_sample: int = 16,
+    samples: list[int] | None = None,
+    black_level: int = 64,
+    white_level: int = 4095,
+) -> bytes:
+    raw_samples = samples or [64, 1024, 2048, 4095]
+    pixel_bytes = pack_sensor_rows(
+        tuple(raw_samples),
+        width=width,
+        height=height,
+        bits_per_sample=bits_per_sample,
+    )
+    white_level_type = 3 if white_level <= 65535 else 4
+    white_level_payload = _pack_short(white_level) if white_level_type == 3 else _pack_long(white_level)
     entries = [
-        _entry_inline(256, 4, 1, _pack_long(2)),
-        _entry_inline(257, 4, 1, _pack_long(2)),
-        _entry_inline(258, 3, 1, _pack_short(16)),
+        _entry_inline(256, 4, 1, _pack_long(width)),
+        _entry_inline(257, 4, 1, _pack_long(height)),
+        _entry_inline(258, 3, 1, _pack_short(bits_per_sample)),
         _entry_inline(259, 3, 1, _pack_short(1)),
         _entry_inline(262, 3, 1, _pack_short(32803)),
         _entry_inline(277, 3, 1, _pack_short(1)),
-        _entry_inline(278, 4, 1, _pack_long(2)),
+        _entry_inline(278, 4, 1, _pack_long(height)),
         _entry_pixel_offset(273),
         _entry_inline(279, 4, 1, _pack_long(len(pixel_bytes))),
         _entry_inline(33421, 3, 2, _pack_short(2) + _pack_short(2)),
         _entry_inline(33422, 1, 4, bytes([0, 1, 1, 2])),
         _entry_inline(50706, 1, 4, bytes([1, 4, 0, 0])),
-        _entry_inline(50714, 3, 1, _pack_short(64)),
-        _entry_inline(50717, 3, 1, _pack_short(4095)),
+        _entry_inline(50714, 3, 1, _pack_short(black_level)),
+        _entry_inline(50717, white_level_type, 1, white_level_payload),
     ]
     return _build_tiff(entries, trailing_payload=pixel_bytes)
 

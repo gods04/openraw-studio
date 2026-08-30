@@ -65,12 +65,13 @@ Then import `sample-data\openraw-synthetic.DNG` in the app.
 - OpenRAW Native RAW engine scaffold as the default backend
 - Native DNG/TIFF metadata reader for the first RAW-engine milestone
 - Nikon `.NEF` / `.NRW` metadata import and embedded JPEG preview extraction
-- Native extraction for simple uncompressed DNG strip and tile pixel payloads
+- Native extraction for simple uncompressed DNG 12/14-bit packed strip payloads
+  and 16-bit strip/tile pixel payloads
 - Guarded native Nikon `.NEF` / `.NRW` sensor decode for TIFF-style
   uncompressed Bayer payloads
-- Native black/white level normalization for 16-bit Bayer sensor data
+- Native black/white level normalization for 12/14/16-bit Bayer sensor data
 - Native simple Bayer demosaic baseline
-- Native PNG preview encoding for narrow uncompressed DNG test files
+- Native PNG preview encoding for narrow uncompressed DNG/Nikon test files
 - Local JPEG export engine for final derivative writing and recipe traceability
 - Beginner desktop shell launched with `openraw app` or `scripts/run_app.ps1`
 - App single-photo import, folder import, output-folder selection, conservative Auto Adjust,
@@ -225,9 +226,9 @@ openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-outpu
 openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-output" --preview-only
 ```
 
-This writes a `.preview.png` file for simple uncompressed 16-bit strip- or
-tile-based DNG files, or a `.preview.jpg` file for Nikon embedded previews, and
-skips final export.
+This writes a `.preview.png` file for simple uncompressed 12/14-bit packed
+strip-based or 16-bit strip/tile-based DNG/Nikon files, or a `.preview.jpg`
+file for Nikon embedded previews, and skips final export.
 
 Render the current narrow end-to-end native path:
 
@@ -237,10 +238,11 @@ openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-outpu
 ```
 
 For supported simple uncompressed DNG files and guarded TIFF-style Nikon sensor
-files, this writes both `.preview.png` and `.auto.jpg` artifacts through the
-local JPEG export engine. The image data is still V0.1 preview-derived. It
-applies available DNG `AsShotNeutral` and `ColorMatrix1` metadata when present,
-but is not final camera-aware color science yet.
+files, including row-aligned 12/14-bit packed strip payloads, this writes both
+`.preview.png` and `.auto.jpg` artifacts through the local JPEG export engine.
+The image data is still V0.1 preview-derived. It applies available DNG
+`AsShotNeutral` and `ColorMatrix1` metadata when present, but is not final
+camera-aware color science yet.
 
 Batch export currently renderable DNG/Nikon files from a folder:
 

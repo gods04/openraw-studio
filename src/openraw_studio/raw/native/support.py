@@ -7,6 +7,7 @@ import math
 from pathlib import Path
 from typing import Any, Mapping
 
+from openraw_studio.raw.native.bitpacking import SUPPORTED_SENSOR_BIT_DEPTHS
 from openraw_studio.raw.native.dng import DngMetadataError, DngMetadataReader, TiffIfd
 
 
@@ -297,10 +298,10 @@ def _evaluate_bayer_tiff_summary(
         issues.append(f"Unsupported {compression_label} compression: {compression}; {compression_detail}.")
 
     bits_per_sample = _scalar_int(summary.get("bits_per_sample"))
-    if bits_per_sample == 16:
-        details.append("Bit depth: 16-bit")
+    if bits_per_sample in SUPPORTED_SENSOR_BIT_DEPTHS:
+        details.append(f"Bit depth: {bits_per_sample}-bit")
     else:
-        issues.append(f"Unsupported BitsPerSample: {bits_per_sample}; only 16-bit data is supported.")
+        issues.append(f"Unsupported BitsPerSample: {bits_per_sample}; only 12-bit, 14-bit, or 16-bit data is supported.")
 
     samples_per_pixel = _scalar_int(summary.get("samples_per_pixel"), default=1)
     if samples_per_pixel == 1:
@@ -314,7 +315,7 @@ def _evaluate_bayer_tiff_summary(
     elif _has_strip_payload(pixel_ifd):
         issues.extend(_check_strip_payload(pixel_ifd, details))
     else:
-        issues.extend(_check_tile_payload(pixel_ifd, details, width=width, height=height))
+        issues.extend(_check_tile_payload(pixel_ifd, details, width=width, height=height, bits_per_sample=bits_per_sample))
 
     cfa_pattern = _tuple_int(summary.get("cfa_pattern"))
     cfa_name = SUPPORTED_CFA_PATTERNS.get(cfa_pattern)
@@ -370,7 +371,14 @@ def _check_strip_payload(ifd: TiffIfd, details: list[str]) -> list[str]:
     return []
 
 
-def _check_tile_payload(ifd: TiffIfd, details: list[str], *, width: int | None, height: int | None) -> list[str]:
+def _check_tile_payload(
+    ifd: TiffIfd,
+    details: list[str],
+    *,
+    width: int | None,
+    height: int | None,
+    bits_per_sample: int | None,
+) -> list[str]:
     issues: list[str] = []
     tile_width = _scalar_int(_tag_value(ifd, 322))
     tile_length = _scalar_int(_tag_value(ifd, 323))
@@ -386,6 +394,8 @@ def _check_tile_payload(ifd: TiffIfd, details: list[str], *, width: int | None, 
         expected_tiles = _ceil_div(width, tile_width) * _ceil_div(height, tile_length)
         if len(offsets) != expected_tiles:
             issues.append(f"Tile count does not match image dimensions: {len(offsets)} != {expected_tiles}.")
+    if bits_per_sample in {12, 14}:
+        issues.append("Packed 12/14-bit tiled payloads are not supported yet.")
     if not issues:
         details.append(f"Storage: {len(offsets)} {_plural('tile', len(offsets))} ({tile_width} x {tile_length})")
     return issues

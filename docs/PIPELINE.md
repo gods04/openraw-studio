@@ -55,10 +55,12 @@ openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-outpu
 
 This path writes a `.preview.png` preview, a preview-derived `.auto.jpg` export,
 and a recipe sidecar for supported simple uncompressed DNG files and guarded
-TIFF-style Nikon sensor files. Nikon `.NEF` / `.NRW` files can also be inspected
-for metadata and previewed when an embedded JPEG preview is present, but common
-compressed/proprietary Nikon sensor payloads are not implemented yet. It is an
-honest V0.1 render proof, not the final camera-aware color pipeline.
+TIFF-style Nikon sensor files, including row-aligned 12/14-bit packed strip
+payloads and 16-bit strip/tile payloads. Nikon `.NEF` / `.NRW` files can also
+be inspected for metadata and previewed when an embedded JPEG preview is
+present, but common compressed/proprietary Nikon sensor payloads are not
+implemented yet. It is an honest V0.1 render proof, not the final camera-aware
+color pipeline.
 
 Current native batch command:
 

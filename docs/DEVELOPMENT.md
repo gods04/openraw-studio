@@ -30,6 +30,7 @@ Already present:
 - Nikon `.NEF` / `.NRW` metadata import
 - Nikon `.NEF` / `.NRW` embedded JPEG preview extraction
 - guarded Nikon `.NEF` / `.NRW` native sensor decode for TIFF-style uncompressed Bayer payloads
+- row-aligned 12/14-bit packed Bayer strip decoding for guarded DNG/Nikon payloads
 
 ## Module Ownership
 

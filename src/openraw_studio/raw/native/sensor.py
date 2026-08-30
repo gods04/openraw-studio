@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import struct
 from typing import Any, Mapping
 
+from openraw_studio.raw.native.bitpacking import (
+    SUPPORTED_SENSOR_BIT_DEPTHS,
+    SensorBitPackingError,
+    expected_row_aligned_byte_count,
+    unpack_row_aligned_samples,
+)
 from openraw_studio.raw.native.decoder import RawSensorData
 
 
@@ -35,10 +40,12 @@ class LinearSensorImage:
 
 
 def normalize_sensor_data(sensor: RawSensorData) -> LinearSensorImage:
-    """Normalize 16-bit single-sample RAW data into 0.0-1.0 linear values."""
+    """Normalize single-sample RAW data into 0.0-1.0 linear values."""
 
-    if sensor.bits_per_sample != 16:
-        raise SensorNormalizationError("OpenRAW normalization currently supports only 16-bit sensor data")
+    if sensor.bits_per_sample not in SUPPORTED_SENSOR_BIT_DEPTHS:
+        raise SensorNormalizationError(
+            "OpenRAW normalization currently supports only 12-bit, 14-bit, or 16-bit sensor data"
+        )
     if sensor.samples_per_pixel != 1:
         raise SensorNormalizationError("OpenRAW normalization currently supports only single-sample Bayer data")
     if sensor.black_level is None:
@@ -49,14 +56,31 @@ def normalize_sensor_data(sensor: RawSensorData) -> LinearSensorImage:
         raise SensorNormalizationError("white level must be greater than black level")
 
     expected_samples = sensor.width * sensor.height
-    expected_bytes = expected_samples * 2
+    try:
+        expected_bytes = expected_row_aligned_byte_count(
+            width=sensor.width,
+            height=sensor.height,
+            samples_per_pixel=sensor.samples_per_pixel,
+            bits_per_sample=sensor.bits_per_sample,
+        )
+    except SensorBitPackingError as exc:
+        raise SensorNormalizationError(str(exc)) from exc
     if len(sensor.raw_bytes) < expected_bytes:
         raise SensorNormalizationError(
             f"sensor payload is shorter than expected: {len(sensor.raw_bytes)} < {expected_bytes}"
         )
 
-    endian = _endian_from_metadata(sensor.metadata)
-    values = struct.unpack(endian + f"{expected_samples}H", sensor.raw_bytes[:expected_bytes])
+    try:
+        values = unpack_row_aligned_samples(
+            sensor.raw_bytes,
+            width=sensor.width,
+            height=sensor.height,
+            samples_per_pixel=sensor.samples_per_pixel,
+            bits_per_sample=sensor.bits_per_sample,
+            byte_order=_byte_order_from_metadata(sensor.metadata),
+        )
+    except SensorBitPackingError as exc:
+        raise SensorNormalizationError(str(exc)) from exc
     denominator = float(sensor.white_level - sensor.black_level)
     normalized = tuple(_clamp01((value - sensor.black_level) / denominator) for value in values)
     return LinearSensorImage(
@@ -71,16 +95,15 @@ def normalize_sensor_data(sensor: RawSensorData) -> LinearSensorImage:
             "source_path": str(sensor.source_path),
             "byte_order": (sensor.metadata or {}).get("byte_order", "little"),
             "sample_count": expected_samples,
+            "packed_byte_count": expected_bytes,
         },
     )
 
 
-def _endian_from_metadata(metadata: Mapping[str, Any] | None) -> str:
+def _byte_order_from_metadata(metadata: Mapping[str, Any] | None) -> str:
     byte_order = (metadata or {}).get("byte_order", "little")
-    if byte_order == "little":
-        return "<"
-    if byte_order == "big":
-        return ">"
+    if byte_order in {"little", "big"}:
+        return byte_order
     raise SensorNormalizationError(f"unsupported byte order: {byte_order}")
 
 

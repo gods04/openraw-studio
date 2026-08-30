@@ -35,9 +35,11 @@ The app also shows whether the selected file is supported by the current
 OpenRAW Native path before rendering. Nikon `.NEF` / `.NRW` files can be
 imported for metadata today; files with embedded JPEG previews can use
 `Update Preview`, and files with supported TIFF-style uncompressed Bayer payloads
-can use the native preview/export path. Common compressed Nikon payloads are
-not implemented yet. Folder import scans RAW-like files in the selected folder
-and marks each one as renderable, preview-only, import-only, or not supported yet.
+can use the native preview/export path, including row-aligned 12/14-bit packed
+strip payloads and 16-bit strip/tile payloads. Common compressed Nikon payloads
+are not implemented yet. Folder import scans RAW-like files in the selected
+folder and marks each one as renderable, preview-only, import-only, or not
+supported yet.
 
 For supported simple uncompressed DNG files and guarded TIFF-style Nikon sensor
 files, the app writes:
@@ -152,7 +154,7 @@ can write a dry-run recipe/artifact plan for a RAW-like source file:
 - `openraw inspect` can import Nikon `.NEF` / `.NRW` metadata and detect
   embedded JPEG preview support
 - `openraw process` writes a PNG preview and local JPEG export for
-  narrow supported uncompressed DNG files and guarded TIFF-style Nikon sensor files
+  narrow supported uncompressed 12/14/16-bit DNG/Nikon sensor files
 - `openraw process --preview-only` writes a JPEG preview for Nikon files with
   embedded previews
 
@@ -169,7 +171,7 @@ OpenRAW Native engine foundation is available.
 Nikon NEF/NRW metadata import is available.
 Nikon NEF/NRW embedded JPEG preview is available when the file contains one.
 Guarded Nikon NEF/NRW native sensor rendering is available for TIFF-style uncompressed Bayer payloads.
-Narrow uncompressed DNG preview and local JPEG export are available.
+Narrow uncompressed 12/14/16-bit DNG/Nikon preview and local JPEG export are available.
 ```
 
 Inspect one file before processing it. Nikon `.NEF` / `.NRW` files show
@@ -194,9 +196,9 @@ openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-outpu
 openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-output" --preview-only
 ```
 
-This writes a PNG preview for narrow uncompressed DNG files and native-renderable
-Nikon files, or a JPEG preview for Nikon files with embedded previews. It
-intentionally skips final JPEG export.
+This writes a PNG preview for narrow uncompressed 12/14/16-bit DNG/Nikon files
+that match the current Native path, or a JPEG preview for Nikon files with
+embedded previews. It intentionally skips final JPEG export.
 
 Render the first native end-to-end path:
 
@@ -206,9 +208,10 @@ openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-outpu
 ```
 
 For supported simple uncompressed DNG files and guarded TIFF-style Nikon sensor
-files, this writes both `IMG_0001.preview.png` and `IMG_0001.auto.jpg`. The JPEG
-is written through the local export engine, but the image data is still V0.1
-preview-derived and does not represent final camera-aware color science yet.
+files, including row-aligned 12/14-bit packed strip payloads, this writes both
+`IMG_0001.preview.png` and `IMG_0001.auto.jpg`. The JPEG is written through the
+local export engine, but the image data is still V0.1 preview-derived and does
+not represent final camera-aware color science yet.
 
 Batch export the supported files in one folder:
 

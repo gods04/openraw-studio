@@ -95,6 +95,19 @@ class NativeSupportTests(unittest.TestCase):
         self.assertIn("Storage: 1 strip", report.details)
         self.assertIn("Render: native TIFF-style sensor decode", report.details)
 
+    def test_nikon_nef_reports_renderable_for_14_bit_packed_sensor_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "sample-14bit.NEF"
+            source.write_bytes(synthetic_nikon_nef_sensor_bytes(bits_per_sample=14))
+
+            report = inspect_native_support(source)
+
+        self.assertTrue(report.can_preview)
+        self.assertTrue(report.can_render)
+        self.assertEqual(report.status, "supported")
+        self.assertIn("Bit depth: 14-bit", report.details)
+        self.assertIn("Storage: 1 strip", report.details)
+
     def test_native_processor_writes_nikon_embedded_jpeg_preview(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

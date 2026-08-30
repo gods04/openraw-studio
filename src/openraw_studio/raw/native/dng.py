@@ -7,6 +7,13 @@ from pathlib import Path
 import struct
 from typing import Any
 
+from openraw_studio.raw.native.bitpacking import (
+    SUPPORTED_SENSOR_BIT_DEPTHS,
+    SensorBitPackingError,
+    expected_row_aligned_byte_count,
+    unpack_row_aligned_samples,
+)
+
 
 class DngMetadataError(ValueError):
     """Raised when a TIFF/DNG metadata structure cannot be parsed."""
@@ -72,16 +79,32 @@ class DngPixelData:
 
     @property
     def expected_byte_count(self) -> int:
-        return self.width * self.height * self.samples_per_pixel * (self.bits_per_sample // 8)
+        try:
+            return expected_row_aligned_byte_count(
+                width=self.width,
+                height=self.height,
+                samples_per_pixel=self.samples_per_pixel,
+                bits_per_sample=self.bits_per_sample,
+            )
+        except SensorBitPackingError as exc:
+            raise DngMetadataError(str(exc)) from exc
 
     def samples_u16(self) -> tuple[int, ...]:
-        """Decode 16-bit unsigned samples for tests and early experiments."""
+        """Decode single-sample unsigned sensor values for tests and early experiments."""
 
-        if self.bits_per_sample != 16 or self.samples_per_pixel != 1:
-            raise DngMetadataError("samples_u16 requires 16-bit single-sample pixel data")
-        endian = "<" if self.byte_order == "little" else ">"
-        sample_count = len(self.raw_bytes) // 2
-        return struct.unpack(endian + f"{sample_count}H", self.raw_bytes[: sample_count * 2])
+        if self.samples_per_pixel != 1:
+            raise DngMetadataError("samples_u16 requires single-sample pixel data")
+        try:
+            return unpack_row_aligned_samples(
+                self.raw_bytes,
+                width=self.width,
+                height=self.height,
+                samples_per_pixel=self.samples_per_pixel,
+                bits_per_sample=self.bits_per_sample,
+                byte_order=self.byte_order,
+            )
+        except SensorBitPackingError as exc:
+            raise DngMetadataError(str(exc)) from exc
 
 
 @dataclass(frozen=True)
@@ -264,9 +287,9 @@ class DngMetadataReader:
         """Extract simple uncompressed strip- or tile-based pixel data.
 
         This is deliberately narrow: V0.1 native extraction supports
-        Compression=1, BitsPerSample=16, SamplesPerPixel=1, and either
-        StripOffsets / StripByteCounts or TileOffsets / TileByteCounts.
-        Compressed DNG files are future work.
+        Compression=1, BitsPerSample=12/14/16, SamplesPerPixel=1,
+        strip payloads, and 16-bit tile payloads. Compressed DNG files
+        are future work.
         """
 
         data = Path(path).read_bytes()
@@ -282,8 +305,10 @@ class DngMetadataReader:
 
         if compression != 1:
             raise DngMetadataError(f"unsupported DNG compression: {compression}; only uncompressed strips or tiles are supported")
-        if bits_per_sample != 16:
-            raise DngMetadataError(f"unsupported BitsPerSample: {bits_per_sample}; only 16-bit data is supported")
+        if bits_per_sample not in SUPPORTED_SENSOR_BIT_DEPTHS:
+            raise DngMetadataError(
+                f"unsupported BitsPerSample: {bits_per_sample}; only 12-bit, 14-bit, or 16-bit data is supported"
+            )
         if samples_per_pixel != 1:
             raise DngMetadataError(
                 f"unsupported SamplesPerPixel: {samples_per_pixel}; only single-sample Bayer data is supported"
@@ -305,6 +330,8 @@ class DngMetadataReader:
                 raise DngMetadataError("StripOffsets and StripByteCounts have different lengths")
             raw_bytes = b"".join(_slice_checked(data, offset, count) for offset, count in zip(strip_offsets, strip_byte_counts))
         elif _ifd_has_tile_payload(ifd):
+            if bits_per_sample != 16:
+                raise DngMetadataError("packed 12/14-bit tiled payloads are not supported yet")
             storage_layout = "tiles"
             tile_width = _expect_int(summary, "tile_width")
             tile_length = _expect_int(summary, "tile_length")

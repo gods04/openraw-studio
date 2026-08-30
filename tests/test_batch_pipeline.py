@@ -50,7 +50,7 @@ class BatchPipelineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             source = root / "a.NEF"
-            source.write_bytes(synthetic_nikon_nef_sensor_bytes(width=4, height=4))
+            source.write_bytes(synthetic_nikon_nef_sensor_bytes(width=4, height=4, bits_per_sample=14))
             output = root / "output"
 
             result = run_batch_export([source], output)

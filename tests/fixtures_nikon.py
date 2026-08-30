@@ -11,14 +11,16 @@ def synthetic_nikon_nef_metadata_bytes(
     sensor_samples: tuple[int, ...] | None = None,
     black_level: int = 64,
     white_level: int = 4095,
+    bits_per_sample: int | None = None,
 ) -> bytes:
     if sensor_samples is not None and len(sensor_samples) != width * height:
         raise ValueError("sensor_samples must match width * height")
 
+    effective_bits_per_sample = bits_per_sample if bits_per_sample is not None else (16 if sensor_samples is not None else 14)
     ifd0_defs = [
         (256, 4, 1, struct.pack("<I", width)),
         (257, 4, 1, struct.pack("<I", height)),
-        (258, 3, 1, struct.pack("<H", 16 if sensor_samples is not None else 14)),
+        (258, 3, 1, struct.pack("<H", effective_bits_per_sample)),
         (259, 3, 1, struct.pack("<H", 1 if sensor_samples is not None else 34713)),
         (271, 2, len(b"NIKON CORPORATION\x00"), b"NIKON CORPORATION\x00"),
         (272, 2, len(b"NIKON Z 6II\x00"), b"NIKON Z 6II\x00"),
@@ -26,7 +28,12 @@ def synthetic_nikon_nef_metadata_bytes(
         (277, 3, 1, struct.pack("<H", 1)),
     ]
     if sensor_samples is not None:
-        pixel_bytes = _pack_shorts(sensor_samples)
+        pixel_bytes = pack_sensor_rows(
+            sensor_samples,
+            width=width,
+            height=height,
+            bits_per_sample=effective_bits_per_sample,
+        )
         ifd0_defs.extend(
             [
                 (262, 3, 1, struct.pack("<H", 32803)),
@@ -89,10 +96,22 @@ def synthetic_nikon_nef_metadata_bytes(
     return header + ifd0 + exif + bytes(external_data)
 
 
-def synthetic_nikon_nef_sensor_bytes(width: int = 4, height: int = 4) -> bytes:
-    span = 4095 - 64
+def synthetic_nikon_nef_sensor_bytes(width: int = 4, height: int = 4, bits_per_sample: int = 16) -> bytes:
+    if bits_per_sample not in {12, 14, 16}:
+        raise ValueError("bits_per_sample must be 12, 14, or 16")
+
+    black_level = 64
+    white_level = 16383 if bits_per_sample == 14 else 4095
+    span = white_level - black_level
     samples = tuple(64 + int(round(span * index / max(1, width * height - 1))) for index in range(width * height))
-    return synthetic_nikon_nef_metadata_bytes(width=width, height=height, sensor_samples=samples)
+    return synthetic_nikon_nef_metadata_bytes(
+        width=width,
+        height=height,
+        sensor_samples=samples,
+        black_level=black_level,
+        white_level=white_level,
+        bits_per_sample=bits_per_sample,
+    )
 
 
 def embedded_jpeg_bytes(width: int = 3, height: int = 2) -> bytes:
@@ -105,5 +124,46 @@ def _pack_rational(numerator: int, denominator: int) -> bytes:
     return struct.pack("<II", numerator, denominator)
 
 
+def pack_sensor_rows(
+    values: tuple[int, ...],
+    *,
+    width: int,
+    height: int,
+    bits_per_sample: int,
+) -> bytes:
+    if len(values) != width * height:
+        raise ValueError("values must match width * height")
+    if bits_per_sample == 16:
+        return _pack_shorts(values)
+    if bits_per_sample not in {12, 14}:
+        raise ValueError("bits_per_sample must be 12, 14, or 16")
+
+    rows = []
+    for row in range(height):
+        start = row * width
+        rows.append(_pack_packed_msb(values[start : start + width], bits_per_sample))
+    return b"".join(rows)
+
+
 def _pack_shorts(values: tuple[int, ...]) -> bytes:
     return b"".join(struct.pack("<H", value) for value in values)
+
+
+def _pack_packed_msb(values: tuple[int, ...], bits_per_sample: int) -> bytes:
+    maximum = (1 << bits_per_sample) - 1
+    output = bytearray()
+    accumulator = 0
+    available_bits = 0
+    for value in values:
+        if value < 0 or value > maximum:
+            raise ValueError(f"sample value {value} is outside {bits_per_sample}-bit range")
+        accumulator = (accumulator << bits_per_sample) | value
+        available_bits += bits_per_sample
+        while available_bits >= 8:
+            shift = available_bits - 8
+            output.append((accumulator >> shift) & 0xFF)
+            accumulator &= (1 << shift) - 1
+            available_bits = shift
+    if available_bits:
+        output.append((accumulator << (8 - available_bits)) & 0xFF)
+    return bytes(output)
