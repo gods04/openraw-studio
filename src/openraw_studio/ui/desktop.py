@@ -173,13 +173,14 @@ def _read_photo_info_with_support(path: Path) -> tuple[str, NativeSupportReport]
 
 
 def _format_native_support_summary(report: NativeSupportReport) -> str:
+    next_step = f"\nNext: {report.next_steps[0]}" if report.next_steps else ""
     if report.can_render:
         return "Support: Supported by OpenRAW Native V0.1"
     if report.can_preview:
-        return f"Support: Preview supported; export not supported yet\nReason: {report.reason}"
+        return f"Support: Preview supported; export not supported yet\nReason: {report.reason}{next_step}"
     if report.can_inspect:
-        return f"Support: Import supported; preview/export not supported yet\nReason: {report.reason}"
-    return f"Support: Not supported yet\nReason: {report.reason}"
+        return f"Support: Import supported; preview/export not supported yet\nReason: {report.reason}{next_step}"
+    return f"Support: Not supported yet\nReason: {report.reason}{next_step}"
 
 
 def _candidate_raw_files(folder: Path, *, limit: int = MAX_LIBRARY_FILES) -> tuple[Path, ...]:

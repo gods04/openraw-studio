@@ -152,6 +152,7 @@ Current status:
 - dry-run recipe writing exists
 - backend availability check exists
 - `openraw inspect` reports whether a file fits the current Native render path
+  and lists Nikon render blockers with next engine steps
 - OpenRAW Native is the default RAW engine identity
 - DNG/TIFF metadata reader exists
 - Nikon `.NEF` / `.NRW` metadata import exists

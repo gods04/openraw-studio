@@ -32,7 +32,8 @@ openraw inspect "E:\Photos\input\IMG_0001.DNG"
 ```
 
 This reports whether the file matches the current OpenRAW Native render path
-before starting preview or export.
+before starting preview or export. For Nikon files that are not renderable yet,
+it also lists render blockers and the next missing engine capability.
 
 Current native preview command:
 
@@ -42,11 +43,11 @@ openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-outpu
 ```
 
 The preview-only path writes a `.preview.png` file for narrow supported
-uncompressed DNG files and native-renderable Nikon files, or a `.preview.jpg`
-file for Nikon RAW files with embedded JPEG previews, and skips final export.
+uncompressed 12/14/16-bit DNG/Nikon files that match the current Native path,
+or a `.preview.jpg` file for Nikon RAW files with embedded JPEG previews, and
+skips final export.
 
-Current native render command for narrow supported uncompressed DNG files and
-guarded TIFF-style Nikon sensor files:
+Current native render command for narrow supported uncompressed DNG/Nikon files:
 
 ```powershell
 openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-output"

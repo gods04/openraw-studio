@@ -61,6 +61,9 @@ class NativeSupportTests(unittest.TestCase):
             "Render: Unsupported Nikon RAW compression: 34713; only uncompressed TIFF-style sensor data is supported.",
             report.details,
         )
+        self.assertIn("Render blocker: No complete strip or tile pixel payload was found.", report.details)
+        self.assertIn("Create Sample DNG/NEF", report.next_steps[0])
+        self.assertIn("Nikon compression value 34713", report.next_steps[1])
 
     def test_nikon_nef_reports_preview_only_when_embedded_jpeg_exists(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -77,7 +80,9 @@ class NativeSupportTests(unittest.TestCase):
         self.assertEqual(report.status, "preview_only")
         self.assertEqual(report.metadata["jpeg_interchange_format_length"], len(embedded_jpeg))
         self.assertIn("Preview: embedded JPEG", "\n".join(report.details))
-        self.assertIn("final NEF/NRW export rendering is not implemented yet", report.reason)
+        self.assertIn("final export is blocked", report.reason)
+        self.assertIn("Use Update Preview", report.next_steps[0])
+        self.assertIn("Nikon compression value 34713", report.next_steps[1])
 
     def test_nikon_nef_reports_renderable_when_sensor_payload_is_supported(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -179,6 +184,7 @@ class NativeSupportTests(unittest.TestCase):
         self.assertEqual(payload["status"], "supported")
         self.assertTrue(payload["can_preview"])
         self.assertIsInstance(payload["details"], list)
+        self.assertIsInstance(payload["next_steps"], list)
         self.assertEqual(payload["metadata"]["width"], 4)
 
 

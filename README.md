@@ -161,6 +161,10 @@ Check whether one file is supported by the current OpenRAW Native path:
 openraw inspect "E:\Photos\input\IMG_0001.DNG"
 ```
 
+For real Nikon `.NEF` / `.NRW` files that are not renderable yet,
+`openraw inspect` lists the current render blockers and the next engine
+capability needed instead of failing silently.
+
 Open the beginner-friendly desktop app:
 
 ```powershell
@@ -180,13 +184,13 @@ adjustments; unsupported files are skipped and reported.
 The app shows basic photo information, current Native support status, and the
 planned preview, JPEG, and recipe paths before rendering. Nikon RAW files with
 only embedded JPEG previews can use `Update Preview`, while Auto Adjust and
-final JPEG export stay disabled. Nikon RAW files that match the guarded native
-sensor path can use preview, Auto Adjust, and JPEG export. Supported DNG and
-native-renderable Nikon files create a preview PNG, a preview-derived JPEG, and
-a recipe JSON in the selected output folder. Nikon preview-only runs write a
-`.preview.jpg` file and recipe JSON. After preview or export,
-`Show Before` lets you compare the basic
-demosaiced image with the OpenRAW color-treated result.
+final JPEG export stay disabled and the app shows the next missing engine step.
+Nikon RAW files that match the guarded native sensor path can use preview, Auto
+Adjust, and JPEG export. Supported DNG and native-renderable Nikon files create
+a preview PNG, a preview-derived JPEG, and a recipe JSON in the selected output
+folder. Nikon preview-only runs write a `.preview.jpg` file and recipe JSON.
+After preview or export, `Show Before` lets you compare the basic demosaiced
+image with the OpenRAW color-treated result.
 The Exposure, Contrast, and Warmth controls are recorded in the recipe and
 applied to DNG and native-renderable Nikon preview/JPEG export. Nikon embedded
 previews are currently extracted as camera-authored JPEGs without applying

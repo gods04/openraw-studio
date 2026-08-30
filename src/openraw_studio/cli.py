@@ -134,6 +134,9 @@ def _format_inspect_report(report: NativeSupportReport) -> str:
     if report.details:
         lines.append("Details:")
         lines.extend(f"  - {detail}" for detail in report.details)
+    if report.next_steps:
+        lines.append("Next:")
+        lines.extend(f"  - {step}" for step in report.next_steps)
     return "\n".join(lines)
 
 

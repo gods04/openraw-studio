@@ -299,6 +299,8 @@ class CliPipelineTests(unittest.TestCase):
         self.assertIn("Import: metadata supported", text)
         self.assertIn("Native render: not supported yet", text)
         self.assertIn("Nikon RAW metadata import is supported", text)
+        self.assertIn("Next:", text)
+        self.assertIn("Nikon compression value 34713", text)
 
     def test_cli_inspect_reports_nikon_raw_native_sensor_render(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -329,6 +331,8 @@ class CliPipelineTests(unittest.TestCase):
         self.assertIn("Preview: supported", text)
         self.assertIn("Native render: not supported yet", text)
         self.assertIn("Preview: embedded JPEG", text)
+        self.assertIn("Next:", text)
+        self.assertIn("Use Update Preview", text)
 
     def test_cli_batch_exports_supported_folder_items(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

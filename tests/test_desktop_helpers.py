@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from fixtures_nikon import synthetic_nikon_nef_sensor_bytes
+from fixtures_nikon import synthetic_nikon_nef_metadata_bytes, synthetic_nikon_nef_sensor_bytes
 from openraw_studio.core.domain import ImageRef
 from openraw_studio.decision.auto_adjust import AutoAdjustSuggestion
 from openraw_studio.pipeline.batch import BatchItemResult, BatchResult
@@ -123,6 +123,17 @@ class DesktopHelperTests(unittest.TestCase):
         self.assertIn("RAW: 14-bit", info)
         self.assertIn("Support: Supported by OpenRAW Native V0.1", info)
 
+    def test_read_photo_info_includes_next_step_for_import_only_nikon_nef(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "sample.NEF"
+            path.write_bytes(synthetic_nikon_nef_metadata_bytes())
+
+            info = _read_photo_info(path)
+
+        self.assertIn("Support: Import supported", info)
+        self.assertIn("Next:", info)
+        self.assertIn("Create Sample DNG/NEF", info)
+
     def test_format_native_support_summary_explains_unsupported_files(self) -> None:
         report = NativeSupportReport(
             source_path=Path("sample.NEF"),
@@ -131,12 +142,15 @@ class DesktopHelperTests(unittest.TestCase):
             can_render=False,
             status="import_only",
             reason="Nikon RAW metadata import is supported; NEF/NRW preview and export rendering are not implemented yet.",
+            next_steps=("Use Create Sample DNG/NEF or a supported uncompressed file to test rendering today.",),
         )
 
         summary = _format_native_support_summary(report)
 
         self.assertIn("Support: Import supported", summary)
         self.assertIn("NEF/NRW preview", summary)
+        self.assertIn("Next:", summary)
+        self.assertIn("Create Sample DNG/NEF", summary)
 
     def test_format_native_support_summary_explains_preview_only_files(self) -> None:
         report = NativeSupportReport(
@@ -147,12 +161,14 @@ class DesktopHelperTests(unittest.TestCase):
             can_render=False,
             status="preview_only",
             reason="Nikon RAW embedded preview is supported; final NEF/NRW export rendering is not implemented yet.",
+            next_steps=("Use Update Preview to view the embedded JPEG; final export needs native sensor decoding for this file.",),
         )
 
         summary = _format_native_support_summary(report)
 
         self.assertIn("Support: Preview supported", summary)
         self.assertIn("export not supported yet", summary)
+        self.assertIn("Use Update Preview", summary)
 
     def test_candidate_raw_files_lists_raw_like_files_in_name_order(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

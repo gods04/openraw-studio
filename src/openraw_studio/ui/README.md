@@ -15,6 +15,7 @@ The UI should keep the image workspace first:
 - Nikon `.NEF` / `.NRW` metadata import with renderable, preview-only, or import-only state
 - selected photo metadata summary
 - current OpenRAW Native support status
+- next missing render-engine step for import-only or preview-only Nikon files
 - planned preview/JPEG/recipe output paths
 - current photo preview
 - preview current/stale state

@@ -153,8 +153,9 @@ can write a dry-run recipe/artifact plan for a RAW-like source file:
 - schema and preset JSON files parse correctly
 - `openraw doctor` reports the OpenRAW Native engine foundation
 - `openraw process --dry-run` writes a recipe sidecar without rendering pixels
-- `openraw inspect` can import Nikon `.NEF` / `.NRW` metadata and detect
-  embedded JPEG preview support
+- `openraw inspect` can import Nikon `.NEF` / `.NRW` metadata, detect embedded
+  JPEG preview support, list render blockers, and show the next missing engine
+  capability
 - `openraw process` writes a PNG preview and local JPEG export for
   narrow supported uncompressed 12/14/16-bit DNG/Nikon sensor files
 - `openraw process --preview-only` writes a JPEG preview for Nikon files with
@@ -179,7 +180,8 @@ Narrow uncompressed 12/14/16-bit DNG/Nikon preview and local JPEG export are ava
 Inspect one file before processing it. Nikon `.NEF` / `.NRW` files show
 renderable when they expose supported TIFF-style uncompressed Bayer payloads,
 preview-only when an embedded JPEG preview is available, or import-only when
-only metadata can be read:
+only metadata can be read. For files that are not renderable yet, the report
+also lists the current render blockers and the next engine step:
 
 ```powershell
 openraw inspect "E:\Photos\input\IMG_0001.NEF"

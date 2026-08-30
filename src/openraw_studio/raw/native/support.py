@@ -32,6 +32,7 @@ class NativeSupportReport:
     reason: str
     can_preview: bool = False
     details: tuple[str, ...] = ()
+    next_steps: tuple[str, ...] = ()
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
@@ -44,6 +45,7 @@ class NativeSupportReport:
             "status": self.status,
             "reason": self.reason,
             "details": list(self.details),
+            "next_steps": list(self.next_steps),
             "metadata": dict(self.metadata),
         }
 
@@ -120,6 +122,7 @@ def _report(
     can_preview: bool = False,
     can_render: bool = False,
     details: tuple[str, ...] = (),
+    next_steps: tuple[str, ...] = (),
     metadata: Mapping[str, Any] | None = None,
 ) -> NativeSupportReport:
     return NativeSupportReport(
@@ -131,6 +134,7 @@ def _report(
         status=status,
         reason=reason,
         details=details,
+        next_steps=next_steps,
         metadata=dict(metadata or {}),
     )
 
@@ -175,9 +179,12 @@ def _inspect_nikon_raw(source_path: Path, *, dng_reader: DngMetadataReader | Non
             metadata=summary,
         )
 
+    blocker_details = _render_blocker_details(render_issues)
+    next_steps = _nikon_next_steps(render_issues, has_embedded_preview=embedded_preview_label is not None)
+
     if embedded_preview_label is None:
         details.append("Preview: embedded JPEG not found")
-        details.append(f"Render: {render_issues[0]}")
+        details.extend(blocker_details)
         return _report(
             source_path,
             file_exists=True,
@@ -186,15 +193,16 @@ def _inspect_nikon_raw(source_path: Path, *, dng_reader: DngMetadataReader | Non
             can_render=False,
             status="import_only",
             reason=(
-                "Nikon RAW metadata import is supported; embedded JPEG preview and final NEF/NRW export "
-                "rendering are not implemented for this file yet."
+                "Nikon RAW metadata import is supported; preview/export are blocked because this file has no "
+                "embedded JPEG preview and native sensor rendering is not implemented for its payload yet."
             ),
             details=tuple(details),
+            next_steps=next_steps,
             metadata=summary,
         )
 
     details.append(embedded_preview_label)
-    details.append(f"Render: {render_issues[0]}")
+    details.extend(blocker_details)
     return _report(
         source_path,
         file_exists=True,
@@ -202,8 +210,9 @@ def _inspect_nikon_raw(source_path: Path, *, dng_reader: DngMetadataReader | Non
         can_preview=True,
         can_render=False,
         status="preview_only",
-        reason="Nikon RAW embedded preview is supported; final NEF/NRW export rendering is not implemented yet.",
+        reason="Nikon RAW embedded preview is supported; final export is blocked by native sensor rendering limits.",
         details=tuple(details),
+        next_steps=next_steps,
         metadata=summary,
     )
 
@@ -245,6 +254,45 @@ def _render_detail_extras(render_details: list[str]) -> list[str]:
         for detail in render_details
         if not detail.startswith("Format:") and not detail.startswith("Dimensions:")
     ]
+
+
+def _render_blocker_details(render_issues: list[str]) -> list[str]:
+    if not render_issues:
+        return []
+    return [f"Render: {render_issues[0]}"] + [f"Render blocker: {issue}" for issue in render_issues[1:]]
+
+
+def _nikon_next_steps(render_issues: list[str], *, has_embedded_preview: bool) -> tuple[str, ...]:
+    if not render_issues:
+        return ()
+
+    steps = []
+    if has_embedded_preview:
+        steps.append("Use Update Preview to view the embedded JPEG; final export needs native sensor decoding for this file.")
+    else:
+        steps.append("Use Create Sample DNG/NEF or a supported uncompressed file to test rendering today.")
+
+    primary = render_issues[0]
+    if "compression" in primary.lower():
+        value = _compression_value_from_issue(primary)
+        compression = f" value {value}" if value else ""
+        steps.append(f"Engine work needed: add Nikon compression{compression} decoding before this file can be rendered.")
+    elif "No complete strip or tile pixel payload" in primary:
+        steps.append("Engine work needed: locate the sensor payload IFD and offsets for this camera file.")
+    elif "CFA" in primary:
+        steps.append("Engine work needed: map this file's CFA pattern into the native Bayer pipeline.")
+    else:
+        steps.append(f"Engine work needed: {primary}")
+    return tuple(steps)
+
+
+def _compression_value_from_issue(issue: str) -> str | None:
+    marker = "compression:"
+    position = issue.lower().find(marker)
+    if position < 0:
+        return None
+    value = issue[position + len(marker) :].split(";", 1)[0].strip()
+    return value or None
 
 
 def _evaluate_dng_summary(ifds: tuple[TiffIfd, ...], summary: Mapping[str, Any]) -> tuple[list[str], list[str]]:
