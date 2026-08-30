@@ -503,8 +503,29 @@ def launch_desktop_app() -> None:
                 row=0, column=1, sticky="e", padx=(20, 0), pady=(10, 0)
             )
 
-            controls = ttk_module.Frame(shell, style="Panel.TFrame", padding=22)
-            controls.grid(row=1, column=0, sticky="ns", pady=(24, 0), padx=(0, 18))
+            controls_panel = ttk_module.Frame(shell, style="Panel.TFrame")
+            controls_panel.grid(row=1, column=0, sticky="ns", pady=(24, 0), padx=(0, 18))
+            controls_panel.columnconfigure(0, weight=1)
+            controls_panel.rowconfigure(0, weight=1)
+            controls_canvas = tk_module.Canvas(
+                controls_panel,
+                width=288,
+                background="#ffffff",
+                borderwidth=0,
+                highlightthickness=0,
+            )
+            controls_scroll = ttk_module.Scrollbar(controls_panel, orient="vertical", command=controls_canvas.yview)
+            controls_canvas.configure(yscrollcommand=controls_scroll.set)
+            controls_canvas.grid(row=0, column=0, sticky="nsew")
+            controls_scroll.grid(row=0, column=1, sticky="ns")
+            controls = ttk_module.Frame(controls_canvas, style="Panel.TFrame", padding=22)
+            controls_window = controls_canvas.create_window((0, 0), window=controls, anchor="nw")
+            controls.bind("<Configure>", lambda _event: controls_canvas.configure(scrollregion=controls_canvas.bbox("all")))
+            controls_canvas.bind("<Configure>", lambda event: controls_canvas.itemconfigure(controls_window, width=event.width))
+            controls_canvas.bind("<Enter>", lambda _event: controls_canvas.bind_all("<MouseWheel>", self._scroll_controls))
+            controls_canvas.bind("<Leave>", lambda _event: controls_canvas.unbind_all("<MouseWheel>"))
+            self.controls_canvas = controls_canvas
+
             preview = ttk_module.Frame(shell, style="Panel.TFrame", padding=18)
             preview.grid(row=1, column=1, sticky="nsew", pady=(24, 0))
             preview.columnconfigure(0, weight=1)
@@ -594,39 +615,6 @@ def launch_desktop_app() -> None:
             ).pack(fill="x", pady=(6, 8))
 
             ttk_module.Button(controls, text="Reset Adjustments", style="Secondary.TButton", command=self._reset_adjustments).pack(fill="x")
-            self.auto_adjust_button = ttk_module.Button(
-                controls,
-                text="Auto Adjust",
-                style="Secondary.TButton",
-                command=self._auto_adjust,
-                state="disabled",
-            )
-            self.auto_adjust_button.pack(fill="x", pady=(12, 0))
-            self.preview_button = ttk_module.Button(
-                controls,
-                text="Update Preview",
-                style="Secondary.TButton",
-                command=self._update_preview,
-                state="disabled",
-            )
-            self.preview_button.pack(fill="x", pady=(12, 0))
-            self.process_button = ttk_module.Button(
-                controls,
-                text="Export JPEG",
-                style="Primary.TButton",
-                command=self._export_jpeg,
-                state="disabled",
-            )
-            self.process_button.pack(fill="x", pady=(12, 0))
-            self.batch_button = ttk_module.Button(
-                controls,
-                text="Export Folder",
-                style="Secondary.TButton",
-                command=self._export_folder,
-                state="disabled",
-            )
-            self.batch_button.pack(fill="x", pady=(8, 0))
-            ttk_module.Label(controls, textvariable=self.status_var, style="Muted.TLabel", wraplength=260).pack(anchor="w", pady=(16, 0))
 
             info_bar = ttk_module.Frame(preview, style="Panel.TFrame")
             info_bar.grid(row=0, column=0, sticky="ew", pady=(0, 14))
@@ -657,11 +645,57 @@ def launch_desktop_app() -> None:
                 font=("Segoe UI", 14),
             )
             self.preview_label.grid(row=1, column=0, sticky="nsew")
-            ttk_module.Label(preview, textvariable=self.preview_state_var, style="Muted.TLabel").grid(row=2, column=0, sticky="w", pady=(14, 0))
+            status_bar = ttk_module.Frame(preview, style="Panel.TFrame")
+            status_bar.grid(row=2, column=0, sticky="ew", pady=(14, 0))
+            status_bar.columnconfigure(0, weight=1)
+            status_bar.columnconfigure(1, weight=1)
+            ttk_module.Label(
+                status_bar,
+                textvariable=self.status_var,
+                style="Muted.TLabel",
+                wraplength=360,
+            ).grid(row=0, column=0, sticky="w")
+            ttk_module.Label(status_bar, textvariable=self.preview_state_var, style="Muted.TLabel").grid(row=0, column=1, sticky="e")
+            workflow_actions = ttk_module.Frame(preview, style="Panel.TFrame")
+            workflow_actions.grid(row=3, column=0, sticky="ew", pady=(12, 0))
+            for column in range(4):
+                workflow_actions.columnconfigure(column, weight=1)
+            self.auto_adjust_button = ttk_module.Button(
+                workflow_actions,
+                text="Auto Adjust",
+                style="Secondary.TButton",
+                command=self._auto_adjust,
+                state="disabled",
+            )
+            self.auto_adjust_button.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+            self.preview_button = ttk_module.Button(
+                workflow_actions,
+                text="Update Preview",
+                style="Secondary.TButton",
+                command=self._update_preview,
+                state="disabled",
+            )
+            self.preview_button.grid(row=0, column=1, sticky="ew", padx=(0, 8))
+            self.process_button = ttk_module.Button(
+                workflow_actions,
+                text="Export JPEG",
+                style="Primary.TButton",
+                command=self._export_jpeg,
+                state="disabled",
+            )
+            self.process_button.grid(row=0, column=2, sticky="ew", padx=(0, 8))
+            self.batch_button = ttk_module.Button(
+                workflow_actions,
+                text="Export Folder",
+                style="Secondary.TButton",
+                command=self._export_folder,
+                state="disabled",
+            )
+            self.batch_button.grid(row=0, column=3, sticky="ew")
             self.export_label = ttk_module.Label(preview, text="", style="Muted.TLabel", wraplength=680)
-            self.export_label.grid(row=3, column=0, sticky="w", pady=(8, 0))
+            self.export_label.grid(row=4, column=0, sticky="w", pady=(8, 0))
             preview_actions = ttk_module.Frame(preview, style="Panel.TFrame")
-            preview_actions.grid(row=4, column=0, sticky="ew", pady=(12, 0))
+            preview_actions.grid(row=5, column=0, sticky="ew", pady=(12, 0))
             preview_actions.columnconfigure(1, weight=1)
             self.compare_button = ttk_module.Button(
                 preview_actions,
@@ -690,6 +724,10 @@ def launch_desktop_app() -> None:
 
             self.filedialog = filedialog
             self.messagebox = messagebox
+
+        def _scroll_controls(self, event: Any) -> None:
+            delta = -1 if event.delta > 0 else 1
+            self.controls_canvas.yview_scroll(delta, "units")
 
         def _choose_source(self) -> None:
             selected = self.filedialog.askopenfilename(
