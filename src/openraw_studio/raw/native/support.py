@@ -9,6 +9,7 @@ from typing import Any, Mapping
 
 from openraw_studio.raw.native.bitpacking import SUPPORTED_SENSOR_BIT_DEPTHS
 from openraw_studio.raw.native.dng import DngMetadataError, DngMetadataReader, TiffIfd
+from openraw_studio.raw.native.nikon import NikonMakerNoteSummary, summarize_nikon_makernote
 
 
 SUPPORTED_CFA_PATTERNS = {
@@ -152,9 +153,14 @@ def _inspect_nikon_raw(source_path: Path, *, dng_reader: DngMetadataReader | Non
         )
 
     summary = metadata.as_dict()
+    maker_note = summarize_nikon_makernote(metadata)
+    support_metadata = dict(summary)
+    if maker_note is not None:
+        support_metadata["nikon_makernote"] = maker_note.as_dict()
     render_issues, render_details = _evaluate_nikon_summary(metadata.ifds, summary, source_path)
     details = _nikon_import_details(source_path, summary, render_detail=None)
     details.extend(_render_detail_extras(render_details))
+    details.extend(_nikon_makernote_details(maker_note))
     try:
         preview = reader.read_embedded_jpeg_preview(source_path)
     except (DngMetadataError, OSError):
@@ -176,7 +182,7 @@ def _inspect_nikon_raw(source_path: Path, *, dng_reader: DngMetadataReader | Non
             status="supported",
             reason="Supported by OpenRAW Native V0.1 guarded Nikon sensor decode.",
             details=tuple(details),
-            metadata=summary,
+            metadata=support_metadata,
         )
 
     blocker_details = _render_blocker_details(render_issues)
@@ -198,7 +204,7 @@ def _inspect_nikon_raw(source_path: Path, *, dng_reader: DngMetadataReader | Non
             ),
             details=tuple(details),
             next_steps=next_steps,
-            metadata=summary,
+            metadata=support_metadata,
         )
 
     details.append(embedded_preview_label)
@@ -213,7 +219,7 @@ def _inspect_nikon_raw(source_path: Path, *, dng_reader: DngMetadataReader | Non
         reason="Nikon RAW embedded preview is supported; final export is blocked by native sensor rendering limits.",
         details=tuple(details),
         next_steps=next_steps,
-        metadata=summary,
+        metadata=support_metadata,
     )
 
 
@@ -254,6 +260,28 @@ def _render_detail_extras(render_details: list[str]) -> list[str]:
         for detail in render_details
         if not detail.startswith("Format:") and not detail.startswith("Dimensions:")
     ]
+
+
+def _nikon_makernote_details(maker_note: NikonMakerNoteSummary | None) -> list[str]:
+    if maker_note is None:
+        return []
+
+    details = [f"MakerNote: {maker_note.kind}, {maker_note.tag_count} tags"]
+    if maker_note.compression_mode is not None:
+        details.append(f"Nikon compression mode tag 0x0093: {maker_note.compression_mode}")
+    if maker_note.compression_table_byte_count is not None:
+        prefix = f", prefix {maker_note.compression_table_prefix}" if maker_note.compression_table_prefix else ""
+        details.append(f"Nikon compression table tag 0x0096: {maker_note.compression_table_byte_count} bytes{prefix}")
+    if maker_note.curve_byte_count is not None:
+        prefix = f", prefix {maker_note.curve_prefix}" if maker_note.curve_prefix else ""
+        details.append(f"Nikon curve/table tag 0x008c: {maker_note.curve_byte_count} bytes{prefix}")
+    if maker_note.active_area is not None:
+        details.append(f"Nikon active area tag 0x0045: {_join_ints(maker_note.active_area)}")
+    return details
+
+
+def _join_ints(values: tuple[int, ...]) -> str:
+    return ", ".join(str(value) for value in values)
 
 
 def _render_blocker_details(render_issues: list[str]) -> list[str]:

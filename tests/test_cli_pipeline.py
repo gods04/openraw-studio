@@ -269,6 +269,7 @@ class CliPipelineTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertIn("openraw-native: available", text)
         self.assertIn("12/14/16-bit", text)
+        self.assertIn("MakerNote compression metadata", text)
         self.assertNotIn("darktable-cli experimental", text)
 
     def test_cli_inspect_reports_supported_synthetic_dng(self) -> None:

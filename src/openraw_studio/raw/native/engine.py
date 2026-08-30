@@ -48,6 +48,7 @@ class NativeRawProcessor:
                 "nikon_nef_metadata": True,
                 "nikon_nrw_metadata": True,
                 "nikon_embedded_jpeg_preview": True,
+                "nikon_makernote_compression_summary": True,
                 "nikon_guarded_tiff_sensor_decode": True,
                 "dng_uncompressed_strips": True,
                 "dng_uncompressed_tiles": True,

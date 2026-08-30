@@ -67,6 +67,8 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - OpenRAW Native RAW engine scaffold as the default backend
 - Native DNG/TIFF metadata reader for the first RAW-engine milestone
 - Nikon `.NEF` / `.NRW` metadata import and embedded JPEG preview extraction
+- Nikon MakerNote summary for compressed NEF render blockers, including
+  0x0096 compression-table and 0x008c curve/table detection
 - Native extraction for simple uncompressed DNG 12/14-bit packed strip payloads
   and 16-bit strip/tile pixel payloads
 - Guarded native Nikon `.NEF` / `.NRW` sensor decode for TIFF-style
@@ -91,8 +93,9 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - No packaged installer yet
 - OpenRAW Native has only a first-pass DNG white-balance and color-matrix transform
 - Common compressed/proprietary Nikon `.NEF` / `.NRW` sensor payloads are not
-  implemented yet; the first native Nikon path supports only TIFF-style
-  uncompressed Bayer payloads with the metadata OpenRAW needs
+  decoded yet; OpenRAW can now identify Nikon MakerNote compression metadata
+  for those files, but the first native Nikon render path supports only
+  TIFF-style uncompressed Bayer payloads with the metadata OpenRAW needs
 - Broad proprietary RAW rendering support is not implemented yet
 - No AI model weights included
 - No portrait retouching algorithms yet

@@ -12,6 +12,7 @@ def synthetic_nikon_nef_metadata_bytes(
     black_level: int = 64,
     white_level: int = 4095,
     bits_per_sample: int | None = None,
+    maker_note: bytes | None = None,
 ) -> bytes:
     if sensor_samples is not None and len(sensor_samples) != width * height:
         raise ValueError("sensor_samples must match width * height")
@@ -55,6 +56,8 @@ def synthetic_nikon_nef_metadata_bytes(
         (37386, 5, 1, _pack_rational(50, 1)),
         (42036, 2, len(b"NIKKOR Z 50mm f/1.8 S\x00"), b"NIKKOR Z 50mm f/1.8 S\x00"),
     ]
+    if maker_note is not None:
+        exif_defs.append((37500, 7, len(maker_note), maker_note))
 
     ifd0_count = len(ifd0_defs) + 1 + (2 if embedded_jpeg is not None else 0) + (1 if sensor_samples is not None else 0)
     ifd0_size = 2 + ifd0_count * 12 + 4
@@ -64,7 +67,7 @@ def synthetic_nikon_nef_metadata_bytes(
     external_data = bytearray()
 
     def encode(tag: int, field_type: int, count: int, payload: bytes) -> bytes:
-        type_size = {1: 1, 2: 1, 3: 2, 4: 4, 5: 8}[field_type]
+        type_size = {1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 7: 1}[field_type]
         byte_count = type_size * count
         if byte_count <= 4:
             return struct.pack("<HHI", tag, field_type, count) + payload.ljust(4, b"\x00")
@@ -120,8 +123,42 @@ def embedded_jpeg_bytes(width: int = 3, height: int = 2) -> bytes:
     return buffer.getvalue()
 
 
+def nikon_makernote_bytes() -> bytes:
+    entries = [
+        (0x0001, 7, 4, b"0211"),
+        (0x001B, 3, 7, struct.pack("<7H", 12, 5600, 3728, 5600, 3728, 0, 0)),
+        (0x0045, 3, 4, struct.pack("<4H", 16, 8, 5568, 3712)),
+        (0x008C, 7, 8, b"I0\x00\xff\x00\xff\x01\x00"),
+        (0x0093, 3, 1, struct.pack("<H", 3)),
+        (0x0096, 7, 6, b"F0\x00\x08\x00\x08"),
+    ]
+    return _tiff_makernote_bytes(entries)
+
+
 def _pack_rational(numerator: int, denominator: int) -> bytes:
     return struct.pack("<II", numerator, denominator)
+
+
+def _tiff_makernote_bytes(entries: list[tuple[int, int, int, bytes]]) -> bytes:
+    entry_count = len(entries)
+    header = b"Nikon\x00\x02\x11\x00\x00II" + struct.pack("<H", 42) + struct.pack("<I", 8)
+    ifd_size = 2 + entry_count * 12 + 4
+    external_base = len(header) + ifd_size - 10
+    external_data = bytearray()
+
+    def encode(tag: int, field_type: int, count: int, payload: bytes) -> bytes:
+        type_size = {1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 7: 1, 8: 2, 9: 4, 10: 8}[field_type]
+        byte_count = type_size * count
+        if byte_count <= 4:
+            return struct.pack("<HHI", tag, field_type, count) + payload.ljust(4, b"\x00")
+        offset = external_base + len(external_data)
+        external_data.extend(payload)
+        if len(external_data) % 2:
+            external_data.extend(b"\x00")
+        return struct.pack("<HHII", tag, field_type, count, offset)
+
+    ifd = struct.pack("<H", entry_count) + b"".join(encode(*entry) for entry in entries) + struct.pack("<I", 0)
+    return header + ifd + bytes(external_data)
 
 
 def pack_sensor_rows(

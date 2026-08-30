@@ -6,6 +6,7 @@ from openraw_studio.raw.native.decoder import NativeRawDecoder
 from openraw_studio.raw.native.demosaic import LinearRgbImage, demosaic_simple
 from openraw_studio.raw.native.engine import NativeRawProcessor
 from openraw_studio.raw.native.jpeg import write_jpeg
+from openraw_studio.raw.native.nikon import NikonMakerNoteSummary, summarize_nikon_makernote, summarize_nikon_makernote_payload
 from openraw_studio.raw.native.png import encode_png_rgb8, write_png
 from openraw_studio.raw.native.preview import render_png_preview, render_ppm_preview, render_preview_image, resize_preview, write_ppm
 from openraw_studio.raw.native.sensor import LinearSensorImage, normalize_sensor_data
@@ -27,6 +28,7 @@ __all__ = [
     "NativeRawDecoder",
     "NativeRawProcessor",
     "NativeSupportReport",
+    "NikonMakerNoteSummary",
     "PreviewRgbImage",
     "demosaic_simple",
     "apply_as_shot_neutral",
@@ -38,6 +40,8 @@ __all__ = [
     "render_ppm_preview",
     "render_preview_image",
     "resize_preview",
+    "summarize_nikon_makernote",
+    "summarize_nikon_makernote_payload",
     "synthetic_dng_bytes",
     "synthetic_nikon_nef_bytes",
     "tone_map_preview",

@@ -69,7 +69,8 @@ Suggested implementation order:
 24. [done] add first Nikon NEF/NRW embedded preview extraction
 25. [done] add first native Nikon NEF/NRW sensor decode path for guarded TIFF-style uncompressed payloads
 26. [done] add row-aligned 12/14-bit packed Bayer strip decoding for guarded DNG/Nikon payloads
-27. add support for common compressed Nikon NEF sensor payloads
+27. [done] parse Nikon MakerNote compression metadata for 34713 render blockers
+28. add support for common compressed Nikon NEF sensor payloads
 
 Exit criteria:
 

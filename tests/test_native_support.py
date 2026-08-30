@@ -2,7 +2,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from fixtures_nikon import embedded_jpeg_bytes, synthetic_nikon_nef_metadata_bytes, synthetic_nikon_nef_sensor_bytes
+from fixtures_nikon import (
+    embedded_jpeg_bytes,
+    nikon_makernote_bytes,
+    synthetic_nikon_nef_metadata_bytes,
+    synthetic_nikon_nef_sensor_bytes,
+)
 from openraw_studio.core.domain import ImageAsset
 from openraw_studio.core.image_info import read_image_size
 from openraw_studio.raw.native.engine import NativeRawProcessor
@@ -69,7 +74,7 @@ class NativeSupportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             embedded_jpeg = embedded_jpeg_bytes()
             source = Path(temp) / "sample.NEF"
-            source.write_bytes(synthetic_nikon_nef_metadata_bytes(embedded_jpeg=embedded_jpeg))
+            source.write_bytes(synthetic_nikon_nef_metadata_bytes(embedded_jpeg=embedded_jpeg, maker_note=nikon_makernote_bytes()))
 
             report = inspect_native_support(source)
 
@@ -79,7 +84,10 @@ class NativeSupportTests(unittest.TestCase):
         self.assertFalse(report.can_render)
         self.assertEqual(report.status, "preview_only")
         self.assertEqual(report.metadata["jpeg_interchange_format_length"], len(embedded_jpeg))
+        self.assertEqual(report.metadata["nikon_makernote"]["compression_mode"], 3)
         self.assertIn("Preview: embedded JPEG", "\n".join(report.details))
+        self.assertIn("Nikon compression table tag 0x0096", "\n".join(report.details))
+        self.assertIn("Nikon active area tag 0x0045", "\n".join(report.details))
         self.assertIn("final export is blocked", report.reason)
         self.assertIn("Use Update Preview", report.next_steps[0])
         self.assertIn("Nikon compression value 34713", report.next_steps[1])

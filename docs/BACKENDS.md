@@ -16,12 +16,13 @@ Status:
 foundation ready
 Nikon NEF/NRW metadata import support
 Nikon NEF/NRW embedded JPEG preview support
+Nikon MakerNote compression metadata summary for 34713 render blockers
 simple PNG preview support for narrow uncompressed DNG/Nikon files
 local JPEG export engine support for narrow uncompressed DNG/Nikon files
 12/14-bit packed strip payloads supported for the current DNG/Nikon path
 16-bit strip and tile payloads supported for the current DNG/Nikon path
 guarded Nikon NEF/NRW native sensor decode for TIFF-style uncompressed Bayer payloads
-common compressed/proprietary Nikon NEF/NRW sensor payloads not implemented yet
+common compressed/proprietary Nikon NEF/NRW sensor payloads not decoded yet
 high-quality JPEG/TIFF export not implemented yet
 ```
 
