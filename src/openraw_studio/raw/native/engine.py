@@ -47,6 +47,7 @@ class NativeRawProcessor:
                 "nikon_nef_metadata": True,
                 "nikon_nrw_metadata": True,
                 "nikon_embedded_jpeg_preview": True,
+                "nikon_guarded_tiff_sensor_decode": True,
                 "dng_uncompressed_strips": True,
                 "dng_uncompressed_tiles": True,
                 "recipe_planning": True,
@@ -101,7 +102,8 @@ class NativeRawProcessor:
         max_dimension: int,
         recipe: Mapping[str, Any] | None = None,
     ) -> ImageRef:
-        if source.path.suffix.lower() in NIKON_RAW_EXTENSIONS:
+        suffix = source.path.suffix.lower()
+        if suffix in NIKON_RAW_EXTENSIONS and output_path.suffix.lower() in {".jpg", ".jpeg"}:
             return self._create_nikon_embedded_preview(source, output_path)
         if output_path.suffix.lower() != ".png":
             raise RawProcessingError("OpenRAW Native preview currently writes PNG files; output path must end in .png")
@@ -116,7 +118,8 @@ class NativeRawProcessor:
                 max_dimension=max_dimension,
             )
         except (DngMetadataError, NotImplementedError, ValueError) as exc:
-            raise RawProcessingError(f"OpenRAW Native preview failed: {exc}") from exc
+            prefix = "OpenRAW Native Nikon sensor preview failed" if suffix in NIKON_RAW_EXTENSIONS else "OpenRAW Native preview failed"
+            raise RawProcessingError(f"{prefix}: {exc}") from exc
         return ImageRef(
             path=output_path,
             width=preview.width,
@@ -126,8 +129,6 @@ class NativeRawProcessor:
         )
 
     def render_base(self, request: RawRenderRequest) -> ImageRef:
-        if request.source.path.suffix.lower() in NIKON_RAW_EXTENSIONS:
-            raise RawProcessingError("OpenRAW Native can import Nikon RAW metadata, but NEF/NRW export rendering is not implemented yet")
         plan = build_native_render_plan(
             request.source.path,
             request.output_path,
@@ -146,7 +147,12 @@ class NativeRawProcessor:
             )
             write_jpeg(rendered, plan.output_path)
         except (DngMetadataError, NotImplementedError, RuntimeError, ValueError, OSError) as exc:
-            raise RawProcessingError(f"OpenRAW Native export failed: {exc}") from exc
+            prefix = (
+                "OpenRAW Native Nikon export failed"
+                if request.source.path.suffix.lower() in NIKON_RAW_EXTENSIONS
+                else "OpenRAW Native export failed"
+            )
+            raise RawProcessingError(f"{prefix}: {exc}") from exc
         return ImageRef(
             path=plan.output_path,
             width=rendered.width,

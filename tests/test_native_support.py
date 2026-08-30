@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from fixtures_nikon import embedded_jpeg_bytes, synthetic_nikon_nef_metadata_bytes
+from fixtures_nikon import embedded_jpeg_bytes, synthetic_nikon_nef_metadata_bytes, synthetic_nikon_nef_sensor_bytes
 from openraw_studio.core.domain import ImageAsset
 from openraw_studio.core.image_info import read_image_size
 from openraw_studio.raw.native.engine import NativeRawProcessor
@@ -57,7 +57,10 @@ class NativeSupportTests(unittest.TestCase):
         self.assertEqual(report.metadata["aperture"], 2.8)
         self.assertIn("Format: Nikon NEF/TIFF", report.details)
         self.assertIn("Camera: NIKON CORPORATION NIKON Z 6II", report.details)
-        self.assertIn("Render: NEF/NRW decoding is future work", report.details)
+        self.assertIn(
+            "Render: Unsupported Nikon RAW compression: 34713; only uncompressed TIFF-style sensor data is supported.",
+            report.details,
+        )
 
     def test_nikon_nef_reports_preview_only_when_embedded_jpeg_exists(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -75,6 +78,22 @@ class NativeSupportTests(unittest.TestCase):
         self.assertEqual(report.metadata["jpeg_interchange_format_length"], len(embedded_jpeg))
         self.assertIn("Preview: embedded JPEG", "\n".join(report.details))
         self.assertIn("final NEF/NRW export rendering is not implemented yet", report.reason)
+
+    def test_nikon_nef_reports_renderable_when_sensor_payload_is_supported(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "sample.NEF"
+            source.write_bytes(synthetic_nikon_nef_sensor_bytes())
+
+            report = inspect_native_support(source)
+
+        self.assertTrue(report.file_exists)
+        self.assertTrue(report.can_inspect)
+        self.assertTrue(report.can_preview)
+        self.assertTrue(report.can_render)
+        self.assertEqual(report.status, "supported")
+        self.assertEqual(report.reason, "Supported by OpenRAW Native V0.1 guarded Nikon sensor decode.")
+        self.assertIn("Storage: 1 strip", report.details)
+        self.assertIn("Render: native TIFF-style sensor decode", report.details)
 
     def test_native_processor_writes_nikon_embedded_jpeg_preview(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

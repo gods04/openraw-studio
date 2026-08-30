@@ -265,6 +265,12 @@ def _planned_output_summary(source: Path, output_dir: Path) -> str:
 
 def _preview_artifact_path(source: Path, plan: ArtifactPlan) -> Path:
     if source.suffix.lower() in NIKON_RAW_EXTENSIONS:
+        try:
+            support = inspect_native_support(source)
+        except OSError:
+            support = None
+        if support is not None and support.can_render:
+            return plan.preview_path
         return plan.preview_path.with_name(f"{source.stem}.preview.jpg")
     return plan.preview_path
 
@@ -1048,15 +1054,19 @@ def launch_desktop_app() -> None:
                         image = opened.convert("RGB")
                     image.thumbnail((700, 520))
                     self.after_photo = ImageTk.PhotoImage(image)
-                    before = render_preview_image(source, apply_color=False)
-                    before_image = Image.frombytes("RGB", (before.width, before.height), _flatten_rgb_pixels(before.pixels))
-                    before_image.thumbnail((700, 520))
-                    self.before_photo = ImageTk.PhotoImage(before_image)
                     self.preview_photo = self.after_photo
                     self.preview_label.configure(image=self.preview_photo, text="")
-                    self.compare_button.configure(state="normal", text="Show Before")
                     self.showing_after = True
-                except (OSError, RuntimeError):
+                    if result.preview.color_space == "embedded-jpeg":
+                        self.before_photo = None
+                        self.compare_button.configure(state="disabled", text="Show Before")
+                    else:
+                        before = render_preview_image(source, apply_color=False)
+                        before_image = Image.frombytes("RGB", (before.width, before.height), _flatten_rgb_pixels(before.pixels))
+                        before_image.thumbnail((700, 520))
+                        self.before_photo = ImageTk.PhotoImage(before_image)
+                        self.compare_button.configure(state="normal", text="Show Before")
+                except (OSError, RuntimeError, ValueError, NotImplementedError):
                     self.preview_label.configure(text="Preview created. Open the output folder to view it.", image="")
             self._refresh_preview_state()
             self.export_label.configure(text=_format_result_summary(result))

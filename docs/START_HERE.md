@@ -109,10 +109,12 @@ openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-outpu
 openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-output" --preview-only
 ```
 
-Current native render command for narrow supported uncompressed DNG files:
+Current native render command for narrow supported uncompressed DNG files and
+guarded TIFF-style Nikon sensor files:
 
 ```powershell
 openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-output"
+openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-output"
 ```
 
 Expected render output:
@@ -125,6 +127,7 @@ openraw-output/
     IMG_0001.auto.jpg
   recipes/
     IMG_0001.DNG.recipe.json
+    IMG_0001.NEF.recipe.json
 ```
 
 V0.1 should include:
@@ -153,18 +156,19 @@ Current status:
 - DNG/TIFF metadata reader exists
 - Nikon `.NEF` / `.NRW` metadata import exists
 - Nikon `.NEF` / `.NRW` embedded JPEG preview extraction exists
+- guarded Nikon `.NEF` / `.NRW` native sensor decode exists for TIFF-style uncompressed Bayer payloads
 - simple uncompressed DNG strip and tile pixel extraction exists
 - black/white level sensor normalization exists
 - simple Bayer demosaic exists
 - simple PNG preview encoding exists
 - `--preview-only` pipeline mode exists
 - `darktable-cli` adapter exists only as an explicit experimental backend
-- local JPEG export engine records final derivative exports for supported DNG files
+- local JPEG export engine records final derivative exports for supported DNG and guarded Nikon files
 - first-pass DNG white balance and ColorMatrix1 transform are now applied
 - exposure, contrast, and warmth adjustments are available from the CLI and desktop shell and are saved in the recipe
 - Windows startup script creates `.venv`, installs the local package, and opens the app
 - Windows package script and GitHub Actions artifact build exist
-- full camera-aware color conversion and higher-quality JPEG/TIFF export are next
+- common compressed Nikon payloads, full camera-aware color conversion, and higher-quality JPEG/TIFF export are next
 
 ### Step 3 - Minimal Desktop Shell
 
@@ -213,17 +217,18 @@ The first local desktop shell is now available through:
 ```
 
 It supports importing a DNG for preview/export, importing Nikon `.NEF` / `.NRW`
-files for metadata inspection and embedded JPEG preview when available,
-importing a folder of RAW-like files, choosing an output folder, running AUTO
-for renderable DNG files, viewing the generated preview, checking selected-photo
-information and planned output paths, comparing before/after, adjusting
-exposure, creating a safe sample DNG, adjusting contrast/warmth, opening the
-exported JPEG, exporting supported photos from the imported folder, and opening
-the output folder. When adjustments change, the UI marks the preview as needing
-an update until the next preview/export render. If the current output folder
-already has a matching recipe for the selected photo, the UI restores the saved
-basic adjustments. It currently uses the same local pipeline as the CLI; final
-NEF/NRW sensor decoding and export rendering remain future work.
+files for metadata inspection, embedded JPEG preview when available, and guarded
+native sensor preview/export when the file exposes TIFF-style uncompressed Bayer
+data. It can import a folder of RAW-like files, choose an output folder, run AUTO
+for renderable files, view the generated preview, check selected-photo
+information and planned output paths, compare before/after, adjust exposure,
+create a safe sample DNG, adjust contrast/warmth, open the exported JPEG, export
+supported photos from the imported folder, and open the output folder. When
+adjustments change, the UI marks the preview as needing an update until the next
+preview/export render. If the current output folder already has a matching
+recipe for the selected photo, the UI restores the saved basic adjustments. It
+currently uses the same local pipeline as the CLI; common compressed Nikon
+sensor payloads remain future work.
 
 ### Step 4 - Real RAW Backend
 

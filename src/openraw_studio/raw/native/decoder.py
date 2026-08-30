@@ -14,6 +14,9 @@ from typing import Any, Mapping
 from openraw_studio.raw.native.dng import DngMetadataReader
 
 
+NATIVE_SENSOR_EXTENSIONS = {".dng", ".nef", ".nrw"}
+
+
 @dataclass(frozen=True)
 class RawSensorData:
     """Linear sensor data produced by a decoder."""
@@ -37,11 +40,13 @@ class NativeRawDecoder:
         self._dng_reader = dng_reader or DngMetadataReader()
 
     def decode(self, source_path: Path) -> RawSensorData:
-        if source_path.suffix.lower() != ".dng":
-            raise NotImplementedError("OpenRAW native decoding currently starts with DNG files.")
+        if source_path.suffix.lower() not in NATIVE_SENSOR_EXTENSIONS:
+            raise NotImplementedError(
+                "OpenRAW native decoding currently supports DNG and guarded TIFF-style Nikon RAW files."
+            )
 
         pixel_data = self._dng_reader.read_pixel_data(source_path)
-        dng_summary = self._dng_reader.read(source_path).as_dict()
+        raw_summary = self._dng_reader.read(source_path).as_dict()
         cfa = _cfa_pattern_name(pixel_data.cfa_pattern)
         return RawSensorData(
             source_path=source_path,
@@ -62,9 +67,9 @@ class NativeRawDecoder:
                 "tile_width": pixel_data.tile_width,
                 "tile_length": pixel_data.tile_length,
                 "cfa_pattern": pixel_data.cfa_pattern,
-                "as_shot_neutral": dng_summary.get("as_shot_neutral"),
-                "color_matrix_1": dng_summary.get("color_matrix_1"),
-                "color_matrix_2": dng_summary.get("color_matrix_2"),
+                "as_shot_neutral": raw_summary.get("as_shot_neutral"),
+                "color_matrix_1": raw_summary.get("color_matrix_1"),
+                "color_matrix_2": raw_summary.get("color_matrix_2"),
             },
         )
 

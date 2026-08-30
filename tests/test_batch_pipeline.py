@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from fixtures_nikon import embedded_jpeg_bytes, synthetic_nikon_nef_metadata_bytes
+from fixtures_nikon import embedded_jpeg_bytes, synthetic_nikon_nef_metadata_bytes, synthetic_nikon_nef_sensor_bytes
 from openraw_studio.pipeline.batch import discover_batch_sources, run_batch_export
 from openraw_studio.raw.native.synthetic import write_synthetic_dng
 
@@ -45,6 +45,26 @@ class BatchPipelineTests(unittest.TestCase):
         self.assertTrue(recipe_exists)
         self.assertEqual(result.items[0].status, "exported")
         self.assertEqual(result.items[1].status, "skipped")
+
+    def test_run_batch_export_processes_renderable_nikon_sensor_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "a.NEF"
+            source.write_bytes(synthetic_nikon_nef_sensor_bytes(width=4, height=4))
+            output = root / "output"
+
+            result = run_batch_export([source], output)
+
+            preview_path = output / "previews" / "a.preview.png"
+            export_path = output / "exports" / "a.auto.jpg"
+            preview_exists = preview_path.exists()
+            export_exists = export_path.exists()
+
+        self.assertEqual(result.total, 1)
+        self.assertEqual(result.exported, 1)
+        self.assertEqual(result.skipped, 0)
+        self.assertTrue(preview_exists)
+        self.assertTrue(export_exists)
 
     def test_run_batch_preview_only_skips_final_export(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

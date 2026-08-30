@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from fixtures_nikon import synthetic_nikon_nef_sensor_bytes
 from openraw_studio.core.domain import ImageAsset
 from openraw_studio.core.image_info import read_image_size
 from openraw_studio.pipeline.interfaces import PipelineRequest
@@ -134,6 +135,23 @@ class NativeDngMetadataTests(unittest.TestCase):
         self.assertEqual(sensor.black_level, 64)
         self.assertEqual(sensor.white_level, 4095)
         self.assertEqual(len(sensor.raw_bytes), 8)
+
+    def test_native_decoder_returns_sensor_data_for_tiff_style_nikon_nef(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "pixels.NEF"
+            path.write_bytes(synthetic_nikon_nef_sensor_bytes(width=4, height=4))
+
+            sensor = NativeRawDecoder().decode(path)
+
+        self.assertEqual(sensor.width, 4)
+        self.assertEqual(sensor.height, 4)
+        self.assertEqual(sensor.color_filter_array, "RGGB")
+        self.assertEqual(sensor.bits_per_sample, 16)
+        self.assertEqual(sensor.samples_per_pixel, 1)
+        self.assertEqual(sensor.black_level, 64)
+        self.assertEqual(sensor.white_level, 4095)
+        self.assertEqual(len(sensor.raw_bytes), 32)
+        self.assertEqual(sensor.metadata["storage_layout"], "strips")
 
     def test_sensor_normalization_maps_black_and_white_levels(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -369,6 +387,24 @@ class NativeDngMetadataTests(unittest.TestCase):
         self.assertTrue(preview_bytes.startswith(b"\x89PNG\r\n\x1a\n"))
         self.assertEqual(preview_size, (3, 3))
 
+    def test_native_processor_writes_png_preview_for_tiff_style_nikon_nef(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "pixels.NEF"
+            preview_path = root / "preview.png"
+            source.write_bytes(synthetic_nikon_nef_sensor_bytes(width=4, height=4))
+
+            image = NativeRawProcessor().create_preview(ImageAsset(source), preview_path, max_dimension=2048)
+            preview_bytes = preview_path.read_bytes()
+            preview_size = read_image_size(preview_path)
+
+        self.assertEqual(image.width, 4)
+        self.assertEqual(image.height, 4)
+        self.assertEqual(image.path, preview_path)
+        self.assertEqual(image.color_space, "preview-rgb")
+        self.assertTrue(preview_bytes.startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertEqual(preview_size, (4, 4))
+
     def test_preview_can_render_before_and_after_color_stages(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "pixels.DNG"
@@ -407,6 +443,28 @@ class NativeDngMetadataTests(unittest.TestCase):
         self.assertEqual(result.recipe["pipeline"]["mode"], "render")
         self.assertTrue(result.recipe["pipeline"]["rendered"])
         self.assertEqual(result.recipe["exports"][0]["format"], "jpeg")
+
+    def test_native_pipeline_writes_jpeg_export_for_tiff_style_nikon_nef(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "pixels.NEF"
+            output = root / "output"
+            source.write_bytes(synthetic_nikon_nef_sensor_bytes(width=4, height=4))
+
+            result = LocalPhotoPipeline().process(PipelineRequest(source, output))
+            preview_path = output / "previews" / "pixels.preview.png"
+            export_path = output / "exports" / "pixels.auto.jpg"
+            preview_exists = preview_path.exists()
+            export_exists = export_path.exists()
+            export_size = read_image_size(export_path)
+
+        self.assertTrue(preview_exists)
+        self.assertTrue(export_exists)
+        self.assertEqual(export_size, (4, 4))
+        self.assertEqual(result.preview.path, preview_path)
+        self.assertEqual(result.exports[0].path, export_path)
+        self.assertEqual(result.recipe["source"]["metadata"]["raw_format"], "nikon-nef")
+        self.assertTrue(result.recipe["pipeline"]["rendered"])
 
     def test_native_pipeline_records_manual_tone_overrides(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

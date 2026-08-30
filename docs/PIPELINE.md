@@ -42,21 +42,23 @@ openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-outpu
 ```
 
 The preview-only path writes a `.preview.png` file for narrow supported
-uncompressed DNG files, or a `.preview.jpg` file for Nikon RAW files with
-embedded JPEG previews, and skips final export.
+uncompressed DNG files and native-renderable Nikon files, or a `.preview.jpg`
+file for Nikon RAW files with embedded JPEG previews, and skips final export.
 
-Current native render command for narrow supported uncompressed DNG files:
+Current native render command for narrow supported uncompressed DNG files and
+guarded TIFF-style Nikon sensor files:
 
 ```powershell
 openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-output"
+openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-output"
 ```
 
 This path writes a `.preview.png` preview, a preview-derived `.auto.jpg` export,
-and a recipe sidecar for supported simple uncompressed DNG files. Nikon `.NEF` /
-`.NRW` files can be inspected for metadata and previewed when an embedded JPEG
-preview is present, but final native NEF/NRW export rendering is not implemented
-yet. It is an honest V0.1 render proof, not the final camera-aware color
-pipeline.
+and a recipe sidecar for supported simple uncompressed DNG files and guarded
+TIFF-style Nikon sensor files. Nikon `.NEF` / `.NRW` files can also be inspected
+for metadata and previewed when an embedded JPEG preview is present, but common
+compressed/proprietary Nikon sensor payloads are not implemented yet. It is an
+honest V0.1 render proof, not the final camera-aware color pipeline.
 
 Current native batch command:
 

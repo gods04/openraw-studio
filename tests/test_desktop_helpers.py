@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from fixtures_nikon import synthetic_nikon_nef_sensor_bytes
 from openraw_studio.core.domain import ImageRef
 from openraw_studio.decision.auto_adjust import AutoAdjustSuggestion
 from openraw_studio.pipeline.batch import BatchItemResult, BatchResult
@@ -247,6 +248,18 @@ class DesktopHelperTests(unittest.TestCase):
         summary = _planned_output_summary(Path("IMG_0001.NEF"), Path("openraw-output"))
 
         self.assertIn(f"Preview: {Path('previews') / 'IMG_0001.preview.jpg'}", summary)
+        self.assertIn(f"JPEG: {Path('exports') / 'IMG_0001.auto.jpg'}", summary)
+        self.assertIn(f"Recipe: {Path('recipes') / 'IMG_0001.NEF.recipe.json'}", summary)
+
+    def test_planned_output_summary_uses_png_preview_for_renderable_nikon_raw(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "IMG_0001.NEF"
+            source.write_bytes(synthetic_nikon_nef_sensor_bytes(width=4, height=4))
+
+            summary = _planned_output_summary(source, root / "openraw-output")
+
+        self.assertIn(f"Preview: {Path('previews') / 'IMG_0001.preview.png'}", summary)
         self.assertIn(f"JPEG: {Path('exports') / 'IMG_0001.auto.jpg'}", summary)
         self.assertIn(f"Recipe: {Path('recipes') / 'IMG_0001.NEF.recipe.json'}", summary)
 

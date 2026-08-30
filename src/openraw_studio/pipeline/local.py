@@ -20,6 +20,7 @@ from openraw_studio.pipeline.interfaces import PipelineRequest, PipelineResult
 from openraw_studio.raw.errors import RawProcessingError
 from openraw_studio.raw.interfaces import RawProcessor, RawRenderRequest
 from openraw_studio.raw.native import NativeRawProcessor
+from openraw_studio.raw.native.support import inspect_native_support
 from openraw_studio.vision.heuristic import HeuristicVisionEngine
 
 
@@ -285,6 +286,9 @@ def _pipeline_mode(request: PipelineRequest) -> str:
 
 def _preview_path_for_source(plan: ArtifactPlan, source: Path, raw_processor: RawProcessor) -> Path:
     if isinstance(raw_processor, NativeRawProcessor) and source.suffix.lower() in NIKON_RAW_EXTENSIONS:
+        support = inspect_native_support(source)
+        if support.can_render:
+            return plan.preview_path
         return plan.preview_path.with_name(f"{source.stem}.preview.jpg")
     return plan.preview_path
 

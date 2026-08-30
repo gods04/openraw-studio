@@ -14,7 +14,7 @@ from openraw_studio.pipeline.local import LocalPhotoPipeline
 from openraw_studio.raw.backends import BackendCheck
 from openraw_studio.raw.darktable import DarktableCliProcessor
 from openraw_studio.raw.interfaces import RawRenderRequest
-from fixtures_nikon import embedded_jpeg_bytes, synthetic_nikon_nef_metadata_bytes
+from fixtures_nikon import embedded_jpeg_bytes, synthetic_nikon_nef_metadata_bytes, synthetic_nikon_nef_sensor_bytes
 from openraw_studio.raw.native import NativeRawProcessor, write_synthetic_dng
 
 
@@ -95,8 +95,9 @@ class CliPipelineTests(unittest.TestCase):
     def test_nikon_nef_render_is_blocked_after_metadata_import(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            source = write_synthetic_dng(root / "IMG_0007.NEF", width=8, height=8)
+            source = root / "IMG_0007.NEF"
             output = root / "output"
+            source.write_bytes(synthetic_nikon_nef_metadata_bytes())
 
             with redirect_stderr(StringIO()):
                 exit_code = main(["process", str(source), "--output", str(output)])
@@ -108,6 +109,27 @@ class CliPipelineTests(unittest.TestCase):
             self.assertEqual(recipe["source"]["metadata"]["raw_format"], "nikon-nef")
             self.assertIn("Nikon", recipe["pipeline"]["message"])
             self.assertFalse((output / "exports" / "IMG_0007.auto.jpg").exists())
+
+    def test_nikon_nef_native_sensor_render_writes_jpeg_export(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "IMG_0009.NEF"
+            output = root / "output"
+            source.write_bytes(synthetic_nikon_nef_sensor_bytes(width=4, height=4))
+
+            with redirect_stdout(StringIO()):
+                exit_code = main(["process", str(source), "--output", str(output)])
+            recipe_path = output / "recipes" / "IMG_0009.NEF.recipe.json"
+            recipe = json.loads(recipe_path.read_text(encoding="utf-8"))
+            preview_path = output / "previews" / "IMG_0009.preview.png"
+            export_path = output / "exports" / "IMG_0009.auto.jpg"
+
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(preview_path.exists())
+            self.assertTrue(export_path.exists())
+            self.assertEqual(recipe["source"]["metadata"]["raw_format"], "nikon-nef")
+            self.assertEqual(recipe["planned_artifacts"]["preview"], str(preview_path))
+            self.assertEqual(recipe["exports"][0]["path"], str(export_path))
 
     def test_nikon_nef_preview_only_writes_embedded_jpeg_preview(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -243,7 +265,8 @@ class CliPipelineTests(unittest.TestCase):
 
     def test_cli_inspect_reports_nikon_raw_import_only(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
-            source = write_synthetic_dng(Path(temp) / "sample.NEF", width=8, height=8)
+            source = Path(temp) / "sample.NEF"
+            source.write_bytes(synthetic_nikon_nef_metadata_bytes())
             output = StringIO()
 
             with redirect_stdout(output):
@@ -254,6 +277,21 @@ class CliPipelineTests(unittest.TestCase):
         self.assertIn("Import: metadata supported", text)
         self.assertIn("Native render: not supported yet", text)
         self.assertIn("Nikon RAW metadata import is supported", text)
+
+    def test_cli_inspect_reports_nikon_raw_native_sensor_render(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "sample.NEF"
+            source.write_bytes(synthetic_nikon_nef_sensor_bytes(width=4, height=4))
+            output = StringIO()
+
+            with redirect_stdout(output):
+                exit_code = main(["inspect", str(source)])
+
+        text = output.getvalue()
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Preview: supported", text)
+        self.assertIn("Native render: supported", text)
+        self.assertIn("guarded Nikon sensor decode", text)
 
     def test_cli_inspect_reports_nikon_raw_embedded_preview(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

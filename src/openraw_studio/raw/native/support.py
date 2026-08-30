@@ -147,11 +147,35 @@ def _inspect_nikon_raw(source_path: Path, *, dng_reader: DngMetadataReader | Non
         )
 
     summary = metadata.as_dict()
-    details = _nikon_import_details(source_path, summary)
+    render_issues, render_details = _evaluate_nikon_summary(metadata.ifds, summary, source_path)
+    details = _nikon_import_details(source_path, summary, render_detail=None)
+    details.extend(_render_detail_extras(render_details))
     try:
         preview = reader.read_embedded_jpeg_preview(source_path)
     except (DngMetadataError, OSError):
-        details.insert(-1, "Preview: embedded JPEG not found")
+        preview_label = "Preview: embedded JPEG not found"
+    else:
+        preview_label = f"Preview: embedded JPEG ({len(preview.data)} bytes)"
+
+    if not render_issues:
+        if preview_label:
+            details.append(preview_label)
+        details.append("Render: native TIFF-style sensor decode")
+        return _report(
+            source_path,
+            file_exists=True,
+            can_inspect=True,
+            can_preview=True,
+            can_render=True,
+            status="supported",
+            reason="Supported by OpenRAW Native V0.1 guarded Nikon sensor decode.",
+            details=tuple(details),
+            metadata=summary,
+        )
+
+    if preview_label == "Preview: embedded JPEG not found":
+        details.append(preview_label)
+        details.append(f"Render: {render_issues[0]}")
         return _report(
             source_path,
             file_exists=True,
@@ -167,8 +191,8 @@ def _inspect_nikon_raw(source_path: Path, *, dng_reader: DngMetadataReader | Non
             metadata=summary,
         )
 
-    preview_label = f"Preview: embedded JPEG ({len(preview.data)} bytes)"
-    details.insert(-1, preview_label)
+    details.append(preview_label)
+    details.append(f"Render: {render_issues[0]}")
     return _report(
         source_path,
         file_exists=True,
@@ -182,7 +206,12 @@ def _inspect_nikon_raw(source_path: Path, *, dng_reader: DngMetadataReader | Non
     )
 
 
-def _nikon_import_details(source_path: Path, summary: Mapping[str, Any]) -> list[str]:
+def _nikon_import_details(
+    source_path: Path,
+    summary: Mapping[str, Any],
+    *,
+    render_detail: str | None = "Render: NEF/NRW decoding is future work",
+) -> list[str]:
     details = [f"Format: Nikon {source_path.suffix.lstrip('.').upper()}/TIFF"]
     width = _scalar_int(summary.get("width"))
     height = _scalar_int(summary.get("height"))
@@ -203,26 +232,69 @@ def _nikon_import_details(source_path: Path, summary: Mapping[str, Any]) -> list
     focal_length = _scalar_float(summary.get("focal_length_mm"))
     if focal_length is not None and focal_length > 0:
         details.append(f"Focal length: {focal_length:g} mm")
-    details.append("Render: NEF/NRW decoding is future work")
+    if render_detail is not None:
+        details.append(render_detail)
     return details
 
 
+def _render_detail_extras(render_details: list[str]) -> list[str]:
+    return [
+        detail
+        for detail in render_details
+        if not detail.startswith("Format:") and not detail.startswith("Dimensions:")
+    ]
+
+
 def _evaluate_dng_summary(ifds: tuple[TiffIfd, ...], summary: Mapping[str, Any]) -> tuple[list[str], list[str]]:
+    return _evaluate_bayer_tiff_summary(
+        ifds,
+        summary,
+        format_label="DNG/TIFF",
+        image_label="DNG image",
+        compression_label="DNG",
+        compression_detail="only uncompressed DNG is supported",
+    )
+
+
+def _evaluate_nikon_summary(
+    ifds: tuple[TiffIfd, ...],
+    summary: Mapping[str, Any],
+    source_path: Path,
+) -> tuple[list[str], list[str]]:
+    return _evaluate_bayer_tiff_summary(
+        ifds,
+        summary,
+        format_label=f"Nikon {source_path.suffix.lstrip('.').upper()}/TIFF",
+        image_label="Nikon RAW image",
+        compression_label="Nikon RAW",
+        compression_detail="only uncompressed TIFF-style sensor data is supported",
+    )
+
+
+def _evaluate_bayer_tiff_summary(
+    ifds: tuple[TiffIfd, ...],
+    summary: Mapping[str, Any],
+    *,
+    format_label: str,
+    image_label: str,
+    compression_label: str,
+    compression_detail: str,
+) -> tuple[list[str], list[str]]:
     issues: list[str] = []
-    details: list[str] = ["Format: DNG/TIFF"]
+    details: list[str] = [f"Format: {format_label}"]
 
     width = _scalar_int(summary.get("width"))
     height = _scalar_int(summary.get("height"))
     if width is not None and height is not None:
         details.append(f"Dimensions: {width} x {height}")
     else:
-        issues.append("DNG image dimensions are missing or not scalar.")
+        issues.append(f"{image_label} dimensions are missing or not scalar.")
 
     compression = _scalar_int(summary.get("compression"), default=1)
     if compression == 1:
         details.append("Compression: uncompressed")
     else:
-        issues.append(f"Unsupported DNG compression: {compression}; only uncompressed DNG is supported.")
+        issues.append(f"Unsupported {compression_label} compression: {compression}; {compression_detail}.")
 
     bits_per_sample = _scalar_int(summary.get("bits_per_sample"))
     if bits_per_sample == 16:

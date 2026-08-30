@@ -61,11 +61,13 @@ Then import `sample-data\openraw-synthetic.DNG` in the app.
 - `openraw doctor` environment check
 - `openraw inspect` support report for one RAW file
 - `openraw process --dry-run` recipe/artifact planner for one RAW-like file
-- `openraw batch` folder export for currently renderable DNG files
+- `openraw batch` folder export for currently renderable DNG/Nikon files
 - OpenRAW Native RAW engine scaffold as the default backend
 - Native DNG/TIFF metadata reader for the first RAW-engine milestone
 - Nikon `.NEF` / `.NRW` metadata import and embedded JPEG preview extraction
 - Native extraction for simple uncompressed DNG strip and tile pixel payloads
+- Guarded native Nikon `.NEF` / `.NRW` sensor decode for TIFF-style
+  uncompressed Bayer payloads
 - Native black/white level normalization for 16-bit Bayer sensor data
 - Native simple Bayer demosaic baseline
 - Native PNG preview encoding for narrow uncompressed DNG test files
@@ -85,8 +87,9 @@ Then import `sample-data\openraw-synthetic.DNG` in the app.
 
 - No packaged installer yet
 - OpenRAW Native has only a first-pass DNG white-balance and color-matrix transform
-- Nikon `.NEF` / `.NRW` files can use embedded JPEG previews, but final native
-  NEF/NRW export rendering is not implemented yet
+- Common compressed/proprietary Nikon `.NEF` / `.NRW` sensor payloads are not
+  implemented yet; the first native Nikon path supports only TIFF-style
+  uncompressed Bayer payloads with the metadata OpenRAW needs
 - Broad proprietary RAW rendering support is not implemented yet
 - No AI model weights included
 - No portrait retouching algorithms yet
@@ -160,25 +163,29 @@ openraw app
 ```
 
 Import a supported DNG for preview/export, import a Nikon `.NEF` / `.NRW` to
-read metadata and show an embedded JPEG preview when the file provides one,
-import a folder to browse RAW-like files, or click `Create Sample DNG`, then
-click `Auto Adjust` for a conservative starter look.
+read metadata, show an embedded JPEG preview when the file provides one, or
+render through the guarded native Nikon sensor path when the file exposes a
+supported uncompressed Bayer payload. Import a folder to browse RAW-like files,
+or click `Create Sample DNG`, then click `Auto Adjust` for a conservative
+starter look.
 Use `Update Preview` to refresh the preview with the current adjustments. When
 the image looks right, click `Export JPEG`. After importing a folder, click
 `Export Folder` to export every currently supported file using the current basic
 adjustments; unsupported files are skipped and reported.
 The app shows basic photo information, current Native support status, and the
 planned preview, JPEG, and recipe paths before rendering. Nikon RAW files with
-embedded JPEG previews can use `Update Preview`, while Auto Adjust and final
-JPEG export stay disabled until native NEF/NRW sensor decoding exists. For
-supported DNG files, it will create a preview PNG, a preview-derived JPEG, and
+only embedded JPEG previews can use `Update Preview`, while Auto Adjust and
+final JPEG export stay disabled. Nikon RAW files that match the guarded native
+sensor path can use preview, Auto Adjust, and JPEG export. Supported DNG and
+native-renderable Nikon files create a preview PNG, a preview-derived JPEG, and
 a recipe JSON in the selected output folder. Nikon preview-only runs write a
 `.preview.jpg` file and recipe JSON. After preview or export,
 `Show Before` lets you compare the basic
 demosaiced image with the OpenRAW color-treated result.
 The Exposure, Contrast, and Warmth controls are recorded in the recipe and
-applied to DNG preview/JPEG export. Nikon embedded previews are currently
-extracted as camera-authored JPEGs without applying those adjustments yet.
+applied to DNG and native-renderable Nikon preview/JPEG export. Nikon embedded
+previews are currently extracted as camera-authored JPEGs without applying
+those adjustments yet.
 `Open Output Folder` opens the generated files directly. When adjustments
 change after a preview render, the desktop app marks the preview as needing an
 update.
@@ -210,7 +217,8 @@ openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-outpu
 ```
 
 Render the current native preview-only path for a narrow supported
-uncompressed DNG or a Nikon RAW file with an embedded JPEG preview:
+uncompressed DNG, a native-renderable Nikon RAW file, or a Nikon RAW file with
+an embedded JPEG preview:
 
 ```powershell
 openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-output" --preview-only
@@ -225,15 +233,16 @@ Render the current narrow end-to-end native path:
 
 ```powershell
 openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-output"
+openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-output"
 ```
 
-For supported simple uncompressed DNG files, this writes both `.preview.png` and
-`.auto.jpg` artifacts through the local JPEG export engine. The image data is
-still V0.1 preview-derived. It applies
-available DNG `AsShotNeutral` and `ColorMatrix1` metadata, but is not final
-camera-aware color science yet.
+For supported simple uncompressed DNG files and guarded TIFF-style Nikon sensor
+files, this writes both `.preview.png` and `.auto.jpg` artifacts through the
+local JPEG export engine. The image data is still V0.1 preview-derived. It
+applies available DNG `AsShotNeutral` and `ColorMatrix1` metadata when present,
+but is not final camera-aware color science yet.
 
-Batch export currently renderable DNG files from a folder:
+Batch export currently renderable DNG/Nikon files from a folder:
 
 ```powershell
 openraw batch "E:\Photos\input" --output "E:\Photos\openraw-output"

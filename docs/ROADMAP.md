@@ -27,7 +27,7 @@ Acceptance:
 - no model weights or private photos are committed
 - `openraw process --dry-run` writes a recipe sidecar
 - default RAW engine identity is `openraw-native`
-- `openraw process --preview-only` writes a native preview for supported narrow uncompressed DNG files
+- `openraw process --preview-only` writes a native preview for supported narrow uncompressed DNG files and guarded Nikon sensor files
 
 ## V0.1 - Pipeline Proof
 
@@ -67,7 +67,8 @@ Suggested implementation order:
 22. [done] add batch folder export through CLI and desktop app
 23. [done] add Nikon NEF/NRW metadata import and import-only desktop state
 24. [done] add first Nikon NEF/NRW embedded preview extraction
-25. add first native Nikon NEF sensor decode path for final export
+25. [done] add first native Nikon NEF/NRW sensor decode path for guarded TIFF-style uncompressed payloads
+26. add support for common compressed Nikon NEF sensor payloads
 
 Exit criteria:
 

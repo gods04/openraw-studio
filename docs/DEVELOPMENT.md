@@ -29,6 +29,7 @@ Already present:
 - local JPEG `ExportEngine`
 - Nikon `.NEF` / `.NRW` metadata import
 - Nikon `.NEF` / `.NRW` embedded JPEG preview extraction
+- guarded Nikon `.NEF` / `.NRW` native sensor decode for TIFF-style uncompressed Bayer payloads
 
 ## Module Ownership
 
