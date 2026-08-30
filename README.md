@@ -189,6 +189,9 @@ Nikon RAW files that match the guarded native sensor path can use preview, Auto
 Adjust, and JPEG export. Supported DNG and native-renderable Nikon files create
 a preview PNG, a preview-derived JPEG, and a recipe JSON in the selected output
 folder. Nikon preview-only runs write a `.preview.jpg` file and recipe JSON.
+After `Update Preview`, the desktop app enables `Open Preview JPEG` for those
+preview-only Nikon files so you can open the camera-authored embedded preview
+directly without treating it as a finished RAW export.
 After preview or export, `Show Before` lets you compare the basic demosaiced
 image with the OpenRAW color-treated result.
 The Exposure, Contrast, and Warmth controls are recorded in the recipe and

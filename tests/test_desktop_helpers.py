@@ -31,6 +31,7 @@ from openraw_studio.ui.desktop import (
     _library_item_label,
     _load_recipe_adjustments,
     _manual_overrides,
+    _open_jpeg_target,
     _planned_output_summary,
     _preview_state_text,
     _recipe_adjustment_overrides,
@@ -346,6 +347,48 @@ class DesktopHelperTests(unittest.TestCase):
         self.assertIn("JPEG:", summary)
         self.assertIn("Recipe:", summary)
 
+    def test_format_result_summary_names_embedded_preview_jpeg(self) -> None:
+        preview = ImageRef(Path("preview.jpg"), width=10, height=8, color_space="embedded-jpeg", role="preview")
+        result = PipelineResult(recipe={}, preview=preview)
+
+        summary = _format_result_summary(result)
+
+        self.assertIn("Preview JPEG: preview.jpg", summary)
+
+    def test_open_jpeg_target_prefers_final_export(self) -> None:
+        result = PipelineResult(
+            recipe={},
+            preview=ImageRef(Path("preview.jpg"), width=1, height=1, color_space="embedded-jpeg", role="preview"),
+            exports=(ImageRef(Path("export.jpg"), width=1, height=1, color_space="sRGB", role="export"),),
+        )
+
+        path, label = _open_jpeg_target(result)
+
+        self.assertEqual(path, Path("export.jpg"))
+        self.assertEqual(label, "Open JPEG")
+
+    def test_open_jpeg_target_uses_embedded_preview_when_no_export_exists(self) -> None:
+        result = PipelineResult(
+            recipe={},
+            preview=ImageRef(Path("preview.jpg"), width=1, height=1, color_space="embedded-jpeg", role="preview"),
+        )
+
+        path, label = _open_jpeg_target(result)
+
+        self.assertEqual(path, Path("preview.jpg"))
+        self.assertEqual(label, "Open Preview JPEG")
+
+    def test_open_jpeg_target_stays_disabled_for_png_preview_only(self) -> None:
+        result = PipelineResult(
+            recipe={},
+            preview=ImageRef(Path("preview.png"), width=1, height=1, color_space="sRGB", role="preview"),
+        )
+
+        path, label = _open_jpeg_target(result)
+
+        self.assertIsNone(path)
+        self.assertEqual(label, "Open JPEG")
+
     def test_result_status_distinguishes_preview_from_export(self) -> None:
         preview_result = PipelineResult(recipe={}, diagnostics={"preview_only": True})
         export_result = PipelineResult(
@@ -355,6 +398,15 @@ class DesktopHelperTests(unittest.TestCase):
 
         self.assertEqual(_result_status(preview_result), "Preview updated")
         self.assertEqual(_result_status(export_result), "JPEG exported")
+
+    def test_result_status_names_embedded_preview_jpeg(self) -> None:
+        preview_result = PipelineResult(
+            recipe={},
+            preview=ImageRef(Path("preview.jpg"), width=1, height=1, color_space="embedded-jpeg", role="preview"),
+            diagnostics={"preview_only": True},
+        )
+
+        self.assertEqual(_result_status(preview_result), "Preview JPEG ready")
 
     def test_auto_adjust_status_summarizes_suggestion(self) -> None:
         suggestion = AutoAdjustSuggestion(exposure=0.3, contrast=0.12, warmth=-0.06, rationale=("test",))

@@ -53,6 +53,11 @@ For Nikon preview-only files, the app writes:
 - embedded-preview JPEG
 - recipe JSON sidecar
 
+After `Update Preview`, the app enables `Open Preview JPEG` for these
+preview-only Nikon files. `Export JPEG` remains disabled until that file can be
+rendered through the native sensor path, so the UI does not present an embedded
+camera preview as a finished RAW export.
+
 `Export Folder` processes currently renderable files from the imported folder
 using the current basic adjustments and reports skipped/preview-only/import-only/failed files.
 

@@ -30,6 +30,7 @@ The UI should keep the image workspace first:
 - export controls
 - batch export for currently supported folder files
 - open generated JPEG action
+- open embedded preview JPEG action for preview-only Nikon files
 - open output folder action
 - saved recipe detection for restoring basic adjustments
 
@@ -38,4 +39,6 @@ RAW, vision, portrait, color, film, QC, or export implementations. The current
 shell can preview/export supported DNG files and guarded TIFF-style Nikon sensor
 files, including row-aligned 12/14-bit packed strip payloads, preview Nikon RAW
 files that include embedded JPEGs, and import Nikon RAW metadata while keeping
-advanced controls for later stages.
+advanced controls for later stages. Preview-only Nikon files can expose an
+`Open Preview JPEG` action after `Update Preview`, while final export controls
+stay disabled until native sensor rendering supports that file.

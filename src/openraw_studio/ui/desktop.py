@@ -333,7 +333,8 @@ def _flatten_rgb_pixels(pixels: tuple[tuple[int, int, int], ...]) -> bytes:
 def _format_result_summary(result: Any) -> str:
     lines: list[str] = []
     if result.preview is not None:
-        lines.append(f"Preview: {result.preview.path}")
+        preview_label = "Preview JPEG" if result.preview.color_space == "embedded-jpeg" else "Preview"
+        lines.append(f"{preview_label}: {result.preview.path}")
     if result.exports:
         lines.append(f"JPEG: {result.exports[0].path}")
     if recipe_path := result.diagnostics.get("recipe_path"):
@@ -341,8 +342,18 @@ def _format_result_summary(result: Any) -> str:
     return "\n".join(lines)
 
 
+def _open_jpeg_target(result: Any) -> tuple[Path | None, str]:
+    if result.exports:
+        return result.exports[0].path, "Open JPEG"
+    if result.preview is not None and result.preview.color_space == "embedded-jpeg":
+        return result.preview.path, "Open Preview JPEG"
+    return None, "Open JPEG"
+
+
 def _result_status(result: Any) -> str:
     if result.diagnostics.get("preview_only"):
+        if result.preview is not None and result.preview.color_space == "embedded-jpeg":
+            return "Preview JPEG ready"
         return "Preview updated"
     if result.exports:
         return "JPEG exported"
@@ -957,7 +968,7 @@ def launch_desktop_app() -> None:
             self.export_label.configure(text="")
             self.compare_button.configure(state="disabled", text="Show Before")
             self.open_folder_button.configure(state="disabled")
-            self.open_export_button.configure(state="disabled")
+            self.open_export_button.configure(state="disabled", text="Open JPEG")
 
         def _update_preview(self) -> None:
             self._start_pipeline(preview_only=True)
@@ -1036,7 +1047,7 @@ def launch_desktop_app() -> None:
             self.preview_state_var.set("Updating preview..." if preview_only else "Exporting preview and JPEG...")
             self.export_label.configure(text="")
             self.last_export_path = None
-            self.open_export_button.configure(state="disabled")
+            self.open_export_button.configure(state="disabled", text="Open JPEG")
             overrides = self._current_overrides()
             threading.Thread(
                 target=self._process_worker,
@@ -1130,8 +1141,10 @@ def launch_desktop_app() -> None:
             self.export_label.configure(text=_format_result_summary(result))
             if result.preview is not None or result.exports:
                 self.open_folder_button.configure(state="normal")
-            if result.exports:
-                self.last_export_path = result.exports[0].path
+            target_path, button_text = _open_jpeg_target(result)
+            self.open_export_button.configure(text=button_text)
+            if target_path is not None:
+                self.last_export_path = target_path
                 self.open_export_button.configure(state="normal")
 
         def _toggle_compare(self) -> None:
