@@ -55,7 +55,7 @@ Suggested implementation order:
 10. add source discovery and import-folder watcher contract
 11. [done] add locally generated synthetic DNG/Nikon NEF files for safe smoke tests
 12. [done] add first Windows ZIP packaging workflow
-13. [done] add basic exposure, contrast, and warmth controls to preview/export recipes
+13. [done] add basic exposure, contrast, warmth, and saturation controls to preview/export recipes
 14. [done] split desktop preview refresh from final JPEG export
 15. [done] mark desktop previews stale when adjustments change
 16. [done] add conservative desktop Auto Adjust starter action

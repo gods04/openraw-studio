@@ -30,6 +30,7 @@ def tone_map_preview(
     exposure: float = 0.0,
     contrast: float = 0.0,
     warmth: float = 0.0,
+    saturation: float = 0.0,
     gamma: float = 2.2,
 ) -> PreviewRgbImage:
     """Map linear RGB values to a small 8-bit preview.
@@ -44,6 +45,7 @@ def tone_map_preview(
     exposure_scale = 2.0**exposure
     contrast_factor = 1.0 + _clamp(contrast, -1.0, 1.0) * 0.75
     warmth_value = _clamp(warmth, -1.0, 1.0)
+    saturation_factor = 1.0 + _clamp(saturation, -1.0, 1.0) * 0.75
     pixels = tuple(
         _encode_pixel(
             red,
@@ -52,6 +54,7 @@ def tone_map_preview(
             exposure_scale=exposure_scale,
             contrast_factor=contrast_factor,
             warmth=warmth_value,
+            saturation_factor=saturation_factor,
             gamma=gamma,
         )
         for red, green, blue in linear.pixels
@@ -67,12 +70,14 @@ def _encode_pixel(
     exposure_scale: float,
     contrast_factor: float,
     warmth: float,
+    saturation_factor: float,
     gamma: float,
 ) -> tuple[int, int, int]:
     red, green, blue = _apply_warmth(red, green, blue, warmth=warmth)
     red = _apply_contrast(red * exposure_scale, contrast_factor)
     green = _apply_contrast(green * exposure_scale, contrast_factor)
     blue = _apply_contrast(blue * exposure_scale, contrast_factor)
+    red, green, blue = _apply_saturation(red, green, blue, factor=saturation_factor)
     return (
         _encode_channel(red, gamma),
         _encode_channel(green, gamma),
@@ -90,6 +95,15 @@ def _apply_warmth(red: float, green: float, blue: float, *, warmth: float) -> tu
 def _apply_contrast(value: float, factor: float) -> float:
     pivot = 0.18
     return ((value - pivot) * factor) + pivot
+
+
+def _apply_saturation(red: float, green: float, blue: float, *, factor: float) -> tuple[float, float, float]:
+    luma = (0.2126 * red) + (0.7152 * green) + (0.0722 * blue)
+    return (
+        luma + ((red - luma) * factor),
+        luma + ((green - luma) * factor),
+        luma + ((blue - luma) * factor),
+    )
 
 
 def _encode_channel(value: float, gamma: float) -> int:

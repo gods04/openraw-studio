@@ -300,11 +300,12 @@ class DesktopHelperTests(unittest.TestCase):
             "exposure": 3.0,
             "contrast": -1.5,
             "warmth": "0.25",
+            "saturation": 1.4,
         }
 
         self.assertEqual(
             _recipe_adjustment_overrides(recipe),
-            {"exposure": 2.0, "contrast": -1.0, "warmth": 0.25},
+            {"exposure": 2.0, "contrast": -1.0, "warmth": 0.25, "saturation": 1.0},
         )
 
     def test_load_recipe_adjustments_reads_matching_recipe(self) -> None:
@@ -312,12 +313,12 @@ class DesktopHelperTests(unittest.TestCase):
             root = Path(temp)
             source = root / "IMG_0001.DNG"
             recipe = new_recipe(source)
-            recipe["adjustments"]["raw"] = {"exposure": 0.7, "contrast": 0.2, "warmth": -0.1}
+            recipe["adjustments"]["raw"] = {"exposure": 0.7, "contrast": 0.2, "warmth": -0.1, "saturation": 0.3}
             recipe_path = write_recipe(recipe, root / "IMG_0001.DNG.recipe.json")
 
             overrides = _load_recipe_adjustments(recipe_path, source)
 
-        self.assertEqual(overrides, {"exposure": 0.7, "contrast": 0.2, "warmth": -0.1})
+        self.assertEqual(overrides, {"exposure": 0.7, "contrast": 0.2, "warmth": -0.1, "saturation": 0.3})
 
     def test_load_recipe_adjustments_rejects_mismatched_source(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -434,29 +435,31 @@ class DesktopHelperTests(unittest.TestCase):
         self.assertEqual(_result_status(preview_result), "Preview JPEG ready")
 
     def test_auto_adjust_status_summarizes_suggestion(self) -> None:
-        suggestion = AutoAdjustSuggestion(exposure=0.3, contrast=0.12, warmth=-0.06, rationale=("test",))
+        suggestion = AutoAdjustSuggestion(exposure=0.3, contrast=0.12, warmth=-0.06, saturation=0.08, rationale=("test",))
 
         status = _auto_adjust_status(suggestion)
 
         self.assertIn("+0.3 EV", status)
         self.assertIn("Contrast +12", status)
         self.assertIn("Warmth -6", status)
+        self.assertIn("Saturation +8", status)
 
     def test_manual_overrides_collects_tone_controls(self) -> None:
         self.assertEqual(
-            _manual_overrides(0.5, -0.25, 0.75),
-            {"exposure": 0.5, "contrast": -0.25, "warmth": 0.75},
+            _manual_overrides(0.5, -0.25, 0.75, 0.2),
+            {"exposure": 0.5, "contrast": -0.25, "warmth": 0.75, "saturation": 0.2},
         )
 
     def test_adjustments_match_with_small_tolerance(self) -> None:
-        rendered = {"exposure": 0.5, "contrast": -0.25, "warmth": 0.75}
-        current = {"exposure": 0.50001, "contrast": -0.25, "warmth": 0.75}
+        rendered = {"exposure": 0.5, "contrast": -0.25, "warmth": 0.75, "saturation": 0.2}
+        current = {"exposure": 0.50001, "contrast": -0.25, "warmth": 0.75, "saturation": 0.2}
 
         self.assertTrue(_adjustments_match(rendered, current))
         self.assertFalse(_adjustments_match(rendered, {**current, "warmth": 0.5}))
+        self.assertFalse(_adjustments_match(rendered, {**current, "saturation": -0.2}))
 
     def test_preview_state_text_marks_stale_preview(self) -> None:
-        current = {"exposure": 0.0, "contrast": 0.0, "warmth": 0.0}
+        current = {"exposure": 0.0, "contrast": 0.0, "warmth": 0.0, "saturation": 0.0}
 
         self.assertEqual(_preview_state_text(None, current), "No preview yet")
         self.assertEqual(_preview_state_text(current, current), "Preview current")

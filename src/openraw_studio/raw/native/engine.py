@@ -50,7 +50,7 @@ class NativeRawProcessor:
                 "jpeg_export": "pillow-jpeg-v0.1",
                 "white_balance": "dng-as-shot-neutral-v0.1",
                 "camera_color_matrix": "dng-color-matrix-1-v0.1",
-                "tone_adjustments": "exposure-contrast-warmth-v0.1",
+                "tone_adjustments": "exposure-contrast-warmth-saturation-v0.1",
                 "packed_bayer_strips": "12-14-bit-row-aligned-v0.1",
                 "dng_metadata": True,
                 "nikon_nef_metadata": True,
@@ -128,6 +128,7 @@ class NativeRawProcessor:
                     exposure=adjustments.exposure,
                     contrast=adjustments.contrast,
                     warmth=adjustments.warmth,
+                    saturation=adjustments.saturation,
                     max_dimension=max_dimension,
                 )
                 return ImageRef(
@@ -143,6 +144,7 @@ class NativeRawProcessor:
                 exposure=adjustments.exposure,
                 contrast=adjustments.contrast,
                 warmth=adjustments.warmth,
+                saturation=adjustments.saturation,
                 max_dimension=max_dimension,
             )
         except (DngMetadataError, NotImplementedError, ValueError) as exc:
@@ -175,6 +177,7 @@ class NativeRawProcessor:
                     exposure=adjustments.exposure,
                     contrast=adjustments.contrast,
                     warmth=adjustments.warmth,
+                    saturation=adjustments.saturation,
                     max_dimension=request.max_dimension,
                 )
                 return ImageRef(
@@ -189,6 +192,7 @@ class NativeRawProcessor:
                 exposure=adjustments.exposure,
                 contrast=adjustments.contrast,
                 warmth=adjustments.warmth,
+                saturation=adjustments.saturation,
             )
             write_jpeg(rendered, plan.output_path)
         except (DngMetadataError, NotImplementedError, RuntimeError, ValueError, OSError) as exc:
@@ -279,6 +283,7 @@ class RenderAdjustments:
     exposure: float = 0.0
     contrast: float = 0.0
     warmth: float = 0.0
+    saturation: float = 0.0
 
 
 def _recipe_render_adjustments(recipe: Mapping[str, Any] | None) -> RenderAdjustments:
@@ -290,6 +295,7 @@ def _recipe_render_adjustments(recipe: Mapping[str, Any] | None) -> RenderAdjust
         exposure=_bounded_float(raw.get("exposure", 0.0), minimum=-4.0, maximum=4.0),
         contrast=_bounded_float(raw.get("contrast", 0.0), minimum=-1.0, maximum=1.0),
         warmth=_bounded_float(raw.get("warmth", 0.0), minimum=-1.0, maximum=1.0),
+        saturation=_bounded_float(raw.get("saturation", 0.0), minimum=-1.0, maximum=1.0),
     )
 
 

@@ -313,6 +313,7 @@ def _recipe_adjustment_overrides(recipe: Mapping[str, Any]) -> dict[str, float]:
         "exposure": _clamped_recipe_float(raw.get("exposure"), default=0.0, minimum=-2.0, maximum=2.0),
         "contrast": _clamped_recipe_float(raw.get("contrast"), default=0.0, minimum=-1.0, maximum=1.0),
         "warmth": _clamped_recipe_float(raw.get("warmth"), default=0.0, minimum=-1.0, maximum=1.0),
+        "saturation": _clamped_recipe_float(raw.get("saturation"), default=0.0, minimum=-1.0, maximum=1.0),
     }
 
 
@@ -371,15 +372,17 @@ def _auto_adjust_status(suggestion: AutoAdjustSuggestion) -> str:
         "Auto Adjust applied: "
         f"{_format_exposure_label(suggestion.exposure)}, "
         f"Contrast {_format_adjustment_label(suggestion.contrast)}, "
-        f"Warmth {_format_adjustment_label(suggestion.warmth)}"
+        f"Warmth {_format_adjustment_label(suggestion.warmth)}, "
+        f"Saturation {_format_adjustment_label(suggestion.saturation)}"
     )
 
 
-def _manual_overrides(exposure: float, contrast: float, warmth: float) -> dict[str, float]:
+def _manual_overrides(exposure: float, contrast: float, warmth: float, saturation: float) -> dict[str, float]:
     return {
         "exposure": float(exposure),
         "contrast": float(contrast),
         "warmth": float(warmth),
+        "saturation": float(saturation),
     }
 
 
@@ -391,7 +394,7 @@ def _adjustments_match(
 ) -> bool:
     if rendered is None:
         return False
-    for key in ("exposure", "contrast", "warmth"):
+    for key in ("exposure", "contrast", "warmth", "saturation"):
         if abs(float(rendered.get(key, 0.0)) - float(current.get(key, 0.0))) > tolerance:
             return False
     return True
@@ -488,9 +491,11 @@ def launch_desktop_app() -> None:
             self.exposure_var = tk.DoubleVar(value=0.0)
             self.contrast_var = tk.DoubleVar(value=0.0)
             self.warmth_var = tk.DoubleVar(value=0.0)
+            self.saturation_var = tk.DoubleVar(value=0.0)
             self.exposure_label_var = tk.StringVar(value=_format_exposure_label(0.0))
             self.contrast_label_var = tk.StringVar(value=_format_adjustment_label(0.0))
             self.warmth_label_var = tk.StringVar(value=_format_adjustment_label(0.0))
+            self.saturation_label_var = tk.StringVar(value=_format_adjustment_label(0.0))
             self._build_style(ttk)
             self._build_layout(tk, ttk, filedialog, messagebox)
 
@@ -628,6 +633,19 @@ def launch_desktop_app() -> None:
                 from_=-1.0,
                 to=1.0,
                 variable=self.warmth_var,
+                orient="horizontal",
+                command=self._sync_adjustment_labels,
+            ).pack(fill="x", pady=(6, 8))
+
+            saturation_header = ttk_module.Frame(controls, style="Panel.TFrame")
+            saturation_header.pack(fill="x")
+            ttk_module.Label(saturation_header, text="Saturation", style="Panel.TLabel").pack(side="left")
+            ttk_module.Label(saturation_header, textvariable=self.saturation_label_var, style="Muted.TLabel").pack(side="right")
+            ttk_module.Scale(
+                controls,
+                from_=-1.0,
+                to=1.0,
+                variable=self.saturation_var,
                 orient="horizontal",
                 command=self._sync_adjustment_labels,
             ).pack(fill="x", pady=(6, 8))
@@ -843,7 +861,7 @@ def launch_desktop_app() -> None:
                 self.output_var.set(str(self.output_dir))
             self._refresh_output_info()
             self._clear_result()
-            self._set_adjustment_values(_manual_overrides(0.0, 0.0, 0.0))
+            self._set_adjustment_values(_manual_overrides(0.0, 0.0, 0.0, 0.0))
             recipe_status = self._restore_recipe_if_available()
             self._set_busy(False)
             self.status_var.set(recipe_status or ready_status)
@@ -881,6 +899,7 @@ def launch_desktop_app() -> None:
             self.exposure_var.set(float(overrides.get("exposure", 0.0)))
             self.contrast_var.set(float(overrides.get("contrast", 0.0)))
             self.warmth_var.set(float(overrides.get("warmth", 0.0)))
+            self.saturation_var.set(float(overrides.get("saturation", 0.0)))
             self._sync_adjustment_labels(update_status=False)
 
         def _restore_recipe_if_available(self) -> str | None:
@@ -922,6 +941,7 @@ def launch_desktop_app() -> None:
             self.exposure_label_var.set(_format_exposure_label(float(self.exposure_var.get())))
             self.contrast_label_var.set(_format_adjustment_label(float(self.contrast_var.get())))
             self.warmth_label_var.set(_format_adjustment_label(float(self.warmth_var.get())))
+            self.saturation_label_var.set(_format_adjustment_label(float(self.saturation_var.get())))
             if update_status and self.source_path is not None and not self.is_busy:
                 preview_state = self._refresh_preview_state()
                 self.status_var.set(preview_state if preview_state == "Preview needs update" else "Adjustments changed")
@@ -930,6 +950,7 @@ def launch_desktop_app() -> None:
             self.exposure_var.set(0.0)
             self.contrast_var.set(0.0)
             self.warmth_var.set(0.0)
+            self.saturation_var.set(0.0)
             self._sync_adjustment_labels()
 
         def _auto_adjust(self) -> None:
@@ -957,6 +978,7 @@ def launch_desktop_app() -> None:
             self.exposure_var.set(suggestion.exposure)
             self.contrast_var.set(suggestion.contrast)
             self.warmth_var.set(suggestion.warmth)
+            self.saturation_var.set(suggestion.saturation)
             self._sync_adjustment_labels()
             self._set_busy(False)
             preview_state = self._refresh_preview_state()
@@ -1100,6 +1122,7 @@ def launch_desktop_app() -> None:
                 float(self.exposure_var.get()),
                 float(self.contrast_var.get()),
                 float(self.warmth_var.get()),
+                float(self.saturation_var.get()),
             )
 
         def _refresh_preview_state(self) -> str:

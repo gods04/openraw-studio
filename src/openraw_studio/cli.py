@@ -51,6 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
     batch.add_argument("--exposure", type=float, default=0.0, help="Exposure adjustment in stops (-4.0 to 4.0).")
     batch.add_argument("--contrast", type=float, default=0.0, help="Contrast adjustment from -1.0 to 1.0.")
     batch.add_argument("--warmth", type=float, default=0.0, help="Warmth adjustment from -1.0 cooler to 1.0 warmer.")
+    batch.add_argument("--saturation", type=float, default=0.0, help="Saturation adjustment from -1.0 muted to 1.0 vivid.")
     batch.add_argument("--limit", type=int, default=200, help="Maximum number of RAW-like files to scan.")
     batch.add_argument("--preview-only", action="store_true", help="Render previews and recipes but skip JPEG export.")
     batch.add_argument("--json", action="store_true", help="Print a machine-readable batch report.")
@@ -64,6 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
     process.add_argument("--exposure", type=float, default=0.0, help="Exposure adjustment in stops (-4.0 to 4.0).")
     process.add_argument("--contrast", type=float, default=0.0, help="Contrast adjustment from -1.0 to 1.0.")
     process.add_argument("--warmth", type=float, default=0.0, help="Warmth adjustment from -1.0 cooler to 1.0 warmer.")
+    process.add_argument("--saturation", type=float, default=0.0, help="Saturation adjustment from -1.0 muted to 1.0 vivid.")
     process.add_argument(
         "--raw-backend",
         choices=("native", "darktable-experimental"),
@@ -90,9 +92,10 @@ def _run_doctor(include_experimental_backends: bool, darktable_cli: str | None) 
     print(f"{native.name}: available")
     print(
         "  status: foundation ready; Nikon NEF/NRW metadata import, embedded JPEG preview, "
-        "MakerNote compression metadata summary, and optimized Nikon 34713 lossless sensor decode; simple PNG "
-        "preview/native render and local JPEG export for narrow uncompressed 12/14/16-bit DNG and "
-        "guarded TIFF-style Nikon sensor files"
+        "MakerNote compression metadata summary, optimized Nikon 34713 lossless sensor decode/render, "
+        "and basic exposure/contrast/warmth/saturation controls; simple PNG preview/native render and "
+        "local JPEG export for narrow uncompressed 12/14/16-bit DNG, guarded TIFF-style Nikon sensor "
+        "files, and supported Nikon 34713 lossless files"
     )
     if include_experimental_backends or darktable_cli:
         check = check_darktable_cli(darktable_cli)
@@ -171,7 +174,12 @@ def _run_process(args: argparse.Namespace) -> int:
                 processing_profile=args.processing_profile,
                 creative_look=args.creative_look,
                 auto_strength=args.auto_strength,
-                overrides={"exposure": args.exposure, "contrast": args.contrast, "warmth": args.warmth},
+                overrides={
+                    "exposure": args.exposure,
+                    "contrast": args.contrast,
+                    "warmth": args.warmth,
+                    "saturation": args.saturation,
+                },
                 dry_run=args.dry_run,
                 preview_only=args.preview_only,
             )
@@ -223,7 +231,12 @@ def _run_batch(args: argparse.Namespace) -> int:
         processing_profile=args.processing_profile,
         creative_look=args.creative_look,
         auto_strength=args.auto_strength,
-        overrides={"exposure": args.exposure, "contrast": args.contrast, "warmth": args.warmth},
+        overrides={
+            "exposure": args.exposure,
+            "contrast": args.contrast,
+            "warmth": args.warmth,
+            "saturation": args.saturation,
+        },
         preview_only=args.preview_only,
     )
 
@@ -269,6 +282,9 @@ def _validate_adjustment_args(args: argparse.Namespace) -> int | None:
         return 2
     if not -1.0 <= args.warmth <= 1.0:
         print("error: --warmth must be between -1.0 and 1.0", file=sys.stderr)
+        return 2
+    if not -1.0 <= args.saturation <= 1.0:
+        print("error: --saturation must be between -1.0 and 1.0", file=sys.stderr)
         return 2
     return None
 

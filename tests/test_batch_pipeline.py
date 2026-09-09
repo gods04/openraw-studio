@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -29,12 +30,13 @@ class BatchPipelineTests(unittest.TestCase):
             unsupported.write_bytes(b"fake")
             output = root / "output"
 
-            result = run_batch_export([supported, unsupported], output, overrides={"exposure": 0.2})
+            result = run_batch_export([supported, unsupported], output, overrides={"exposure": 0.2, "saturation": 0.3})
 
             export_path = output / "exports" / "a.auto.jpg"
             recipe_path = output / "recipes" / "a.DNG.recipe.json"
             export_exists = export_path.exists()
             recipe_exists = recipe_path.exists()
+            recipe = json.loads(recipe_path.read_text(encoding="utf-8"))
 
         self.assertEqual(result.total, 2)
         self.assertEqual(result.processed, 1)
@@ -43,6 +45,7 @@ class BatchPipelineTests(unittest.TestCase):
         self.assertEqual(result.failed, 0)
         self.assertTrue(export_exists)
         self.assertTrue(recipe_exists)
+        self.assertEqual(recipe["adjustments"]["raw"]["saturation"], 0.3)
         self.assertEqual(result.items[0].status, "exported")
         self.assertEqual(result.items[1].status, "skipped")
 

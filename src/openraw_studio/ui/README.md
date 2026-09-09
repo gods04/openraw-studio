@@ -24,7 +24,7 @@ The UI should keep the image workspace first:
 - AUTO action
 - conservative Auto Adjust action for native-renderable DNG/Nikon files
 - exposure adjustment
-- contrast and warmth adjustment
+- contrast, warmth, and saturation adjustment
 - preview-only refresh
 - expandable advanced panels
 - export controls

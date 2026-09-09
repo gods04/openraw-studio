@@ -16,6 +16,7 @@ class AutoAdjustSuggestion:
     exposure: float
     contrast: float
     warmth: float
+    saturation: float
     rationale: tuple[str, ...]
 
     def as_overrides(self) -> dict[str, float]:
@@ -23,6 +24,7 @@ class AutoAdjustSuggestion:
             "exposure": self.exposure,
             "contrast": self.contrast,
             "warmth": self.warmth,
+            "saturation": self.saturation,
         }
 
 
@@ -33,6 +35,7 @@ class PreviewStats:
     highlight_luma: float
     red_mean: float
     blue_mean: float
+    mean_chroma: float
 
     @property
     def luma_range(self) -> float:
@@ -51,11 +54,13 @@ def suggest_auto_adjustments_from_preview(preview: PreviewRgbImage) -> AutoAdjus
     exposure, exposure_note = _suggest_exposure(stats.mean_luma)
     contrast, contrast_note = _suggest_contrast(stats.luma_range)
     warmth, warmth_note = _suggest_warmth(stats.red_mean, stats.blue_mean)
+    saturation, saturation_note = _suggest_saturation(stats.mean_chroma, stats.luma_range)
     return AutoAdjustSuggestion(
         exposure=exposure,
         contrast=contrast,
         warmth=warmth,
-        rationale=tuple(note for note in (exposure_note, contrast_note, warmth_note) if note),
+        saturation=saturation,
+        rationale=tuple(note for note in (exposure_note, contrast_note, warmth_note, saturation_note) if note),
     )
 
 
@@ -69,12 +74,14 @@ def _preview_stats(preview: PreviewRgbImage) -> PreviewStats:
     highlight_index = max(0, min(pixel_count - 1, int(pixel_count * 0.95)))
     red_mean = sum(red for red, _green, _blue in preview.pixels) / (255.0 * pixel_count)
     blue_mean = sum(blue for _red, _green, blue in preview.pixels) / (255.0 * pixel_count)
+    mean_chroma = sum((max(red, green, blue) - min(red, green, blue)) / 255.0 for red, green, blue in preview.pixels) / pixel_count
     return PreviewStats(
         mean_luma=sum(lumas) / pixel_count,
         shadow_luma=lumas[shadow_index],
         highlight_luma=lumas[highlight_index],
         red_mean=red_mean,
         blue_mean=blue_mean,
+        mean_chroma=mean_chroma,
     )
 
 
@@ -106,6 +113,16 @@ def _suggest_warmth(red_mean: float, blue_mean: float) -> tuple[float, str]:
     if red_mean > blue_mean * 1.18:
         return -0.06, "Cooled a very warm preview slightly."
     return 0.04, "Added a gentle warmth bias."
+
+
+def _suggest_saturation(mean_chroma: float, luma_range: float) -> tuple[float, str]:
+    if mean_chroma < 0.10 and luma_range > 0.18:
+        return 0.14, "Added a gentle color boost."
+    if mean_chroma < 0.18:
+        return 0.08, "Added a small color lift."
+    if mean_chroma > 0.58:
+        return -0.08, "Softened very saturated color."
+    return 0.04, "Kept color natural."
 
 
 def _luma(red: int, green: int, blue: int) -> float:

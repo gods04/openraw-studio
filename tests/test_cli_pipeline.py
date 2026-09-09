@@ -258,6 +258,12 @@ class CliPipelineTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 2)
 
+    def test_cli_rejects_invalid_saturation(self) -> None:
+        with redirect_stderr(StringIO()):
+            exit_code = main(["process", "missing.DNG", "--output", "output", "--dry-run", "--saturation", "2"])
+
+        self.assertEqual(exit_code, 2)
+
     def test_cli_rejects_dry_run_with_preview_only(self) -> None:
         with redirect_stderr(StringIO()):
             exit_code = main(["process", "missing.DNG", "--output", "output", "--dry-run", "--preview-only"])

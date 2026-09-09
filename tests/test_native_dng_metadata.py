@@ -442,6 +442,27 @@ class NativeDngMetadataTests(unittest.TestCase):
         self.assertNotEqual(neutral.pixel_at(0, 0), adjusted.pixel_at(0, 0))
         self.assertGreater(adjusted.pixel_at(0, 0)[0], adjusted.pixel_at(0, 0)[2])
 
+    def test_tone_map_preview_applies_saturation(self) -> None:
+        sensor = LinearSensorImage(
+            width=2,
+            height=2,
+            color_filter_array="RGGB",
+            samples=(1.0, 0.5, 0.25, 0.0),
+            black_level=0,
+            white_level=1,
+            source_bit_depth=16,
+        )
+        linear_rgb = demosaic_simple(sensor)
+
+        neutral = tone_map_preview(linear_rgb, gamma=1.0).pixel_at(0, 0)
+        muted = tone_map_preview(linear_rgb, saturation=-1.0, gamma=1.0).pixel_at(0, 0)
+        vivid = tone_map_preview(linear_rgb, saturation=1.0, gamma=1.0).pixel_at(0, 0)
+
+        self.assertNotEqual(neutral, muted)
+        self.assertNotEqual(neutral, vivid)
+        self.assertLess(max(muted) - min(muted), max(neutral) - min(neutral))
+        self.assertLess(vivid[1], neutral[1])
+
     def test_png_writer_outputs_readable_dimensions(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "preview.png"
@@ -614,7 +635,11 @@ class NativeDngMetadataTests(unittest.TestCase):
             source.write_bytes(synthetic_nikon_nef_compressed_bytes(width=4, height=4))
 
             result = LocalPhotoPipeline().process(
-                PipelineRequest(source, output, overrides={"exposure": 0.3, "contrast": 0.1, "warmth": 0.2})
+                PipelineRequest(
+                    source,
+                    output,
+                    overrides={"exposure": 0.3, "contrast": 0.1, "warmth": 0.2, "saturation": 0.3},
+                )
             )
             preview_path = output / "previews" / "compressed.preview.png"
             export_path = output / "exports" / "compressed.auto.jpg"
@@ -638,13 +663,18 @@ class NativeDngMetadataTests(unittest.TestCase):
             source.write_bytes(_minimal_pixel_dng_bytes())
 
             result = LocalPhotoPipeline().process(
-                PipelineRequest(source, output, overrides={"exposure": 0.5, "contrast": 0.4, "warmth": -0.25})
+                PipelineRequest(
+                    source,
+                    output,
+                    overrides={"exposure": 0.5, "contrast": 0.4, "warmth": -0.25, "saturation": 0.35},
+                )
             )
 
         raw_adjustments = result.recipe["adjustments"]["raw"]
         self.assertEqual(raw_adjustments["exposure"], 0.5)
         self.assertEqual(raw_adjustments["contrast"], 0.4)
         self.assertEqual(raw_adjustments["warmth"], -0.25)
+        self.assertEqual(raw_adjustments["saturation"], 0.35)
 
 
 def _minimal_dng_bytes() -> bytes:

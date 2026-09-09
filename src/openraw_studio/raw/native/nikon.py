@@ -206,6 +206,7 @@ def render_nikon_34713_to_file(
     exposure: float = 0.0,
     contrast: float = 0.0,
     warmth: float = 0.0,
+    saturation: float = 0.0,
     jpeg_quality: int = 92,
 ) -> tuple[int, int]:
     """Render a supported Nikon 34713 RAW file directly to PNG or JPEG."""
@@ -218,6 +219,7 @@ def render_nikon_34713_to_file(
         exposure=exposure,
         contrast=contrast,
         warmth=warmth,
+        saturation=saturation,
         jpeg_quality=jpeg_quality,
     )
 
@@ -230,6 +232,7 @@ def render_decoded_nikon_34713_to_file(
     exposure: float = 0.0,
     contrast: float = 0.0,
     warmth: float = 0.0,
+    saturation: float = 0.0,
     jpeg_quality: int = 92,
 ) -> tuple[int, int]:
     """Render an already decoded Nikon 34713 sensor payload to PNG or JPEG."""
@@ -241,6 +244,7 @@ def render_decoded_nikon_34713_to_file(
         exposure=exposure,
         contrast=contrast,
         warmth=warmth,
+        saturation=saturation,
     )
     try:
         from PIL import Image
@@ -267,6 +271,7 @@ def render_decoded_nikon_34713_image(
     exposure: float = 0.0,
     contrast: float = 0.0,
     warmth: float = 0.0,
+    saturation: float = 0.0,
 ) -> NikonRenderedRgbImage:
     """Render an already decoded Nikon 34713 sensor payload into packed RGB bytes."""
 
@@ -287,6 +292,7 @@ def render_decoded_nikon_34713_image(
         exposure=exposure,
         contrast=contrast,
         warmth=warmth,
+        saturation=saturation,
     )
     try:
         from PIL import Image
@@ -530,6 +536,7 @@ def _bayer_blocks_to_rgb8(
     exposure: float,
     contrast: float,
     warmth: float,
+    saturation: float,
 ) -> tuple[int, int, bytearray]:
     del source_height
     left, top, crop_width, crop_height = crop
@@ -546,6 +553,7 @@ def _bayer_blocks_to_rgb8(
         contrast=contrast,
         warmth=warmth,
     )
+    saturation_factor = 1.0 + _clamp_float(saturation, -1.0, 1.0) * 0.75
     output = bytearray(out_width * out_height * 3)
     out_index = 0
 
@@ -556,11 +564,14 @@ def _bayer_blocks_to_rgb8(
             row1 = (source_row + 1) * source_width + left
             for column in range(out_width):
                 source_column = column * 2
-                output[out_index] = red_lut[samples[row0 + source_column]]
-                output[out_index + 1] = green_lut[
-                    (samples[row0 + source_column + 1] + samples[row1 + source_column]) >> 1
-                ]
-                output[out_index + 2] = blue_lut[samples[row1 + source_column + 1]]
+                red = red_lut[samples[row0 + source_column]]
+                green = green_lut[(samples[row0 + source_column + 1] + samples[row1 + source_column]) >> 1]
+                blue = blue_lut[samples[row1 + source_column + 1]]
+                if saturation_factor != 1.0:
+                    red, green, blue = _apply_saturation8(red, green, blue, factor=saturation_factor)
+                output[out_index] = red
+                output[out_index + 1] = green
+                output[out_index + 2] = blue
                 out_index += 3
         return out_width, out_height, output
 
@@ -576,12 +587,34 @@ def _bayer_blocks_to_rgb8(
                 samples[row1 + source_column],
                 samples[row1 + source_column + 1],
             )
-            output[out_index] = red_lut[block_values[red_index]]
-            output[out_index + 1] = green_lut[(block_values[green0_index] + block_values[green1_index]) >> 1]
-            output[out_index + 2] = blue_lut[block_values[blue_index]]
+            red = red_lut[block_values[red_index]]
+            green = green_lut[(block_values[green0_index] + block_values[green1_index]) >> 1]
+            blue = blue_lut[block_values[blue_index]]
+            if saturation_factor != 1.0:
+                red, green, blue = _apply_saturation8(red, green, blue, factor=saturation_factor)
+            output[out_index] = red
+            output[out_index + 1] = green
+            output[out_index + 2] = blue
             out_index += 3
 
     return out_width, out_height, output
+
+
+def _apply_saturation8(red: int, green: int, blue: int, *, factor: float) -> tuple[int, int, int]:
+    luma = ((54 * red) + (183 * green) + (19 * blue)) / 256.0
+    return (
+        _clamp_byte(round(luma + ((red - luma) * factor))),
+        _clamp_byte(round(luma + ((green - luma) * factor))),
+        _clamp_byte(round(luma + ((blue - luma) * factor))),
+    )
+
+
+def _clamp_byte(value: int) -> int:
+    if value < 0:
+        return 0
+    if value > 255:
+        return 255
+    return value
 
 
 def _cfa_block_indexes(cfa_pattern: tuple[int, ...] | None) -> tuple[int, int, int, int]:

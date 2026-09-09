@@ -168,7 +168,7 @@ Current status:
 - `darktable-cli` adapter exists only as an explicit experimental backend
 - local JPEG export engine records final derivative exports for supported DNG and guarded Nikon files
 - first-pass DNG white balance and ColorMatrix1 transform are now applied
-- exposure, contrast, and warmth adjustments are available from the CLI and desktop shell and are saved in the recipe
+- exposure, contrast, warmth, and saturation adjustments are available from the CLI and desktop shell and are saved in the recipe
 - Windows startup script creates `.venv`, installs the local package, and opens the app
 - Windows package script and GitHub Actions artifact build exist
 - Nikon 34713 camera-aware color, further speed work, full-resolution export, other compressed Nikon variants, and higher-quality JPEG/TIFF export are next
@@ -226,7 +226,7 @@ data, and the first Nikon 34713 lossless compressed preview/export path. It can
 import a folder of RAW-like files, choose an output folder, run AUTO for
 renderable files, view the generated preview, check selected-photo information
 and planned output paths, compare before/after, adjust exposure, create safe
-sample DNG/NEF files, adjust contrast/warmth, open the exported JPEG, export
+sample DNG/NEF files, adjust contrast/warmth/saturation, open the exported JPEG, export
 supported photos from the imported folder, and open the output folder. When
 adjustments change, the UI marks the preview as needing an update until the
 next preview/export render. If the current output folder already has a matching
