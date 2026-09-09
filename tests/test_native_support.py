@@ -5,6 +5,7 @@ from pathlib import Path
 from fixtures_nikon import (
     embedded_jpeg_bytes,
     nikon_makernote_bytes,
+    synthetic_nikon_nef_compressed_bytes,
     synthetic_nikon_nef_metadata_bytes,
     synthetic_nikon_nef_sensor_bytes,
 )
@@ -120,6 +121,20 @@ class NativeSupportTests(unittest.TestCase):
         self.assertEqual(report.status, "supported")
         self.assertIn("Bit depth: 14-bit", report.details)
         self.assertIn("Storage: 1 strip", report.details)
+
+    def test_nikon_nef_reports_renderable_for_34713_lossless_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "sample-compressed.NEF"
+            source.write_bytes(synthetic_nikon_nef_compressed_bytes(width=4, height=4))
+
+            report = inspect_native_support(source)
+
+        self.assertTrue(report.can_preview)
+        self.assertTrue(report.can_render)
+        self.assertEqual(report.status, "supported")
+        self.assertIn("Nikon 34713 lossless", report.reason)
+        self.assertIn("Compression: Nikon 34713 lossless Huffman", report.details)
+        self.assertIn("Render: native Nikon 34713 lossless sensor decode", report.details)
 
     def test_native_processor_writes_nikon_embedded_jpeg_preview(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

@@ -9,6 +9,7 @@ def synthetic_nikon_nef_metadata_bytes(
     height: int = 4024,
     embedded_jpeg: bytes | None = None,
     sensor_samples: tuple[int, ...] | None = None,
+    compressed_sensor_payload: bytes | None = None,
     black_level: int = 64,
     white_level: int = 4095,
     bits_per_sample: int | None = None,
@@ -16,13 +17,17 @@ def synthetic_nikon_nef_metadata_bytes(
 ) -> bytes:
     if sensor_samples is not None and len(sensor_samples) != width * height:
         raise ValueError("sensor_samples must match width * height")
+    if sensor_samples is not None and compressed_sensor_payload is not None:
+        raise ValueError("sensor_samples and compressed_sensor_payload cannot be used together")
 
     effective_bits_per_sample = bits_per_sample if bits_per_sample is not None else (16 if sensor_samples is not None else 14)
+    compression_value = 34713 if compressed_sensor_payload is not None else 1 if sensor_samples is not None else 34713
+    has_sensor_payload = sensor_samples is not None or compressed_sensor_payload is not None
     ifd0_defs = [
         (256, 4, 1, struct.pack("<I", width)),
         (257, 4, 1, struct.pack("<I", height)),
         (258, 3, 1, struct.pack("<H", effective_bits_per_sample)),
-        (259, 3, 1, struct.pack("<H", 1 if sensor_samples is not None else 34713)),
+        (259, 3, 1, struct.pack("<H", compression_value)),
         (271, 2, len(b"NIKON CORPORATION\x00"), b"NIKON CORPORATION\x00"),
         (272, 2, len(b"NIKON Z 6II\x00"), b"NIKON Z 6II\x00"),
         (274, 3, 1, struct.pack("<H", 1)),
@@ -46,6 +51,17 @@ def synthetic_nikon_nef_metadata_bytes(
                 (50717, 3 if white_level <= 65535 else 4, 1, struct.pack("<H" if white_level <= 65535 else "<I", white_level)),
             ]
         )
+    elif compressed_sensor_payload is not None:
+        pixel_bytes = compressed_sensor_payload
+        ifd0_defs.extend(
+            [
+                (262, 3, 1, struct.pack("<H", 32803)),
+                (278, 4, 1, struct.pack("<I", height)),
+                (279, 4, 1, struct.pack("<I", len(pixel_bytes))),
+                (33421, 3, 2, struct.pack("<HH", 2, 2)),
+                (33422, 1, 4, bytes([0, 1, 1, 2])),
+            ]
+        )
     else:
         pixel_bytes = b""
     exif_defs = [
@@ -59,7 +75,7 @@ def synthetic_nikon_nef_metadata_bytes(
     if maker_note is not None:
         exif_defs.append((37500, 7, len(maker_note), maker_note))
 
-    ifd0_count = len(ifd0_defs) + 1 + (2 if embedded_jpeg is not None else 0) + (1 if sensor_samples is not None else 0)
+    ifd0_count = len(ifd0_defs) + 1 + (2 if embedded_jpeg is not None else 0) + (1 if has_sensor_payload else 0)
     ifd0_size = 2 + ifd0_count * 12 + 4
     exif_offset = 8 + ifd0_size
     exif_size = 2 + len(exif_defs) * 12 + 4
@@ -85,7 +101,7 @@ def synthetic_nikon_nef_metadata_bytes(
             external_data.extend(b"\x00")
         ifd0_entries.append(encode(513, 4, 1, struct.pack("<I", jpeg_offset)))
         ifd0_entries.append(encode(514, 4, 1, struct.pack("<I", len(embedded_jpeg))))
-    if sensor_samples is not None:
+    if has_sensor_payload:
         pixel_offset = external_base + len(external_data)
         external_data.extend(pixel_bytes)
         if len(external_data) % 2:
@@ -117,20 +133,52 @@ def synthetic_nikon_nef_sensor_bytes(width: int = 4, height: int = 4, bits_per_s
     )
 
 
+def synthetic_nikon_nef_compressed_bytes(
+    width: int = 4,
+    height: int = 4,
+    bits_per_sample: int = 14,
+    samples: tuple[int, ...] | None = None,
+) -> bytes:
+    if bits_per_sample not in {12, 14}:
+        raise ValueError("compressed synthetic Nikon NEF supports only 12-bit or 14-bit samples")
+    if samples is None:
+        white = (1 << bits_per_sample) - 1
+        samples = tuple(256 + int((white - 256) * index / max(1, width * height - 1)) for index in range(width * height))
+    if len(samples) != width * height:
+        raise ValueError("samples must match width * height")
+    payload = pack_nikon_34713_lossless(samples, width=width, height=height, bits_per_sample=bits_per_sample)
+    return synthetic_nikon_nef_metadata_bytes(
+        width=width,
+        height=height,
+        bits_per_sample=bits_per_sample,
+        compressed_sensor_payload=payload,
+        maker_note=nikon_makernote_bytes(bits_per_sample=bits_per_sample),
+    )
+
+
 def embedded_jpeg_bytes(width: int = 3, height: int = 2) -> bytes:
     buffer = BytesIO()
     Image.new("RGB", (width, height), (42, 84, 126)).save(buffer, format="JPEG")
     return buffer.getvalue()
 
 
-def nikon_makernote_bytes() -> bytes:
+def nikon_makernote_bytes(bits_per_sample: int = 14) -> bytes:
+    predictor = 2048 if bits_per_sample == 14 else 512
+    compression_payload = (
+        b"F0"
+        + struct.pack("<H", predictor)
+        + struct.pack("<H", predictor)
+        + struct.pack("<H", predictor)
+        + struct.pack("<H", predictor)
+        + struct.pack("<H", 34)
+    )
     entries = [
         (0x0001, 7, 4, b"0211"),
         (0x001B, 3, 7, struct.pack("<7H", 12, 5600, 3728, 5600, 3728, 0, 0)),
         (0x0045, 3, 4, struct.pack("<4H", 16, 8, 5568, 3712)),
         (0x008C, 7, 8, b"I0\x00\xff\x00\xff\x01\x00"),
         (0x0093, 3, 1, struct.pack("<H", 3)),
-        (0x0096, 7, 6, b"F0\x00\x08\x00\x08"),
+        (0x0096, 7, len(compression_payload), compression_payload),
     ]
     return _tiff_makernote_bytes(entries)
 
@@ -182,6 +230,38 @@ def pack_sensor_rows(
     return b"".join(rows)
 
 
+def pack_nikon_34713_lossless(
+    values: tuple[int, ...],
+    *,
+    width: int,
+    height: int,
+    bits_per_sample: int,
+) -> bytes:
+    if len(values) != width * height:
+        raise ValueError("values must match width * height")
+    table = _nikon_huffman_codes(bits_per_sample)
+    predictor = 2048 if bits_per_sample == 14 else 512
+    row_predictors = [[predictor, predictor], [predictor, predictor]]
+    writer = _BitWriter()
+    index = 0
+    for row in range(height):
+        predictors = row_predictors[row & 1].copy()
+        for column in range(width):
+            channel = column & 1
+            value = values[index]
+            diff = value - predictors[channel]
+            predictors[channel] = value
+            if column < 2:
+                row_predictors[row & 1][channel] = value
+            category, payload = _encode_difference(diff)
+            code, code_length = table[category]
+            writer.write(code, code_length)
+            if category:
+                writer.write(payload, category)
+            index += 1
+    return writer.finish()
+
+
 def _pack_shorts(values: tuple[int, ...]) -> bytes:
     return b"".join(struct.pack("<H", value) for value in values)
 
@@ -204,3 +284,55 @@ def _pack_packed_msb(values: tuple[int, ...], bits_per_sample: int) -> bytes:
     if available_bits:
         output.append((accumulator << (8 - available_bits)) & 0xFF)
     return bytes(output)
+
+
+def _nikon_huffman_codes(bits_per_sample: int) -> dict[int, tuple[int, int]]:
+    if bits_per_sample == 14:
+        counts = (0, 1, 4, 2, 2, 3, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0)
+        values = (7, 6, 8, 5, 9, 4, 10, 3, 11, 12, 2, 0, 1, 13, 14)
+    else:
+        counts = (0, 1, 4, 2, 3, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+        values = (5, 4, 6, 3, 7, 2, 8, 1, 9, 0, 10, 11, 12)
+    codes = {}
+    code = 0
+    value_index = 0
+    for code_length, count in enumerate(counts, start=1):
+        for _ in range(count):
+            codes[values[value_index]] = (code, code_length)
+            value_index += 1
+            code += 1
+        code <<= 1
+    return codes
+
+
+def _encode_difference(diff: int) -> tuple[int, int]:
+    if diff == 0:
+        return 0, 0
+    magnitude = abs(diff)
+    category = magnitude.bit_length()
+    if diff > 0:
+        return category, diff
+    return category, diff + ((1 << category) - 1)
+
+
+class _BitWriter:
+    def __init__(self) -> None:
+        self._output = bytearray()
+        self._buffer = 0
+        self._bits = 0
+
+    def write(self, value: int, bit_count: int) -> None:
+        for bit_index in range(bit_count - 1, -1, -1):
+            self._buffer = (self._buffer << 1) | ((value >> bit_index) & 1)
+            self._bits += 1
+            if self._bits == 8:
+                self._output.append(self._buffer)
+                self._buffer = 0
+                self._bits = 0
+
+    def finish(self) -> bytes:
+        if self._bits:
+            self._output.append((self._buffer << (8 - self._bits)) & 0xFF)
+            self._buffer = 0
+            self._bits = 0
+        return bytes(self._output)

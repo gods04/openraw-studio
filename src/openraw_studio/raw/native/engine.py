@@ -13,6 +13,13 @@ from openraw_studio.raw.errors import RawProcessingError
 from openraw_studio.raw.interfaces import RawRenderRequest
 from openraw_studio.raw.native.dng import DngMetadataError, DngMetadataReader
 from openraw_studio.raw.native.jpeg import write_jpeg
+from openraw_studio.raw.native.nikon import (
+    NIKON_COMPRESSED_RAW,
+    NikonDecodedPixelData,
+    can_decode_nikon_34713_lossless,
+    decode_nikon_34713_lossless,
+    render_decoded_nikon_34713_to_file,
+)
 from openraw_studio.raw.native.pipeline import build_native_render_plan
 from openraw_studio.raw.native.preview import render_png_preview, render_preview_image
 
@@ -29,6 +36,7 @@ class NativeRawProcessor:
 
     def __init__(self, *, dng_reader: DngMetadataReader | None = None) -> None:
         self._dng_reader = dng_reader or DngMetadataReader()
+        self._nikon_34713_cache: tuple[Path, int, int, NikonDecodedPixelData] | None = None
 
     def engine_info(self) -> EngineInfo:
         return EngineInfo(
@@ -49,6 +57,7 @@ class NativeRawProcessor:
                 "nikon_nrw_metadata": True,
                 "nikon_embedded_jpeg_preview": True,
                 "nikon_makernote_compression_summary": True,
+                "nikon_34713_lossless_sensor_decode": True,
                 "nikon_guarded_tiff_sensor_decode": True,
                 "dng_uncompressed_strips": True,
                 "dng_uncompressed_tiles": True,
@@ -111,6 +120,23 @@ class NativeRawProcessor:
             raise RawProcessingError("OpenRAW Native preview currently writes PNG files; output path must end in .png")
         try:
             adjustments = _recipe_render_adjustments(recipe)
+            if metadata := self._read_supported_nikon_34713(source.path):
+                decoded = self._decode_supported_nikon_34713(source.path, metadata)
+                width, height = render_decoded_nikon_34713_to_file(
+                    decoded,
+                    output_path,
+                    exposure=adjustments.exposure,
+                    contrast=adjustments.contrast,
+                    warmth=adjustments.warmth,
+                    max_dimension=max_dimension,
+                )
+                return ImageRef(
+                    path=output_path,
+                    width=width,
+                    height=height,
+                    color_space="openraw-nikon-34713-rgb",
+                    role="preview",
+                )
             preview = render_png_preview(
                 source.path,
                 output_path,
@@ -141,6 +167,23 @@ class NativeRawProcessor:
             raise RawProcessingError("OpenRAW Native export currently writes JPEG files; output path must end in .jpg")
         try:
             adjustments = _recipe_render_adjustments(request.recipe)
+            if metadata := self._read_supported_nikon_34713(request.source.path):
+                decoded = self._decode_supported_nikon_34713(request.source.path, metadata)
+                width, height = render_decoded_nikon_34713_to_file(
+                    decoded,
+                    plan.output_path,
+                    exposure=adjustments.exposure,
+                    contrast=adjustments.contrast,
+                    warmth=adjustments.warmth,
+                    max_dimension=request.max_dimension,
+                )
+                return ImageRef(
+                    path=plan.output_path,
+                    width=width,
+                    height=height,
+                    color_space=request.color_space,
+                    role="export",
+                )
             rendered = render_preview_image(
                 plan.source_path,
                 exposure=adjustments.exposure,
@@ -165,6 +208,33 @@ class NativeRawProcessor:
 
     def export_intermediate(self, request: RawRenderRequest) -> ImageRef:
         return self.render_base(request)
+
+    def _read_supported_nikon_34713(self, source_path: Path) -> Any | None:
+        if source_path.suffix.lower() not in NIKON_RAW_EXTENSIONS:
+            return None
+        try:
+            metadata = self._dng_reader.read(source_path)
+        except DngMetadataError:
+            return None
+        summary = metadata.as_dict()
+        if _optional_int(summary.get("compression")) != NIKON_COMPRESSED_RAW:
+            return None
+        if not can_decode_nikon_34713_lossless(metadata):
+            return None
+        return metadata
+
+    def _decode_supported_nikon_34713(self, source_path: Path, metadata: Any) -> NikonDecodedPixelData:
+        resolved = source_path.expanduser().resolve()
+        stat = resolved.stat()
+        cache = self._nikon_34713_cache
+        if cache is not None:
+            cached_path, cached_mtime_ns, cached_size, decoded = cache
+            if cached_path == resolved and cached_mtime_ns == stat.st_mtime_ns and cached_size == stat.st_size:
+                return decoded
+
+        decoded = decode_nikon_34713_lossless(resolved, metadata)
+        self._nikon_34713_cache = (resolved, stat.st_mtime_ns, stat.st_size, decoded)
+        return decoded
 
     def _create_nikon_embedded_preview(self, source: ImageAsset, output_path: Path) -> ImageRef:
         if output_path.suffix.lower() not in {".jpg", ".jpeg"}:

@@ -9,7 +9,12 @@ from typing import Any, Mapping
 
 from openraw_studio.raw.native.bitpacking import SUPPORTED_SENSOR_BIT_DEPTHS
 from openraw_studio.raw.native.dng import DngMetadataError, DngMetadataReader, TiffIfd
-from openraw_studio.raw.native.nikon import NikonMakerNoteSummary, summarize_nikon_makernote
+from openraw_studio.raw.native.nikon import (
+    NIKON_COMPRESSED_RAW,
+    NikonMakerNoteSummary,
+    can_decode_nikon_34713_lossless,
+    summarize_nikon_makernote,
+)
 
 
 SUPPORTED_CFA_PATTERNS = {
@@ -157,7 +162,7 @@ def _inspect_nikon_raw(source_path: Path, *, dng_reader: DngMetadataReader | Non
     support_metadata = dict(summary)
     if maker_note is not None:
         support_metadata["nikon_makernote"] = maker_note.as_dict()
-    render_issues, render_details = _evaluate_nikon_summary(metadata.ifds, summary, source_path)
+    render_issues, render_details = _evaluate_nikon_summary(metadata, source_path)
     details = _nikon_import_details(source_path, summary, render_detail=None)
     details.extend(_render_detail_extras(render_details))
     details.extend(_nikon_makernote_details(maker_note))
@@ -172,7 +177,7 @@ def _inspect_nikon_raw(source_path: Path, *, dng_reader: DngMetadataReader | Non
         if embedded_preview_label:
             details.append(embedded_preview_label)
         details.append("Preview: native sensor render")
-        details.append("Render: native TIFF-style sensor decode")
+        details.append(_nikon_render_success_detail(summary))
         return _report(
             source_path,
             file_exists=True,
@@ -180,7 +185,7 @@ def _inspect_nikon_raw(source_path: Path, *, dng_reader: DngMetadataReader | Non
             can_preview=True,
             can_render=True,
             status="supported",
-            reason="Supported by OpenRAW Native V0.1 guarded Nikon sensor decode.",
+            reason=_nikon_render_success_reason(summary),
             details=tuple(details),
             metadata=support_metadata,
         )
@@ -252,6 +257,18 @@ def _nikon_import_details(
     if render_detail is not None:
         details.append(render_detail)
     return details
+
+
+def _nikon_render_success_detail(summary: Mapping[str, Any]) -> str:
+    if _scalar_int(summary.get("compression"), default=1) == NIKON_COMPRESSED_RAW:
+        return "Render: native Nikon 34713 lossless sensor decode"
+    return "Render: native TIFF-style sensor decode"
+
+
+def _nikon_render_success_reason(summary: Mapping[str, Any]) -> str:
+    if _scalar_int(summary.get("compression"), default=1) == NIKON_COMPRESSED_RAW:
+        return "Supported by OpenRAW Native V0.1 Nikon 34713 lossless sensor decode."
+    return "Supported by OpenRAW Native V0.1 guarded Nikon sensor decode."
 
 
 def _render_detail_extras(render_details: list[str]) -> list[str]:
@@ -335,18 +352,27 @@ def _evaluate_dng_summary(ifds: tuple[TiffIfd, ...], summary: Mapping[str, Any])
 
 
 def _evaluate_nikon_summary(
-    ifds: tuple[TiffIfd, ...],
-    summary: Mapping[str, Any],
+    metadata: Any,
     source_path: Path,
 ) -> tuple[list[str], list[str]]:
-    return _evaluate_bayer_tiff_summary(
-        ifds,
+    summary = metadata.as_dict()
+    issues, details = _evaluate_bayer_tiff_summary(
+        metadata.ifds,
         summary,
         format_label=f"Nikon {source_path.suffix.lstrip('.').upper()}/TIFF",
         image_label="Nikon RAW image",
         compression_label="Nikon RAW",
         compression_detail="only uncompressed TIFF-style sensor data is supported",
     )
+    compression = _scalar_int(summary.get("compression"), default=1)
+    if compression == NIKON_COMPRESSED_RAW and can_decode_nikon_34713_lossless(metadata):
+        issues = [issue for issue in issues if "compression" not in issue.lower()]
+        issues = [issue for issue in issues if issue != "Missing scalar black level."]
+        issues = [issue for issue in issues if issue != "Missing scalar white level."]
+        details.append("Compression: Nikon 34713 lossless Huffman")
+        details.append("Levels: Nikon 14-bit fallback range")
+        details.append("Render: native Nikon 34713 sensor decode")
+    return issues, details
 
 
 def _evaluate_bayer_tiff_summary(

@@ -92,9 +92,11 @@ Deeper custom demosaicing and camera-format parsing can come later.
 9. Decode guarded Nikon NEF/NRW TIFF-style uncompressed Bayer payloads for final export.
 10. Decode row-aligned 12/14-bit packed Bayer strip payloads.
 11. Parse Nikon MakerNote compression metadata for 34713 render blockers.
-12. Add support for common compressed Nikon NEF sensor payloads.
-13. Research LibRaw/rawpy as optional decoder references or fallback inputs.
-14. Move more processing into OpenRAW-owned rendering over time.
+12. Decode Nikon 34713 lossless Huffman sensor payloads into a first half-resolution RGB render.
+13. Improve Nikon 34713 black-level inference, color, speed, and full-resolution export.
+14. Add support for more compressed Nikon NEF sensor payload variants.
+15. Research LibRaw/rawpy as optional decoder references or fallback inputs.
+16. Move more processing into OpenRAW-owned rendering over time.
 
 ## User Experience Rule
 

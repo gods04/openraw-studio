@@ -69,6 +69,8 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - Nikon `.NEF` / `.NRW` metadata import and embedded JPEG preview extraction
 - Nikon MakerNote summary for compressed NEF render blockers, including
   0x0096 compression-table and 0x008c curve/table detection
+- Native Nikon 34713 lossless Huffman sensor decoding with half-resolution
+  RGB preview/JPEG output for supported files
 - Native extraction for simple uncompressed DNG 12/14-bit packed strip payloads
   and 16-bit strip/tile pixel payloads
 - Guarded native Nikon `.NEF` / `.NRW` sensor decode for TIFF-style
@@ -92,10 +94,11 @@ Then import `sample-data\openraw-synthetic.DNG` or
 
 - No packaged installer yet
 - OpenRAW Native has only a first-pass DNG white-balance and color-matrix transform
-- Common compressed/proprietary Nikon `.NEF` / `.NRW` sensor payloads are not
-  decoded yet; OpenRAW can now identify Nikon MakerNote compression metadata
-  for those files, but the first native Nikon render path supports only
-  TIFF-style uncompressed Bayer payloads with the metadata OpenRAW needs
+- OpenRAW Native has a first Nikon 34713 lossless decode path, but compressed
+  Nikon output is still half-resolution RGB with basic color, basic tone, and
+  Python-level performance that needs optimization
+- Other compressed/proprietary Nikon `.NEF` / `.NRW` sensor payload variants
+  are not decoded yet
 - Broad proprietary RAW rendering support is not implemented yet
 - No AI model weights included
 - No portrait retouching algorithms yet
@@ -241,8 +244,9 @@ openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-outpu
 ```
 
 This writes a `.preview.png` file for simple uncompressed 12/14-bit packed
-strip-based or 16-bit strip/tile-based DNG/Nikon files, or a `.preview.jpg`
-file for Nikon embedded previews, and skips final export.
+strip-based or 16-bit strip/tile-based DNG/Nikon files and supported Nikon
+34713 lossless files, or a `.preview.jpg` file for Nikon embedded previews,
+and skips final export.
 
 Render the current narrow end-to-end native path:
 
@@ -251,12 +255,12 @@ openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-outpu
 openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-output"
 ```
 
-For supported simple uncompressed DNG files and guarded TIFF-style Nikon sensor
-files, including row-aligned 12/14-bit packed strip payloads, this writes both
-`.preview.png` and `.auto.jpg` artifacts through the local JPEG export engine.
-The image data is still V0.1 preview-derived. It applies available DNG
-`AsShotNeutral` and `ColorMatrix1` metadata when present, but is not final
-camera-aware color science yet.
+For supported simple uncompressed DNG files, guarded TIFF-style Nikon sensor
+files, and supported Nikon 34713 lossless files, this writes both `.preview.png`
+and `.auto.jpg` artifacts through the local JPEG export engine. The image data
+is still an early V0.1 render. It applies available DNG `AsShotNeutral` and
+`ColorMatrix1` metadata when present, but Nikon 34713 output is currently
+half-resolution RGB with basic color and Python-level speed.
 
 Batch export currently renderable DNG/Nikon files from a folder:
 

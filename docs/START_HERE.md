@@ -109,8 +109,8 @@ openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-outpu
 openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-output" --preview-only
 ```
 
-Current native render command for narrow supported uncompressed DNG files and
-guarded TIFF-style Nikon sensor files:
+Current native render command for narrow supported uncompressed DNG files,
+guarded TIFF-style Nikon sensor files, and supported Nikon 34713 lossless files:
 
 ```powershell
 openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-output"
@@ -159,6 +159,7 @@ Current status:
 - Nikon `.NEF` / `.NRW` embedded JPEG preview extraction exists
 - guarded Nikon `.NEF` / `.NRW` native sensor decode exists for TIFF-style uncompressed Bayer payloads
 - simple uncompressed DNG 12/14-bit packed strip and 16-bit strip/tile pixel extraction exists
+- first Nikon 34713 lossless compressed sensor decode and half-resolution RGB render exists
 - black/white level sensor normalization exists for 12/14/16-bit data
 - simple Bayer demosaic exists
 - simple PNG preview encoding exists
@@ -169,7 +170,7 @@ Current status:
 - exposure, contrast, and warmth adjustments are available from the CLI and desktop shell and are saved in the recipe
 - Windows startup script creates `.venv`, installs the local package, and opens the app
 - Windows package script and GitHub Actions artifact build exist
-- common compressed Nikon payloads, full camera-aware color conversion, and higher-quality JPEG/TIFF export are next
+- Nikon 34713 black-level inference, color, speed, full-resolution export, other compressed Nikon variants, and higher-quality JPEG/TIFF export are next
 
 ### Step 3 - Minimal Desktop Shell
 
@@ -218,18 +219,19 @@ The first local desktop shell is now available through:
 ```
 
 It supports importing a DNG for preview/export, importing Nikon `.NEF` / `.NRW`
-files for metadata inspection, embedded JPEG preview when available, and guarded
+files for metadata inspection, embedded JPEG preview when available, guarded
 native sensor preview/export when the file exposes TIFF-style uncompressed Bayer
-data, including row-aligned 12/14-bit packed strip payloads. It can import a
-folder of RAW-like files, choose an output folder, run AUTO for renderable files,
-view the generated preview, check selected-photo information and planned output
-paths, compare before/after, adjust exposure, create safe sample DNG/NEF files,
-adjust contrast/warmth, open the exported JPEG, export supported photos from the
-imported folder, and open the output folder. When adjustments change, the UI
-marks the preview as needing an update until the next preview/export render. If
-the current output folder already has a matching recipe for the selected photo,
-the UI restores the saved basic adjustments. It currently uses the same local
-pipeline as the CLI; common compressed Nikon sensor payloads remain future work.
+data, and the first Nikon 34713 lossless compressed preview/export path. It can
+import a folder of RAW-like files, choose an output folder, run AUTO for
+renderable files, view the generated preview, check selected-photo information
+and planned output paths, compare before/after, adjust exposure, create safe
+sample DNG/NEF files, adjust contrast/warmth, open the exported JPEG, export
+supported photos from the imported folder, and open the output folder. When
+adjustments change, the UI marks the preview as needing an update until the
+next preview/export render. If the current output folder already has a matching
+recipe for the selected photo, the UI restores the saved basic adjustments.
+Compressed Nikon 34713 output is currently half-resolution RGB with basic color
+and Python-level speed.
 
 ### Step 4 - Real RAW Backend
 

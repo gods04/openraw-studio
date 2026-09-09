@@ -14,7 +14,12 @@ from openraw_studio.pipeline.local import LocalPhotoPipeline
 from openraw_studio.raw.backends import BackendCheck
 from openraw_studio.raw.darktable import DarktableCliProcessor
 from openraw_studio.raw.interfaces import RawRenderRequest
-from fixtures_nikon import embedded_jpeg_bytes, synthetic_nikon_nef_metadata_bytes, synthetic_nikon_nef_sensor_bytes
+from fixtures_nikon import (
+    embedded_jpeg_bytes,
+    synthetic_nikon_nef_compressed_bytes,
+    synthetic_nikon_nef_metadata_bytes,
+    synthetic_nikon_nef_sensor_bytes,
+)
 from openraw_studio.raw.native import NativeRawProcessor, write_synthetic_dng
 
 
@@ -317,6 +322,21 @@ class CliPipelineTests(unittest.TestCase):
         self.assertIn("Preview: supported", text)
         self.assertIn("Native render: supported", text)
         self.assertIn("guarded Nikon sensor decode", text)
+
+    def test_cli_inspect_reports_nikon_34713_lossless_render(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "sample-compressed.NEF"
+            source.write_bytes(synthetic_nikon_nef_compressed_bytes(width=4, height=4))
+            output = StringIO()
+
+            with redirect_stdout(output):
+                exit_code = main(["inspect", str(source)])
+
+        text = output.getvalue()
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Preview: supported", text)
+        self.assertIn("Native render: supported", text)
+        self.assertIn("Nikon 34713 lossless", text)
 
     def test_cli_inspect_reports_nikon_raw_embedded_preview(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

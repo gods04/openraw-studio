@@ -19,7 +19,7 @@ class NikonMakerNoteTests(unittest.TestCase):
         self.assertEqual(summary.compression_mode, 3)
         self.assertEqual(summary.curve_byte_count, 8)
         self.assertEqual(summary.curve_prefix, "I0")
-        self.assertEqual(summary.compression_table_byte_count, 6)
+        self.assertEqual(summary.compression_table_byte_count, 12)
         self.assertEqual(summary.compression_table_prefix, "F0")
 
     def test_summarize_nikon_makernote_payload_ignores_unknown_payloads(self) -> None:

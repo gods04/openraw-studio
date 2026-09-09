@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from openraw_studio.raw.native.dng import DngMetadataReader
+from openraw_studio.raw.native.nikon import NIKON_COMPRESSED_RAW, decode_nikon_34713_lossless
 
 
 NATIVE_SENSOR_EXTENSIONS = {".dng", ".nef", ".nrw"}
@@ -45,8 +46,45 @@ class NativeRawDecoder:
                 "OpenRAW native decoding currently supports DNG and guarded TIFF-style Nikon RAW files."
             )
 
+        metadata = self._dng_reader.read(source_path)
+        raw_summary = metadata.as_dict()
+        if (
+            source_path.suffix.lower() in {".nef", ".nrw"}
+            and _optional_int(raw_summary.get("compression")) == NIKON_COMPRESSED_RAW
+        ):
+            pixel_data = decode_nikon_34713_lossless(source_path, metadata)
+            cfa = _cfa_pattern_name(pixel_data.cfa_pattern)
+            return RawSensorData(
+                source_path=source_path,
+                width=pixel_data.width,
+                height=pixel_data.height,
+                color_filter_array=cfa,
+                raw_bytes=pixel_data.raw_bytes,
+                bits_per_sample=pixel_data.output_bits_per_sample,
+                samples_per_pixel=pixel_data.samples_per_pixel,
+                black_level=pixel_data.black_level,
+                white_level=pixel_data.white_level,
+                metadata={
+                    "byte_order": pixel_data.byte_order,
+                    "storage_layout": pixel_data.storage_layout,
+                    "strip_count": len(pixel_data.strip_offsets),
+                    "rows_per_strip": pixel_data.rows_per_strip,
+                    "tile_count": 0,
+                    "tile_width": None,
+                    "tile_length": None,
+                    "cfa_pattern": pixel_data.cfa_pattern,
+                    "source_bits_per_sample": pixel_data.source_bits_per_sample,
+                    "nikon_compression": pixel_data.compression,
+                    "nikon_compression_version": pixel_data.compression_setup.version,
+                    "nikon_compression_mode": pixel_data.compression_setup.compression_mode,
+                    "nikon_active_area": pixel_data.compression_setup.active_area,
+                    "as_shot_neutral": raw_summary.get("as_shot_neutral"),
+                    "color_matrix_1": raw_summary.get("color_matrix_1"),
+                    "color_matrix_2": raw_summary.get("color_matrix_2"),
+                },
+            )
+
         pixel_data = self._dng_reader.read_pixel_data(source_path)
-        raw_summary = self._dng_reader.read(source_path).as_dict()
         cfa = _cfa_pattern_name(pixel_data.cfa_pattern)
         return RawSensorData(
             source_path=source_path,
@@ -84,3 +122,16 @@ def _cfa_pattern_name(pattern: tuple[int, ...] | None) -> str:
     if pattern == (2, 1, 1, 0):
         return "BGGR"
     return "unknown"
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, tuple):
+        if len(value) != 1:
+            return None
+        value = value[0]
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None

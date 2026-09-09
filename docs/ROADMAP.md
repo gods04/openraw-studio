@@ -70,7 +70,9 @@ Suggested implementation order:
 25. [done] add first native Nikon NEF/NRW sensor decode path for guarded TIFF-style uncompressed payloads
 26. [done] add row-aligned 12/14-bit packed Bayer strip decoding for guarded DNG/Nikon payloads
 27. [done] parse Nikon MakerNote compression metadata for 34713 render blockers
-28. add support for common compressed Nikon NEF sensor payloads
+28. [done] add first Nikon 34713 lossless Huffman sensor decode and half-resolution render path
+29. improve Nikon 34713 black-level inference, color, speed, and full-resolution export
+30. add support for more compressed Nikon NEF sensor payload variants
 
 Exit criteria:
 

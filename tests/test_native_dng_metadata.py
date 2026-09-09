@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from fixtures_nikon import pack_sensor_rows, synthetic_nikon_nef_sensor_bytes
+from fixtures_nikon import pack_sensor_rows, synthetic_nikon_nef_compressed_bytes, synthetic_nikon_nef_sensor_bytes
 from openraw_studio.core.domain import ImageAsset
 from openraw_studio.core.image_info import read_image_size
 from openraw_studio.pipeline.interfaces import PipelineRequest
@@ -186,6 +186,43 @@ class NativeDngMetadataTests(unittest.TestCase):
         self.assertEqual(sensor.white_level, 16383)
         self.assertEqual(len(sensor.raw_bytes), 28)
         self.assertEqual(sensor.metadata["storage_layout"], "strips")
+
+    def test_native_decoder_returns_sensor_data_for_nikon_34713_lossless_nef(self) -> None:
+        samples = (
+            880,
+            1640,
+            1240,
+            1648,
+            960,
+            2020,
+            1110,
+            1860,
+            1210,
+            1890,
+            930,
+            2240,
+            1200,
+            2110,
+            1205,
+            2390,
+        )
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "compressed.NEF"
+            path.write_bytes(synthetic_nikon_nef_compressed_bytes(width=4, height=4, samples=samples))
+
+            sensor = NativeRawDecoder().decode(path)
+
+        self.assertEqual(sensor.width, 4)
+        self.assertEqual(sensor.height, 4)
+        self.assertEqual(sensor.color_filter_array, "RGGB")
+        self.assertEqual(sensor.bits_per_sample, 16)
+        self.assertEqual(sensor.samples_per_pixel, 1)
+        self.assertEqual(sensor.black_level, 0)
+        self.assertEqual(sensor.white_level, 16383)
+        self.assertEqual(sensor.raw_bytes, _pack_shorts(samples))
+        self.assertEqual(sensor.metadata["storage_layout"], "nikon-34713-lossless-strips")
+        self.assertEqual(sensor.metadata["source_bits_per_sample"], 14)
+        self.assertEqual(sensor.metadata["nikon_compression"], 34713)
 
     def test_sensor_normalization_maps_black_and_white_levels(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -543,6 +580,30 @@ class NativeDngMetadataTests(unittest.TestCase):
         self.assertEqual(export_size, (4, 4))
         self.assertEqual(result.preview.path, preview_path)
         self.assertEqual(result.exports[0].path, export_path)
+        self.assertTrue(result.recipe["pipeline"]["rendered"])
+
+    def test_native_pipeline_writes_jpeg_export_for_nikon_34713_lossless_nef(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "compressed.NEF"
+            output = root / "output"
+            source.write_bytes(synthetic_nikon_nef_compressed_bytes(width=4, height=4))
+
+            result = LocalPhotoPipeline().process(
+                PipelineRequest(source, output, overrides={"exposure": 0.3, "contrast": 0.1, "warmth": 0.2})
+            )
+            preview_path = output / "previews" / "compressed.preview.png"
+            export_path = output / "exports" / "compressed.auto.jpg"
+            preview_exists = preview_path.exists()
+            export_exists = export_path.exists()
+            export_size = read_image_size(export_path)
+
+        self.assertTrue(preview_exists)
+        self.assertTrue(export_exists)
+        self.assertEqual(export_size, (2, 2))
+        self.assertEqual(result.preview.path, preview_path)
+        self.assertEqual(result.exports[0].path, export_path)
+        self.assertEqual(result.recipe["source"]["metadata"]["raw_format"], "nikon-nef")
         self.assertTrue(result.recipe["pipeline"]["rendered"])
 
     def test_native_pipeline_records_manual_tone_overrides(self) -> None:

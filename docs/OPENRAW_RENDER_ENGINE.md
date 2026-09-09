@@ -95,12 +95,13 @@ Status:
 - simple Bayer demosaic exists
 - simple tone mapping and PNG preview encoding exist
 - `openraw process --preview-only` can complete without final export
-- local JPEG export engine records final derivative exports for narrow supported uncompressed DNG files and guarded Nikon sensor files
+- local JPEG export engine records final derivative exports for narrow supported uncompressed DNG files, guarded Nikon sensor files, and supported Nikon 34713 lossless files
 - DNG AsShotNeutral white balance and ColorMatrix1 transform are applied when available
 - recipe-driven exposure, contrast, and warmth controls are applied to DNG and native-renderable Nikon preview/JPEG export
 - Nikon embedded previews are extracted as camera-authored JPEGs without applying recipe adjustments yet
 - `openraw inspect` reports current Native support status before preview/export
-- common compressed Nikon sensor payloads, full camera-aware color conversion, and high-quality JPEG/TIFF export are next
+- first Nikon 34713 lossless compressed sensor decode and half-resolution RGB render exists
+- Nikon 34713 black-level inference, full camera-aware color conversion, speed, full-resolution output, other compressed Nikon variants, and high-quality JPEG/TIFF export are next
 
 Current native metadata scope:
 
