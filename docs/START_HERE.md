@@ -160,6 +160,7 @@ Current status:
 - guarded Nikon `.NEF` / `.NRW` native sensor decode exists for TIFF-style uncompressed Bayer payloads
 - simple uncompressed DNG 12/14-bit packed strip and 16-bit strip/tile pixel extraction exists
 - first Nikon 34713 lossless compressed sensor decode and half-resolution RGB render exists
+- Nikon 34713 optimized Python bitstream/render loops and conservative inactive-border black-level estimation exist
 - black/white level sensor normalization exists for 12/14/16-bit data
 - simple Bayer demosaic exists
 - simple PNG preview encoding exists
@@ -170,7 +171,7 @@ Current status:
 - exposure, contrast, and warmth adjustments are available from the CLI and desktop shell and are saved in the recipe
 - Windows startup script creates `.venv`, installs the local package, and opens the app
 - Windows package script and GitHub Actions artifact build exist
-- Nikon 34713 black-level inference, color, speed, full-resolution export, other compressed Nikon variants, and higher-quality JPEG/TIFF export are next
+- Nikon 34713 camera-aware color, further speed work, full-resolution export, other compressed Nikon variants, and higher-quality JPEG/TIFF export are next
 
 ### Step 3 - Minimal Desktop Shell
 
@@ -231,7 +232,7 @@ adjustments change, the UI marks the preview as needing an update until the
 next preview/export render. If the current output folder already has a matching
 recipe for the selected photo, the UI restores the saved basic adjustments.
 Compressed Nikon 34713 output is currently half-resolution RGB with basic color
-and Python-level speed.
+and basic tone.
 
 ### Step 4 - Real RAW Backend
 

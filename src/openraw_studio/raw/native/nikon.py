@@ -93,6 +93,16 @@ class NikonDecodedPixelData:
     compression_setup: NikonCompressionSetup
 
 
+@dataclass(frozen=True)
+class NikonRenderedRgbImage:
+    """Packed 8-bit RGB render produced by the Nikon 34713 path."""
+
+    width: int
+    height: int
+    rgb_bytes: bytes
+    transfer: str = "gamma-2.2"
+
+
 class NikonCompressionError(ValueError):
     """Raised when a Nikon compressed RAW payload is not supported yet."""
 
@@ -153,6 +163,15 @@ def decode_nikon_34713_lossless(path: str | Path, metadata: DngMetadata | None =
         width=width,
         height=height,
         setup=setup,
+        maximum=(1 << bits_per_sample) - 1,
+    )
+    white_level = (1 << bits_per_sample) - 1
+    black_level = _estimate_nikon_black_level(
+        samples,
+        width=width,
+        height=height,
+        active_area=setup.active_area,
+        white_level=white_level,
     )
 
     output = array("H", samples)
@@ -170,8 +189,8 @@ def decode_nikon_34713_lossless(path: str | Path, metadata: DngMetadata | None =
         strip_offsets=strip_offsets,
         strip_byte_counts=strip_byte_counts,
         rows_per_strip=_optional_int(pixel_ifd, 278),
-        black_level=0,
-        white_level=(1 << bits_per_sample) - 1,
+        black_level=black_level,
+        white_level=white_level,
         cfa_pattern=_optional_int_tuple(pixel_ifd, 33422),
         compression=compression,
         compression_setup=setup,
@@ -216,6 +235,41 @@ def render_decoded_nikon_34713_to_file(
     """Render an already decoded Nikon 34713 sensor payload to PNG or JPEG."""
 
     destination = Path(output_path)
+    rendered = render_decoded_nikon_34713_image(
+        decoded,
+        max_dimension=max_dimension,
+        exposure=exposure,
+        contrast=contrast,
+        warmth=warmth,
+    )
+    try:
+        from PIL import Image
+    except ImportError as exc:
+        raise NikonCompressionError("Pillow is required for Nikon 34713 rendering") from exc
+
+    image = Image.frombytes("RGB", (rendered.width, rendered.height), rendered.rgb_bytes)
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    suffix = destination.suffix.lower()
+    if suffix in {".jpg", ".jpeg"}:
+        image.save(destination, format="JPEG", quality=jpeg_quality, optimize=False, progressive=False)
+    elif suffix == ".png":
+        image.save(destination, format="PNG")
+    else:
+        raise NikonCompressionError("Nikon 34713 render output must be .png, .jpg, or .jpeg")
+    return image.size
+
+
+def render_decoded_nikon_34713_image(
+    decoded: NikonDecodedPixelData,
+    *,
+    max_dimension: int | None = None,
+    exposure: float = 0.0,
+    contrast: float = 0.0,
+    warmth: float = 0.0,
+) -> NikonRenderedRgbImage:
+    """Render an already decoded Nikon 34713 sensor payload into packed RGB bytes."""
+
     samples = array("H")
     samples.frombytes(decoded.raw_bytes)
     if struct.pack("=H", 1) != b"\x01\x00":
@@ -242,16 +296,7 @@ def render_decoded_nikon_34713_to_file(
     image = Image.frombytes("RGB", (width, height), bytes(rgb))
     if max_dimension is not None:
         image = _resize_pillow_image(image, max_dimension=max_dimension)
-
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    suffix = destination.suffix.lower()
-    if suffix in {".jpg", ".jpeg"}:
-        image.save(destination, format="JPEG", quality=jpeg_quality, optimize=False, progressive=False)
-    elif suffix == ".png":
-        image.save(destination, format="PNG")
-    else:
-        raise NikonCompressionError("Nikon 34713 render output must be .png, .jpg, or .jpeg")
-    return image.size
+    return NikonRenderedRgbImage(width=image.size[0], height=image.size[1], rgb_bytes=image.tobytes())
 
 
 def summarize_nikon_makernote_payload(payload: bytes) -> NikonMakerNoteSummary | None:
@@ -321,28 +366,136 @@ def _nikon_compression_setup(metadata: DngMetadata, bits_per_sample: int) -> Nik
     )
 
 
-def _decode_nikon_lossless_samples(payload: bytes, *, width: int, height: int, setup: NikonCompressionSetup) -> array:
+def _decode_nikon_lossless_samples(
+    payload: bytes,
+    *,
+    width: int,
+    height: int,
+    setup: NikonCompressionSetup,
+    maximum: int,
+) -> array:
     table = _build_huffman_lookup(setup.huffman_select)
-    bits = _MsbBitReader(payload)
-    maximum = 0xFFFF
     try:
         output = array("H", [0]) * (width * height)
     except MemoryError as exc:
         raise NikonCompressionError("not enough memory to hold the decoded Nikon sensor payload") from exc
 
-    row_predictors = [list(setup.initial_predictors[0]), list(setup.initial_predictors[1])]
+    data = payload
+    data_length = len(data)
+    byte_pos = 0
+    bit_buffer = 0
+    bit_count = 0
+    masks = tuple((1 << value) - 1 for value in range(17))
+    negative_thresholds = tuple(0 if value == 0 else 1 << (value - 1) for value in range(17))
+    negative_offsets = masks
+    row0_even, row0_odd = setup.initial_predictors[0]
+    row1_even, row1_odd = setup.initial_predictors[1]
     index = 0
     for row in range(height):
-        predictors = row_predictors[row & 1].copy()
+        if row & 1:
+            even_predictor = row1_even
+            odd_predictor = row1_odd
+        else:
+            even_predictor = row0_even
+            odd_predictor = row0_odd
         for column in range(width):
-            diff = _decode_huffman_difference(bits, table)
-            channel = column & 1
-            predictors[channel] += diff
-            if column < 2:
-                row_predictors[row & 1][channel] = predictors[channel]
-            output[index] = _clamp_int(predictors[channel], 0, maximum)
+            while bit_count < 8 and byte_pos < data_length:
+                bit_buffer = (bit_buffer << 8) | data[byte_pos]
+                byte_pos += 1
+                bit_count += 8
+            if bit_count <= 0:
+                raise NikonCompressionError("Nikon compressed bitstream ended early")
+            if bit_count < 8:
+                prefix = (bit_buffer << (8 - bit_count)) & 0xFF
+            else:
+                prefix = (bit_buffer >> (bit_count - 8)) & 0xFF
+
+            packed_code = table[prefix]
+            code_length = packed_code & 0x0F
+            if code_length <= 0:
+                raise NikonCompressionError("invalid Nikon Huffman prefix")
+            if code_length > bit_count:
+                raise NikonCompressionError("Nikon compressed bitstream ended early")
+            bit_count -= code_length
+            bit_buffer = bit_buffer & masks[bit_count] if bit_count else 0
+
+            category = packed_code >> 4
+            if category == 0:
+                diff = 0
+            elif category == 16:
+                diff = -32768
+            else:
+                while bit_count < category:
+                    if byte_pos >= data_length:
+                        raise NikonCompressionError("Nikon compressed bitstream ended early")
+                    bit_buffer = (bit_buffer << 8) | data[byte_pos]
+                    byte_pos += 1
+                    bit_count += 8
+                value = (bit_buffer >> (bit_count - category)) & masks[category]
+                bit_count -= category
+                bit_buffer = bit_buffer & masks[bit_count] if bit_count else 0
+                if value < negative_thresholds[category]:
+                    diff = value - negative_offsets[category]
+                else:
+                    diff = value
+
+            if column & 1:
+                odd_predictor += diff
+                sample = odd_predictor
+                if column == 1:
+                    if row & 1:
+                        row1_odd = odd_predictor
+                    else:
+                        row0_odd = odd_predictor
+            else:
+                even_predictor += diff
+                sample = even_predictor
+                if column == 0:
+                    if row & 1:
+                        row1_even = even_predictor
+                    else:
+                        row0_even = even_predictor
+            if sample < 0:
+                output[index] = 0
+            elif sample > maximum:
+                output[index] = maximum
+            else:
+                output[index] = sample
             index += 1
     return output
+
+
+def _estimate_nikon_black_level(
+    samples: array,
+    *,
+    width: int,
+    height: int,
+    active_area: tuple[int, ...] | None,
+    white_level: int,
+) -> int:
+    if active_area is None or len(active_area) < 4:
+        return 0
+    left, top, active_width, active_height = active_area[:4]
+    right = left + active_width
+    bottom = top + active_height
+    if left <= 0 and top <= 0 and right >= width and bottom >= height:
+        return 0
+    if left < 0 or top < 0 or active_width <= 0 or active_height <= 0 or right > width or bottom > height:
+        return 0
+
+    values: list[int] = []
+    sample_cap = 20000
+    step = max(1, (width * height) // sample_cap)
+    for index in range(0, width * height, step):
+        row, column = divmod(index, width)
+        if row < top or row >= bottom or column < left or column >= right:
+            values.append(int(samples[index]))
+    if len(values) < 16:
+        return 0
+
+    values.sort()
+    low_percentile = values[max(0, min(len(values) - 1, len(values) * 5 // 100))]
+    return _clamp_int(low_percentile, 0, max(0, white_level // 8))
 
 
 def _render_crop(decoded: NikonDecodedPixelData) -> tuple[int, int, int, int]:
@@ -385,13 +538,31 @@ def _bayer_blocks_to_rgb8(
     if out_width <= 0 or out_height <= 0:
         raise NikonCompressionError("Nikon 34713 render crop is empty")
 
-    pattern = _cfa_2x2(cfa_pattern)
+    red_index, green0_index, green1_index, blue_index = _cfa_block_indexes(cfa_pattern)
+    red_lut, green_lut, blue_lut = _channel_luts(
+        black_level=black_level,
+        white_level=white_level,
+        exposure=exposure,
+        contrast=contrast,
+        warmth=warmth,
+    )
     output = bytearray(out_width * out_height * 3)
-    exposure_scale = 2.0 ** _clamp_float(exposure, -4.0, 4.0)
-    contrast_factor = 1.0 + _clamp_float(contrast, -1.0, 1.0) * 0.75
-    warmth_value = _clamp_float(warmth, -1.0, 1.0)
-    span = max(1, white_level - black_level)
     out_index = 0
+
+    if (red_index, green0_index, green1_index, blue_index) == (0, 1, 2, 3):
+        for row in range(out_height):
+            source_row = top + row * 2
+            row0 = source_row * source_width + left
+            row1 = (source_row + 1) * source_width + left
+            for column in range(out_width):
+                source_column = column * 2
+                output[out_index] = red_lut[samples[row0 + source_column]]
+                output[out_index + 1] = green_lut[
+                    (samples[row0 + source_column + 1] + samples[row1 + source_column]) >> 1
+                ]
+                output[out_index + 2] = blue_lut[samples[row1 + source_column + 1]]
+                out_index += 3
+        return out_width, out_height, output
 
     for row in range(out_height):
         source_row = top + row * 2
@@ -405,17 +576,22 @@ def _bayer_blocks_to_rgb8(
                 samples[row1 + source_column],
                 samples[row1 + source_column + 1],
             )
-            red, green, blue = _block_rgb_values(block_values, pattern)
-            red = _normalize_raw(red, black_level=black_level, span=span)
-            green = _normalize_raw(green, black_level=black_level, span=span)
-            blue = _normalize_raw(blue, black_level=black_level, span=span)
-            red, green, blue = _apply_warmth(red, green, blue, warmth=warmth_value)
-            output[out_index] = _encode_channel(_apply_contrast(red * exposure_scale, contrast_factor))
-            output[out_index + 1] = _encode_channel(_apply_contrast(green * exposure_scale, contrast_factor))
-            output[out_index + 2] = _encode_channel(_apply_contrast(blue * exposure_scale, contrast_factor))
+            output[out_index] = red_lut[block_values[red_index]]
+            output[out_index + 1] = green_lut[(block_values[green0_index] + block_values[green1_index]) >> 1]
+            output[out_index + 2] = blue_lut[block_values[blue_index]]
             out_index += 3
 
     return out_width, out_height, output
+
+
+def _cfa_block_indexes(cfa_pattern: tuple[int, ...] | None) -> tuple[int, int, int, int]:
+    pattern = _cfa_2x2(cfa_pattern)
+    red_index = pattern.index("R")
+    blue_index = pattern.index("B")
+    green_indexes = tuple(index for index, channel in enumerate(pattern) if channel == "G")
+    if len(green_indexes) != 2:
+        return 0, 1, 2, 3
+    return red_index, green_indexes[0], green_indexes[1], blue_index
 
 
 def _cfa_2x2(cfa_pattern: tuple[int, ...] | None) -> tuple[str, str, str, str]:
@@ -426,23 +602,6 @@ def _cfa_2x2(cfa_pattern: tuple[int, ...] | None) -> tuple[str, str, str, str]:
     if sorted(channels) != ["B", "G", "G", "R"]:
         return "R", "G", "G", "B"
     return channels  # type: ignore[return-value]
-
-
-def _block_rgb_values(block_values: tuple[int, int, int, int], pattern: tuple[str, str, str, str]) -> tuple[int, int, int]:
-    red_values = []
-    green_values = []
-    blue_values = []
-    for value, channel in zip(block_values, pattern):
-        if channel == "R":
-            red_values.append(value)
-        elif channel == "G":
-            green_values.append(value)
-        elif channel == "B":
-            blue_values.append(value)
-    red = red_values[0] if red_values else block_values[0]
-    green = sum(green_values) // len(green_values) if green_values else block_values[1]
-    blue = blue_values[0] if blue_values else block_values[3]
-    return red, green, blue
 
 
 def _resize_pillow_image(image: Any, *, max_dimension: int) -> Any:
@@ -456,12 +615,31 @@ def _resize_pillow_image(image: Any, *, max_dimension: int) -> Any:
     return image.resize(size, resample=1)
 
 
-def _normalize_raw(value: int, *, black_level: int, span: int) -> float:
-    return _clamp_float((value - black_level) / float(span), 0.0, 1.0)
-
-
-def _apply_warmth(red: float, green: float, blue: float, *, warmth: float) -> tuple[float, float, float]:
-    return red * (1.0 + warmth * 0.12), green * (1.0 + warmth * 0.03), blue * (1.0 - warmth * 0.12)
+def _channel_luts(
+    *,
+    black_level: int,
+    white_level: int,
+    exposure: float,
+    contrast: float,
+    warmth: float,
+) -> tuple[bytes, bytes, bytes]:
+    span = max(1, white_level - black_level)
+    exposure_scale = 2.0 ** _clamp_float(exposure, -4.0, 4.0)
+    contrast_factor = 1.0 + _clamp_float(contrast, -1.0, 1.0) * 0.75
+    warmth_value = _clamp_float(warmth, -1.0, 1.0)
+    red_scale = 1.0 + warmth_value * 0.12
+    green_scale = 1.0 + warmth_value * 0.03
+    blue_scale = 1.0 - warmth_value * 0.12
+    red = bytearray(65536)
+    green = bytearray(65536)
+    blue = bytearray(65536)
+    for value in range(65536):
+        normalized = _clamp_float((value - black_level) / float(span), 0.0, 1.0)
+        exposed = normalized * exposure_scale
+        red[value] = _encode_channel(_apply_contrast(exposed * red_scale, contrast_factor))
+        green[value] = _encode_channel(_apply_contrast(exposed * green_scale, contrast_factor))
+        blue[value] = _encode_channel(_apply_contrast(exposed * blue_scale, contrast_factor))
+    return bytes(red), bytes(green), bytes(blue)
 
 
 def _apply_contrast(value: float, factor: float) -> float:
@@ -480,25 +658,9 @@ def _clamp_float(value: float, minimum: float, maximum: float) -> float:
     return value
 
 
-def _decode_huffman_difference(bits: "_MsbBitReader", table: tuple[tuple[int, int], ...]) -> int:
-    prefix = bits.peek(8)
-    category, code_length = table[prefix]
-    if code_length <= 0:
-        raise NikonCompressionError("invalid Nikon Huffman prefix")
-    bits.skip(code_length)
-    if category == 0:
-        return 0
-    if category == 16:
-        return -32768
-    value = bits.read(category)
-    if value < (1 << (category - 1)):
-        return value - ((1 << category) - 1)
-    return value
-
-
-def _build_huffman_lookup(huffman_select: int) -> tuple[tuple[int, int], ...]:
+def _build_huffman_lookup(huffman_select: int) -> tuple[int, ...]:
     counts, values = _NIKON_HUFFMAN_TABLES[huffman_select]
-    lookup: list[tuple[int, int]] = [(-1, 0)] * 256
+    lookup = [0] * 256
     code = 0
     value_index = 0
     for code_length, count in enumerate(counts, start=1):
@@ -509,47 +671,10 @@ def _build_huffman_lookup(huffman_select: int) -> tuple[tuple[int, int], ...]:
                 prefix = code << (8 - code_length)
                 fill = 1 << (8 - code_length)
                 for table_index in range(prefix, prefix + fill):
-                    lookup[table_index] = (value, code_length)
+                    lookup[table_index] = (value << 4) | code_length
             code += 1
         code <<= 1
     return tuple(lookup)
-
-
-class _MsbBitReader:
-    __slots__ = ("_data", "_byte_pos", "_buffer", "_bits")
-
-    def __init__(self, data: bytes) -> None:
-        self._data = data
-        self._byte_pos = 0
-        self._buffer = 0
-        self._bits = 0
-
-    def peek(self, count: int) -> int:
-        self._ensure(count)
-        return (self._buffer >> (self._bits - count)) & ((1 << count) - 1)
-
-    def read(self, count: int) -> int:
-        value = self.peek(count)
-        self.skip(count)
-        return value
-
-    def skip(self, count: int) -> None:
-        if count < 0:
-            raise NikonCompressionError("cannot skip a negative number of bits")
-        self._ensure(count)
-        self._bits -= count
-        if self._bits:
-            self._buffer &= (1 << self._bits) - 1
-        else:
-            self._buffer = 0
-
-    def _ensure(self, count: int) -> None:
-        while self._bits < count:
-            if self._byte_pos >= len(self._data):
-                raise NikonCompressionError("Nikon compressed bitstream ended early")
-            self._buffer = (self._buffer << 8) | self._data[self._byte_pos]
-            self._byte_pos += 1
-            self._bits += 8
 
 
 def _nikon_pixel_ifd(metadata: DngMetadata) -> TiffIfd:

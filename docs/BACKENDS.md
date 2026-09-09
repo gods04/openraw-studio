@@ -18,12 +18,14 @@ Nikon NEF/NRW metadata import support
 Nikon NEF/NRW embedded JPEG preview support
 Nikon MakerNote compression metadata summary for 34713 render blockers
 Nikon 34713 lossless Huffman sensor decode support for supported files
+optimized Python bitstream/render loops for the current Nikon 34713 path
+conservative Nikon 34713 inactive-border black-level estimation
 simple PNG preview support for narrow uncompressed DNG/Nikon files
 local JPEG export engine support for narrow uncompressed DNG/Nikon files
 12/14-bit packed strip payloads supported for the current DNG/Nikon path
 16-bit strip and tile payloads supported for the current DNG/Nikon path
 guarded Nikon NEF/NRW native sensor decode for TIFF-style uncompressed Bayer payloads
-compressed Nikon 34713 output is currently half-resolution RGB with basic color and Python-level speed
+compressed Nikon 34713 output is currently half-resolution RGB with basic color and basic tone
 other compressed/proprietary Nikon NEF/NRW sensor payload variants not decoded yet
 high-quality JPEG/TIFF export not implemented yet
 ```

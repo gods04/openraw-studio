@@ -2,6 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from fixtures_nikon import synthetic_nikon_nef_compressed_bytes
+
 from openraw_studio.decision.auto_adjust import suggest_auto_adjustments, suggest_auto_adjustments_from_preview
 from openraw_studio.raw.native.synthetic import write_synthetic_dng
 from openraw_studio.raw.native.tone import PreviewRgbImage
@@ -56,6 +58,17 @@ class AutoAdjustTests(unittest.TestCase):
     def test_suggest_auto_adjustments_reads_synthetic_dng(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             source = write_synthetic_dng(Path(temp) / "sample.DNG", width=8, height=8)
+
+            suggestion = suggest_auto_adjustments(source)
+
+        self.assertLessEqual(abs(suggestion.exposure), 0.6)
+        self.assertLessEqual(abs(suggestion.contrast), 0.22)
+        self.assertLessEqual(abs(suggestion.warmth), 0.12)
+
+    def test_suggest_auto_adjustments_reads_nikon_34713_lossless_nef(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "sample.NEF"
+            source.write_bytes(synthetic_nikon_nef_compressed_bytes(width=8, height=8))
 
             suggestion = suggest_auto_adjustments(source)
 

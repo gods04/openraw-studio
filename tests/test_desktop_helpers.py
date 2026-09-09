@@ -15,6 +15,7 @@ from openraw_studio.ui.desktop import (
     _batch_progress_text,
     _batch_result_status,
     _candidate_raw_files,
+    _can_build_inline_before_preview,
     _default_sample_path,
     _default_sample_nikon_nef_path,
     _flatten_rgb_pixels,
@@ -388,6 +389,30 @@ class DesktopHelperTests(unittest.TestCase):
 
         self.assertIsNone(path)
         self.assertEqual(label, "Open JPEG")
+
+    def test_can_build_inline_before_preview_skips_large_or_camera_preview_paths(self) -> None:
+        dng_result = PipelineResult(
+            recipe={},
+            preview=ImageRef(Path("preview.png"), width=1, height=1, color_space="preview-rgb", role="preview"),
+        )
+        nikon_result = PipelineResult(
+            recipe={},
+            preview=ImageRef(
+                Path("preview.png"),
+                width=1,
+                height=1,
+                color_space="openraw-nikon-34713-rgb",
+                role="preview",
+            ),
+        )
+        embedded_result = PipelineResult(
+            recipe={},
+            preview=ImageRef(Path("preview.jpg"), width=1, height=1, color_space="embedded-jpeg", role="preview"),
+        )
+
+        self.assertTrue(_can_build_inline_before_preview(dng_result))
+        self.assertFalse(_can_build_inline_before_preview(nikon_result))
+        self.assertFalse(_can_build_inline_before_preview(embedded_result))
 
     def test_result_status_distinguishes_preview_from_export(self) -> None:
         preview_result = PipelineResult(recipe={}, diagnostics={"preview_only": True})

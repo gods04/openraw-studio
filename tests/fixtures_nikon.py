@@ -138,6 +138,7 @@ def synthetic_nikon_nef_compressed_bytes(
     height: int = 4,
     bits_per_sample: int = 14,
     samples: tuple[int, ...] | None = None,
+    active_area: tuple[int, int, int, int] = (16, 8, 5568, 3712),
 ) -> bytes:
     if bits_per_sample not in {12, 14}:
         raise ValueError("compressed synthetic Nikon NEF supports only 12-bit or 14-bit samples")
@@ -152,7 +153,7 @@ def synthetic_nikon_nef_compressed_bytes(
         height=height,
         bits_per_sample=bits_per_sample,
         compressed_sensor_payload=payload,
-        maker_note=nikon_makernote_bytes(bits_per_sample=bits_per_sample),
+        maker_note=nikon_makernote_bytes(bits_per_sample=bits_per_sample, active_area=active_area),
     )
 
 
@@ -162,7 +163,10 @@ def embedded_jpeg_bytes(width: int = 3, height: int = 2) -> bytes:
     return buffer.getvalue()
 
 
-def nikon_makernote_bytes(bits_per_sample: int = 14) -> bytes:
+def nikon_makernote_bytes(
+    bits_per_sample: int = 14,
+    active_area: tuple[int, int, int, int] = (16, 8, 5568, 3712),
+) -> bytes:
     predictor = 2048 if bits_per_sample == 14 else 512
     compression_payload = (
         b"F0"
@@ -175,7 +179,7 @@ def nikon_makernote_bytes(bits_per_sample: int = 14) -> bytes:
     entries = [
         (0x0001, 7, 4, b"0211"),
         (0x001B, 3, 7, struct.pack("<7H", 12, 5600, 3728, 5600, 3728, 0, 0)),
-        (0x0045, 3, 4, struct.pack("<4H", 16, 8, 5568, 3712)),
+        (0x0045, 3, 4, struct.pack("<4H", *active_area)),
         (0x008C, 7, 8, b"I0\x00\xff\x00\xff\x01\x00"),
         (0x0093, 3, 1, struct.pack("<H", 3)),
         (0x0096, 7, len(compression_payload), compression_payload),

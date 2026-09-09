@@ -370,7 +370,7 @@ def _evaluate_nikon_summary(
         issues = [issue for issue in issues if issue != "Missing scalar black level."]
         issues = [issue for issue in issues if issue != "Missing scalar white level."]
         details.append("Compression: Nikon 34713 lossless Huffman")
-        details.append("Levels: Nikon 14-bit fallback range")
+        details.append("Levels: Nikon 14-bit range with conservative render-time black estimate")
         details.append("Render: native Nikon 34713 sensor decode")
     return issues, details
 

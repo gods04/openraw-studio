@@ -69,8 +69,9 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - Nikon `.NEF` / `.NRW` metadata import and embedded JPEG preview extraction
 - Nikon MakerNote summary for compressed NEF render blockers, including
   0x0096 compression-table and 0x008c curve/table detection
-- Native Nikon 34713 lossless Huffman sensor decoding with half-resolution
-  RGB preview/JPEG output for supported files
+- Native Nikon 34713 lossless Huffman sensor decoding with optimized Python
+  bitstream/render loops, conservative inactive-border black-level estimation,
+  and half-resolution RGB preview/JPEG output for supported files
 - Native extraction for simple uncompressed DNG 12/14-bit packed strip payloads
   and 16-bit strip/tile pixel payloads
 - Guarded native Nikon `.NEF` / `.NRW` sensor decode for TIFF-style
@@ -94,9 +95,9 @@ Then import `sample-data\openraw-synthetic.DNG` or
 
 - No packaged installer yet
 - OpenRAW Native has only a first-pass DNG white-balance and color-matrix transform
-- OpenRAW Native has a first Nikon 34713 lossless decode path, but compressed
-  Nikon output is still half-resolution RGB with basic color, basic tone, and
-  Python-level performance that needs optimization
+- OpenRAW Native has a first optimized Nikon 34713 lossless decode/render path,
+  but compressed Nikon output is still half-resolution RGB with basic color and
+  basic tone; further speed, color, and full-resolution work remains
 - Other compressed/proprietary Nikon `.NEF` / `.NRW` sensor payload variants
   are not decoded yet
 - Broad proprietary RAW rendering support is not implemented yet
@@ -260,7 +261,7 @@ files, and supported Nikon 34713 lossless files, this writes both `.preview.png`
 and `.auto.jpg` artifacts through the local JPEG export engine. The image data
 is still an early V0.1 render. It applies available DNG `AsShotNeutral` and
 `ColorMatrix1` metadata when present, but Nikon 34713 output is currently
-half-resolution RGB with basic color and Python-level speed.
+half-resolution RGB with basic color and basic tone.
 
 Batch export currently renderable DNG/Nikon files from a folder:
 

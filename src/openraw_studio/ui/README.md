@@ -22,7 +22,7 @@ The UI should keep the image workspace first:
 - built-in synthetic sample DNG/NEF creation
 - before/after comparison
 - AUTO action
-- conservative Auto Adjust action
+- conservative Auto Adjust action for native-renderable DNG/Nikon files
 - exposure adjustment
 - contrast and warmth adjustment
 - preview-only refresh
@@ -38,8 +38,11 @@ The UI consumes the pipeline and recipe contracts rather than directly calling
 RAW, vision, portrait, color, film, QC, or export implementations. The current
 shell can preview/export supported DNG files, guarded TIFF-style Nikon sensor
 files, and supported Nikon 34713 lossless compressed files through the first
-half-resolution RGB renderer. It can also extract embedded JPEG previews from
-preview-only Nikon RAW files and import Nikon RAW metadata while keeping
-advanced controls for later stages. Preview-only Nikon files can expose an
-`Open Preview JPEG` action after `Update Preview`, while final export controls
-stay disabled until native sensor rendering supports that file.
+half-resolution RGB renderer. Auto Adjust can analyze native-renderable files
+through the current preview path. The shell can also extract embedded JPEG
+previews from preview-only Nikon RAW files and import Nikon RAW metadata while
+keeping advanced controls for later stages. Preview-only Nikon files can expose
+an `Open Preview JPEG` action after `Update Preview`, while final export
+controls stay disabled until native sensor rendering supports that file. Inline
+before/after comparison is kept on the lightweight preview paths for now so
+large Nikon 34713 files do not freeze the desktop window after export.

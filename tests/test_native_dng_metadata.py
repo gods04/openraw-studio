@@ -224,6 +224,30 @@ class NativeDngMetadataTests(unittest.TestCase):
         self.assertEqual(sensor.metadata["source_bits_per_sample"], 14)
         self.assertEqual(sensor.metadata["nikon_compression"], 34713)
 
+    def test_native_decoder_estimates_nikon_34713_black_level_from_inactive_border(self) -> None:
+        samples = []
+        for row in range(6):
+            for column in range(6):
+                if 2 <= row < 4 and 2 <= column < 4:
+                    samples.append(1200 + row * 16 + column)
+                else:
+                    samples.append(128)
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "black-border.NEF"
+            path.write_bytes(
+                synthetic_nikon_nef_compressed_bytes(
+                    width=6,
+                    height=6,
+                    samples=tuple(samples),
+                    active_area=(2, 2, 2, 2),
+                )
+            )
+
+            sensor = NativeRawDecoder().decode(path)
+
+        self.assertEqual(sensor.black_level, 128)
+        self.assertEqual(sensor.metadata["nikon_active_area"], (2, 2, 2, 2))
+
     def test_sensor_normalization_maps_black_and_white_levels(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "pixels.DNG"

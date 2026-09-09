@@ -90,7 +90,7 @@ def _run_doctor(include_experimental_backends: bool, darktable_cli: str | None) 
     print(f"{native.name}: available")
     print(
         "  status: foundation ready; Nikon NEF/NRW metadata import, embedded JPEG preview, "
-        "MakerNote compression metadata summary, and Nikon 34713 lossless sensor decode; simple PNG "
+        "MakerNote compression metadata summary, and optimized Nikon 34713 lossless sensor decode; simple PNG "
         "preview/native render and local JPEG export for narrow uncompressed 12/14/16-bit DNG and "
         "guarded TIFF-style Nikon sensor files"
     )

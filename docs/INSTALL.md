@@ -182,7 +182,8 @@ Nikon NEF/NRW metadata import is available.
 Nikon NEF/NRW embedded JPEG preview is available when the file contains one.
 Guarded Nikon NEF/NRW native sensor rendering is available for TIFF-style uncompressed Bayer payloads.
 Narrow uncompressed 12/14/16-bit DNG/Nikon preview and local JPEG export are available.
-Supported Nikon 34713 lossless files can render through the first half-resolution RGB path.
+Supported Nikon 34713 lossless files can render through the optimized Python half-resolution RGB path.
+Supported Nikon 34713 lossless files use conservative inactive-border black-level estimation.
 ```
 
 Inspect one file before processing it. Nikon `.NEF` / `.NRW` files show

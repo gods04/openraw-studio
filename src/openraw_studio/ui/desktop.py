@@ -350,6 +350,12 @@ def _open_jpeg_target(result: Any) -> tuple[Path | None, str]:
     return None, "Open JPEG"
 
 
+def _can_build_inline_before_preview(result: Any) -> bool:
+    if result.preview is None:
+        return False
+    return result.preview.color_space not in {"embedded-jpeg", "openraw-nikon-34713-rgb"}
+
+
 def _result_status(result: Any) -> str:
     if result.diagnostics.get("preview_only"):
         if result.preview is not None and result.preview.color_space == "embedded-jpeg":
@@ -423,11 +429,11 @@ def _friendly_error_message(error: BaseException) -> str:
         ):
             return "This DNG uses a structure that OpenRAW Native does not support yet. Try the built-in sample DNG for the current V0.1 path."
         if "Nikon RAW embedded preview" in message or "Nikon preview failed" in message:
-            return "Nikon RAW metadata import is ready, but this file does not include a readable embedded preview yet. Full NEF/NRW export decoding is still in progress."
+            return "Nikon RAW metadata import is ready, but this file does not include a readable embedded preview yet. Some Nikon 34713 lossless files can already export; this specific file still needs native support."
         if "Nikon RAW metadata" in message or "NEF/NRW" in message:
-            return "Nikon RAW preview import is ready, but full NEF/NRW export decoding is still in progress."
+            return "Nikon RAW preview import is ready. Some Nikon 34713 lossless files can already export; this specific file still needs native support."
         if "currently starts with DNG files" in message:
-            return "Nikon RAW preview import is ready, but full NEF/NRW export decoding is still in progress."
+            return "Nikon RAW preview import is ready. Some Nikon 34713 lossless files can already export; this specific file still needs native support."
         return "OpenRAW Native could not render this photo yet. A recipe may still have been written in the output folder."
     if isinstance(error, OSError):
         return "OpenRAW Studio could not read or write one of the selected files. Check the folder permissions and try again."
@@ -1126,11 +1132,11 @@ def launch_desktop_app() -> None:
                     self.preview_photo = self.after_photo
                     self.preview_label.configure(image=self.preview_photo, text="")
                     self.showing_after = True
-                    if result.preview.color_space == "embedded-jpeg":
+                    if not _can_build_inline_before_preview(result):
                         self.before_photo = None
                         self.compare_button.configure(state="disabled", text="Show Before")
                     else:
-                        before = render_preview_image(source, apply_color=False)
+                        before = render_preview_image(source, apply_color=False, max_dimension=700)
                         before_image = Image.frombytes("RGB", (before.width, before.height), _flatten_rgb_pixels(before.pixels))
                         before_image.thumbnail((700, 520))
                         self.before_photo = ImageTk.PhotoImage(before_image)

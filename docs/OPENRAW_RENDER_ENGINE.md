@@ -101,7 +101,8 @@ Status:
 - Nikon embedded previews are extracted as camera-authored JPEGs without applying recipe adjustments yet
 - `openraw inspect` reports current Native support status before preview/export
 - first Nikon 34713 lossless compressed sensor decode and half-resolution RGB render exists
-- Nikon 34713 black-level inference, full camera-aware color conversion, speed, full-resolution output, other compressed Nikon variants, and high-quality JPEG/TIFF export are next
+- Nikon 34713 optimized Python bitstream/render loops and conservative inactive-border black-level estimation exist
+- Nikon 34713 full camera-aware color conversion, further speed work, full-resolution output, other compressed Nikon variants, and high-quality JPEG/TIFF export are next
 
 Current native metadata scope:
 

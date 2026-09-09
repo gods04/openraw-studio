@@ -6,10 +6,21 @@ from pathlib import Path
 
 from openraw_studio.raw.native.decoder import NativeRawDecoder
 from openraw_studio.raw.native.color import apply_as_shot_neutral, apply_camera_matrix
+from openraw_studio.raw.native.dng import DngMetadataError, DngMetadataReader
 from openraw_studio.raw.native.demosaic import demosaic_simple
+from openraw_studio.raw.native.nikon import (
+    NIKON_COMPRESSED_RAW,
+    NikonCompressionError,
+    can_decode_nikon_34713_lossless,
+    decode_nikon_34713_lossless,
+    render_decoded_nikon_34713_image,
+)
 from openraw_studio.raw.native.png import write_png
 from openraw_studio.raw.native.sensor import normalize_sensor_data
 from openraw_studio.raw.native.tone import PreviewRgbImage, tone_map_preview
+
+
+NIKON_RAW_EXTENSIONS = {".nef", ".nrw"}
 
 
 def render_png_preview(
@@ -55,6 +66,15 @@ def render_preview_image(
 ) -> PreviewRgbImage:
     """Render a source RAW file into an 8-bit RGB preview image."""
 
+    if preview := _render_nikon_34713_preview_image(
+        source_path,
+        exposure=exposure,
+        contrast=contrast,
+        warmth=warmth,
+        max_dimension=max_dimension,
+    ):
+        return preview
+
     sensor = NativeRawDecoder().decode(source_path)
     linear_sensor = normalize_sensor_data(sensor)
     metadata = sensor.metadata or {}
@@ -65,6 +85,61 @@ def render_preview_image(
         linear_rgb = apply_camera_matrix(linear_rgb, metadata.get("color_matrix_1"))
     preview = tone_map_preview(linear_rgb, exposure=exposure, contrast=contrast, warmth=warmth)
     return resize_preview(preview, max_dimension=max_dimension)
+
+
+def _render_nikon_34713_preview_image(
+    source_path: Path,
+    *,
+    exposure: float,
+    contrast: float,
+    warmth: float,
+    max_dimension: int | None,
+) -> PreviewRgbImage | None:
+    if source_path.suffix.lower() not in NIKON_RAW_EXTENSIONS:
+        return None
+    try:
+        metadata = DngMetadataReader().read(source_path)
+    except DngMetadataError:
+        return None
+    summary = metadata.as_dict()
+    if _optional_int(summary.get("compression")) != NIKON_COMPRESSED_RAW:
+        return None
+    if not can_decode_nikon_34713_lossless(metadata):
+        return None
+
+    decoded = decode_nikon_34713_lossless(source_path, metadata)
+    rendered = render_decoded_nikon_34713_image(
+        decoded,
+        max_dimension=max_dimension,
+        exposure=exposure,
+        contrast=contrast,
+        warmth=warmth,
+    )
+    return PreviewRgbImage(
+        width=rendered.width,
+        height=rendered.height,
+        pixels=_rgb_bytes_to_pixels(rendered.rgb_bytes),
+        transfer=rendered.transfer,
+    )
+
+
+def _rgb_bytes_to_pixels(payload: bytes) -> tuple[tuple[int, int, int], ...]:
+    if len(payload) % 3:
+        raise NikonCompressionError("Nikon preview RGB payload is not divisible by three")
+    return tuple((payload[index], payload[index + 1], payload[index + 2]) for index in range(0, len(payload), 3))
+
+
+def _optional_int(value: object) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, tuple):
+        if len(value) != 1:
+            return None
+        value = value[0]
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def resize_preview(image: PreviewRgbImage, *, max_dimension: int | None) -> PreviewRgbImage:
