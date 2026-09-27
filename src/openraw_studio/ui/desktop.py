@@ -16,6 +16,7 @@ from openraw_studio.core.artifacts import ArtifactPlan
 from openraw_studio.core.files import is_supported_raw_path
 from openraw_studio.core.recipe import validate_recipe_shape
 from openraw_studio.decision.auto_adjust import AutoAdjustSuggestion, suggest_auto_adjustments
+from openraw_studio.export.formats import export_display_name, normalize_export_format, validate_export_quality
 from openraw_studio.pipeline.batch import BatchItemResult, BatchResult, run_batch_export
 from openraw_studio.pipeline.errors import BackendUnavailableError, PipelineError, SourceFileError
 from openraw_studio.pipeline.interfaces import PipelineRequest
@@ -314,14 +315,15 @@ def _format_batch_result_summary(result: BatchResult, *, limit: int = 6) -> str:
     return "\n".join(lines)
 
 
-def _planned_output_summary(source: Path, output_dir: Path) -> str:
-    plan = ArtifactPlan.for_source(source, output_dir)
+def _planned_output_summary(source: Path, output_dir: Path, *, export_format: str = "jpeg") -> str:
+    resolved_format = normalize_export_format(export_format)
+    plan = ArtifactPlan.for_source(source, output_dir, export_format=resolved_format)
     preview_path = _preview_artifact_path(source, plan)
     return "\n".join(
         [
             f"Folder: {_short_path(plan.output_dir, max_chars=68)}",
             f"Preview: {_display_path(preview_path, base=plan.output_dir)}",
-            f"JPEG: {_display_path(plan.export_path, base=plan.output_dir)}",
+            f"{export_display_name(resolved_format)}: {_display_path(plan.export_path, base=plan.output_dir)}",
             f"Recipe: {_display_path(plan.recipe_path, base=plan.output_dir)}",
         ]
     )
@@ -393,6 +395,31 @@ def _load_recipe_adjustments(recipe_path: Path, source: Path) -> dict[str, float
     return _recipe_adjustment_overrides(recipe)
 
 
+def _recipe_export_options(recipe: Mapping[str, Any]) -> tuple[str, int]:
+    output = recipe.get("output")
+    output = output if isinstance(output, Mapping) else {}
+    format_value = output.get("format", "jpeg")
+    try:
+        export_format = normalize_export_format(format_value if isinstance(format_value, str) else "jpeg")
+    except ValueError:
+        export_format = "jpeg"
+    try:
+        export_quality = validate_export_quality(int(output.get("quality") or 92))
+    except (TypeError, ValueError):
+        export_quality = 92
+    return export_format, export_quality
+
+
+def _load_recipe_export_options(recipe_path: Path, source: Path) -> tuple[str, int]:
+    recipe = json.loads(recipe_path.read_text(encoding="utf-8"))
+    if not isinstance(recipe, Mapping):
+        raise ValueError("recipe file must contain a JSON object")
+    validate_recipe_shape(recipe)
+    if not _recipe_source_matches(recipe, source):
+        raise ValueError("recipe does not match the selected photo")
+    return _recipe_export_options(recipe)
+
+
 def _flatten_rgb_pixels(pixels: tuple[tuple[int, int, int], ...]) -> bytes:
     return bytes(channel for pixel in pixels for channel in pixel)
 
@@ -403,18 +430,40 @@ def _format_result_summary(result: Any) -> str:
         preview_label = "Preview JPEG" if result.preview.color_space == "embedded-jpeg" else "Preview"
         lines.append(f"{preview_label}: {result.preview.path}")
     if result.exports:
-        lines.append(f"JPEG: {result.exports[0].path}")
+        lines.append(f"{export_display_name(_result_export_format(result))}: {result.exports[0].path}")
     if recipe_path := result.diagnostics.get("recipe_path"):
         lines.append(f"Recipe: {recipe_path}")
     return "\n".join(lines)
 
 
-def _open_jpeg_target(result: Any) -> tuple[Path | None, str]:
+def _result_export_format(result: Any) -> str:
+    exports = result.recipe.get("exports") if isinstance(result.recipe, Mapping) else None
+    if isinstance(exports, Sequence) and exports and isinstance(exports[0], Mapping):
+        value = exports[0].get("format")
+        if isinstance(value, str):
+            try:
+                return normalize_export_format(value)
+            except ValueError:
+                pass
     if result.exports:
-        return result.exports[0].path, "Open JPEG"
+        suffix = result.exports[0].path.suffix.lower()
+        if suffix in {".tif", ".tiff"}:
+            return "tiff"
+    return "jpeg"
+
+
+def _open_export_target(result: Any) -> tuple[Path | None, str]:
+    if result.exports:
+        return result.exports[0].path, f"Open {export_display_name(_result_export_format(result))}"
     if result.preview is not None and result.preview.color_space == "embedded-jpeg":
         return result.preview.path, "Open Preview JPEG"
-    return None, "Open JPEG"
+    return None, "Open Export"
+
+
+def _open_jpeg_target(result: Any) -> tuple[Path | None, str]:
+    """Backward-compatible helper name retained for existing integrations."""
+
+    return _open_export_target(result)
 
 
 def _can_build_inline_before_preview(result: Any) -> bool:
@@ -436,7 +485,7 @@ def _result_status(result: Any) -> str:
             return "Preview JPEG ready"
         return "Preview updated"
     if result.exports:
-        return "JPEG exported"
+        return f"{export_display_name(_result_export_format(result))} exported"
     return "Finished"
 
 
@@ -587,6 +636,9 @@ def launch_desktop_app() -> None:
             self.warmth_var = tk.DoubleVar(value=0.0)
             self.tint_var = tk.DoubleVar(value=0.0)
             self.saturation_var = tk.DoubleVar(value=0.0)
+            self.export_format_var = tk.StringVar(value="JPEG")
+            self.jpeg_quality_var = tk.DoubleVar(value=92.0)
+            self.jpeg_quality_label_var = tk.StringVar(value="92")
             self.exposure_label_var = tk.StringVar(value=_format_exposure_label(0.0))
             self.contrast_label_var = tk.StringVar(value=_format_adjustment_label(0.0))
             self.highlights_label_var = tk.StringVar(value=_format_adjustment_label(0.0))
@@ -694,6 +746,37 @@ def launch_desktop_app() -> None:
             ttk_module.Label(controls, text="OUTPUT", style="Muted.TLabel").pack(anchor="w", pady=(20, 0))
             ttk_module.Label(controls, textvariable=self.output_var, style="Panel.TLabel", wraplength=236).pack(anchor="w", pady=(8, 14))
             ttk_module.Button(controls, text="Choose Folder", style="Secondary.TButton", command=self._choose_output).pack(fill="x")
+
+            export_format_row = ttk_module.Frame(controls, style="Panel.TFrame")
+            export_format_row.pack(fill="x", pady=(12, 0))
+            ttk_module.Label(export_format_row, text="Format", style="Panel.TLabel").pack(side="left")
+            self.export_format_combo = ttk_module.Combobox(
+                export_format_row,
+                textvariable=self.export_format_var,
+                values=("JPEG", "TIFF"),
+                state="readonly",
+                width=8,
+            )
+            self.export_format_combo.pack(side="right")
+            self.export_format_combo.bind("<<ComboboxSelected>>", self._sync_export_options)
+
+            jpeg_quality_header = ttk_module.Frame(controls, style="Panel.TFrame")
+            jpeg_quality_header.pack(fill="x", pady=(10, 0))
+            ttk_module.Label(jpeg_quality_header, text="JPEG Quality", style="Panel.TLabel").pack(side="left")
+            ttk_module.Label(
+                jpeg_quality_header,
+                textvariable=self.jpeg_quality_label_var,
+                style="Muted.TLabel",
+            ).pack(side="right")
+            self.jpeg_quality_scale = ttk_module.Scale(
+                controls,
+                from_=60,
+                to=100,
+                variable=self.jpeg_quality_var,
+                orient="horizontal",
+                command=self._sync_export_options,
+            )
+            self.jpeg_quality_scale.pack(fill="x", pady=(6, 0))
 
             ttk_module.Separator(controls).pack(fill="x", pady=20)
             ttk_module.Label(controls, text="HISTOGRAM", style="Muted.TLabel").pack(anchor="w")
@@ -875,7 +958,7 @@ def launch_desktop_app() -> None:
                 workflow_actions,
                 text="Export JPEG",
                 style="Primary.TButton",
-                command=self._export_jpeg,
+                command=self._export_photo,
                 state="disabled",
             )
             self.process_button.grid(row=0, column=2, sticky="ew", padx=(0, 8))
@@ -910,7 +993,7 @@ def launch_desktop_app() -> None:
             self.open_folder_button.grid(row=0, column=2, sticky="e")
             self.open_export_button = ttk_module.Button(
                 preview_actions,
-                text="Open JPEG",
+                text="Open Export",
                 style="Secondary.TButton",
                 command=self._open_export,
                 state="disabled",
@@ -919,6 +1002,7 @@ def launch_desktop_app() -> None:
 
             self.filedialog = filedialog
             self.messagebox = messagebox
+            self._sync_export_options(update_status=False)
 
         def _scroll_controls(self, event: Any) -> None:
             delta = -1 if event.delta > 0 else 1
@@ -1087,8 +1171,16 @@ def launch_desktop_app() -> None:
                 self.output_info_var.set("Output plan appears after import")
                 return
             output_dir = self.output_dir or (self.source_path.parent / "openraw-output")
-            plan = ArtifactPlan.for_source(self.source_path, output_dir)
-            summary = _planned_output_summary(self.source_path, output_dir)
+            plan = ArtifactPlan.for_source(
+                self.source_path,
+                output_dir,
+                export_format=self._selected_export_format(),
+            )
+            summary = _planned_output_summary(
+                self.source_path,
+                output_dir,
+                export_format=self._selected_export_format(),
+            )
             if plan.recipe_path.exists():
                 summary += "\nSaved recipe: found"
             self.output_info_var.set(summary)
@@ -1117,9 +1209,13 @@ def launch_desktop_app() -> None:
                 return None
             try:
                 overrides = _load_recipe_adjustments(recipe_path, self.source_path)
+                export_format, export_quality = _load_recipe_export_options(recipe_path, self.source_path)
             except (OSError, ValueError):
                 return "Saved recipe could not be loaded"
             self._set_adjustment_values(overrides)
+            self.export_format_var.set(export_display_name(export_format))
+            self.jpeg_quality_var.set(float(export_quality))
+            self._sync_export_options(update_status=False)
             self._refresh_preview_state()
             return "Saved recipe loaded"
 
@@ -1155,6 +1251,27 @@ def launch_desktop_app() -> None:
             if update_status and self.source_path is not None and not self.is_busy:
                 preview_state = self._refresh_preview_state()
                 self.status_var.set(preview_state if preview_state == "Preview needs update" else "Adjustments changed")
+
+        def _selected_export_format(self) -> str:
+            return normalize_export_format(self.export_format_var.get())
+
+        def _selected_export_quality(self) -> int:
+            return validate_export_quality(round(float(self.jpeg_quality_var.get())))
+
+        def _sync_export_options(self, *_: Any, update_status: bool = True) -> None:
+            export_format = self._selected_export_format()
+            if export_format == "jpeg":
+                quality = self._selected_export_quality()
+                self.jpeg_quality_var.set(float(quality))
+                self.jpeg_quality_label_var.set(str(quality))
+                self.jpeg_quality_scale.configure(state="normal")
+            else:
+                self.jpeg_quality_label_var.set("Lossless 8-bit")
+                self.jpeg_quality_scale.configure(state="disabled")
+            self.process_button.configure(text=f"Export {export_display_name(export_format)}")
+            self._refresh_output_info()
+            if update_status and self.source_path is not None and not self.is_busy:
+                self.status_var.set(f"{export_display_name(export_format)} export selected")
 
         def _reset_adjustments(self) -> None:
             self.exposure_var.set(0.0)
@@ -1215,13 +1332,13 @@ def launch_desktop_app() -> None:
             self.export_label.configure(text="")
             self.compare_button.configure(state="disabled", text="Show Before")
             self.open_folder_button.configure(state="disabled")
-            self.open_export_button.configure(state="disabled", text="Open JPEG")
+            self.open_export_button.configure(state="disabled", text="Open Export")
             self._show_histogram(None, view="After")
 
         def _update_preview(self) -> None:
             self._start_pipeline(preview_only=True)
 
-        def _export_jpeg(self) -> None:
+        def _export_photo(self) -> None:
             self._start_pipeline(preview_only=False)
 
         def _export_folder(self) -> None:
@@ -1240,13 +1357,17 @@ def launch_desktop_app() -> None:
             self.run_counter += 1
             run_id = self.run_counter
             overrides = self._current_overrides()
+            export_format = self._selected_export_format()
+            export_quality = self._selected_export_quality()
             self._set_busy(True)
-            self.status_var.set(f"Exporting {len(supported_sources)} supported photos...")
+            self.status_var.set(
+                f"Exporting {len(supported_sources)} supported photos as {export_display_name(export_format)}..."
+            )
             self.preview_state_var.set("Batch export running...")
             self.export_label.configure(text="")
             threading.Thread(
                 target=self._batch_export_worker,
-                args=(run_id, sources, output_dir, overrides),
+                args=(run_id, sources, output_dir, overrides, export_format, export_quality),
                 daemon=True,
             ).start()
 
@@ -1256,12 +1377,21 @@ def launch_desktop_app() -> None:
             sources: tuple[Path, ...],
             output_dir: Path,
             overrides: dict[str, float],
+            export_format: str,
+            export_quality: int,
         ) -> None:
             def on_progress(done: int, total: int, item: BatchItemResult) -> None:
                 text = _batch_progress_text(done, total, item)
                 self.root.after(0, lambda run_id=run_id, text=text: self._show_batch_progress(run_id, text))
 
-            result = run_batch_export(sources, output_dir, overrides=overrides, progress_callback=on_progress)
+            result = run_batch_export(
+                sources,
+                output_dir,
+                overrides=overrides,
+                export_format=export_format,
+                export_quality=export_quality,
+                progress_callback=on_progress,
+            )
             self.root.after(0, lambda run_id=run_id, result=result: self._show_batch_result(run_id, result))
 
         def _show_batch_progress(self, run_id: int, text: str) -> None:
@@ -1290,12 +1420,17 @@ def launch_desktop_app() -> None:
             self._refresh_output_info()
             self.run_counter += 1
             run_id = self.run_counter
+            export_format = self._selected_export_format()
+            export_quality = self._selected_export_quality()
             self._set_busy(True)
-            self.status_var.set("Updating preview..." if preview_only else "Exporting JPEG...")
-            self.preview_state_var.set("Updating preview..." if preview_only else "Exporting preview and JPEG...")
+            export_name = export_display_name(export_format)
+            self.status_var.set("Updating preview..." if preview_only else f"Exporting {export_name}...")
+            self.preview_state_var.set(
+                "Updating preview..." if preview_only else f"Exporting preview and {export_name}..."
+            )
             self.export_label.configure(text="")
             self.last_export_path = None
-            self.open_export_button.configure(state="disabled", text="Open JPEG")
+            self.open_export_button.configure(state="disabled", text="Open Export")
             overrides = self._current_overrides()
             threading.Thread(
                 target=self._process_worker,
@@ -1305,11 +1440,22 @@ def launch_desktop_app() -> None:
                     output_dir,
                     overrides,
                     preview_only,
+                    export_format,
+                    export_quality,
                 ),
                 daemon=True,
             ).start()
 
-        def _process_worker(self, run_id: int, source: Path, output_dir: Path, overrides: dict[str, float], preview_only: bool) -> None:
+        def _process_worker(
+            self,
+            run_id: int,
+            source: Path,
+            output_dir: Path,
+            overrides: dict[str, float],
+            preview_only: bool,
+            export_format: str,
+            export_quality: int,
+        ) -> None:
             try:
                 result = LocalPhotoPipeline().process(
                     PipelineRequest(
@@ -1317,6 +1463,8 @@ def launch_desktop_app() -> None:
                         output_dir,
                         overrides=overrides,
                         preview_only=preview_only,
+                        export_format=export_format,
+                        export_quality=export_quality,
                     )
                 )
             except (PipelineError, OSError, ValueError) as exc:
@@ -1420,7 +1568,7 @@ def launch_desktop_app() -> None:
             self.export_label.configure(text=_format_result_summary(result))
             if result.preview is not None or result.exports:
                 self.open_folder_button.configure(state="normal")
-            target_path, button_text = _open_jpeg_target(result)
+            target_path, button_text = _open_export_target(result)
             self.open_export_button.configure(text=button_text)
             if target_path is not None:
                 self.last_export_path = target_path

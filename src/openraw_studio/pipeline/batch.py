@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from openraw_studio.core.files import is_supported_raw_path
+from openraw_studio.export.formats import export_display_name, normalize_export_format, validate_export_quality
 from openraw_studio.pipeline.errors import BackendUnavailableError, PipelineError
 from openraw_studio.pipeline.interfaces import PipelineRequest
 from openraw_studio.pipeline.local import LocalPhotoPipeline
@@ -132,12 +133,16 @@ def run_batch_export(
     creative_look: str | None = None,
     auto_strength: float = 0.5,
     preview_only: bool = False,
+    export_format: str = "jpeg",
+    export_quality: int = 92,
     progress_callback: ProgressCallback | None = None,
     pipeline: LocalPhotoPipeline | None = None,
 ) -> BatchResult:
     """Process supported sources one by one through the normal local pipeline."""
 
     destination = Path(output_dir)
+    resolved_format = normalize_export_format(export_format)
+    resolved_quality = validate_export_quality(export_quality)
     local_pipeline = pipeline or LocalPhotoPipeline()
     items: list[BatchItemResult] = []
     normalized_sources = tuple(Path(source) for source in sources)
@@ -160,6 +165,8 @@ def run_batch_export(
                 creative_look=creative_look,
                 auto_strength=auto_strength,
                 preview_only=preview_only,
+                export_format=resolved_format,
+                export_quality=resolved_quality,
             )
         items.append(item)
         if progress_callback is not None:
@@ -178,6 +185,8 @@ def _process_batch_item(
     creative_look: str | None,
     auto_strength: float,
     preview_only: bool,
+    export_format: str,
+    export_quality: int,
 ) -> BatchItemResult:
     try:
         result = pipeline.process(
@@ -189,6 +198,8 @@ def _process_batch_item(
                 auto_strength=auto_strength,
                 overrides=overrides,
                 preview_only=preview_only,
+                export_format=export_format,
+                export_quality=export_quality,
             )
         )
     except (BackendUnavailableError, PipelineError, OSError, ValueError) as exc:
@@ -211,7 +222,7 @@ def _process_batch_item(
     return BatchItemResult(
         source_path=source,
         status="exported" if export_path is not None else "failed",
-        message="JPEG exported" if export_path is not None else "No export was produced",
+        message=f"{export_display_name(export_format)} exported" if export_path is not None else "No export was produced",
         preview_path=result.preview.path if result.preview is not None else None,
         export_path=export_path,
         recipe_path=Path(recipe_path) if isinstance(recipe_path, str) else None,

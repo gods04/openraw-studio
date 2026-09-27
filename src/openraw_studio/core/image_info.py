@@ -10,7 +10,7 @@ def read_image_size(path: str | Path) -> tuple[int, int]:
     """Read image dimensions for common preview/export formats.
 
     The helper intentionally avoids a heavy imaging dependency. It currently
-    supports PNG and most JPEG files. Unknown formats return ``(0, 0)``.
+    supports PNG, TIFF, and most JPEG files. Unknown formats return ``(0, 0)``.
     """
 
     image_path = Path(path)
@@ -22,7 +22,37 @@ def read_image_size(path: str | Path) -> tuple[int, int]:
         if header.startswith(b"\xff\xd8"):
             handle.seek(2)
             return _read_jpeg_size(handle)
+        if header[:4] in {b"II*\x00", b"MM\x00*"}:
+            return _read_tiff_size(handle, header)
     return 0, 0
+
+
+def _read_tiff_size(handle, header: bytes) -> tuple[int, int]:
+    byte_order = "<" if header.startswith(b"II") else ">"
+    if len(header) < 8:
+        return 0, 0
+    ifd_offset = struct.unpack(f"{byte_order}I", header[4:8])[0]
+    try:
+        handle.seek(ifd_offset)
+        count_bytes = handle.read(2)
+        if len(count_bytes) != 2:
+            return 0, 0
+        entry_count = struct.unpack(f"{byte_order}H", count_bytes)[0]
+        dimensions: dict[int, int] = {}
+        for _ in range(entry_count):
+            entry = handle.read(12)
+            if len(entry) != 12:
+                return 0, 0
+            tag, value_type, value_count = struct.unpack(f"{byte_order}HHI", entry[:8])
+            if tag not in {256, 257} or value_count != 1:
+                continue
+            if value_type == 3:
+                dimensions[tag] = struct.unpack(f"{byte_order}H", entry[8:10])[0]
+            elif value_type == 4:
+                dimensions[tag] = struct.unpack(f"{byte_order}I", entry[8:12])[0]
+        return dimensions.get(256, 0), dimensions.get(257, 0)
+    except (OSError, struct.error, ValueError):
+        return 0, 0
 
 
 def _read_jpeg_size(handle) -> tuple[int, int]:

@@ -28,7 +28,7 @@ The startup script will:
 Current app flow:
 
 ```text
-Import DNG/NEF or folder -> choose output folder -> renderable files: Auto Adjust -> Update Preview -> check histogram/clipping -> refine exposure/contrast/highlights/shadows/temperature/tint/saturation -> Export JPEG or Export Folder
+Import DNG/NEF or folder -> choose output folder and JPEG/TIFF -> Auto Adjust -> Update Preview -> check histogram/clipping -> refine adjustments -> Export JPEG/TIFF or Export Folder
 ```
 
 The app also shows whether the selected file is supported by the current
@@ -46,7 +46,7 @@ For supported simple uncompressed DNG files and guarded TIFF-style Nikon sensor
 files, plus supported Nikon 34713 lossless compressed files, the app writes:
 
 - preview PNG
-- preview-derived JPEG
+- selected JPEG or lossless 8-bit TIFF derivative
 - recipe JSON sidecar
 
 For Nikon preview-only files, the app writes:
@@ -55,7 +55,7 @@ For Nikon preview-only files, the app writes:
 - recipe JSON sidecar
 
 After `Update Preview`, the app enables `Open Preview JPEG` for these
-preview-only Nikon files. `Export JPEG` remains disabled until that file can be
+preview-only Nikon files. Final export remains disabled until that file can be
 rendered through the native sensor path, so the UI does not present an embedded
 camera preview as a finished RAW export.
 
@@ -162,7 +162,7 @@ can write a dry-run recipe/artifact plan for a RAW-like source file:
 - `openraw inspect` can import Nikon `.NEF` / `.NRW` metadata, detect embedded
   JPEG preview support, detect supported Nikon 34713 lossless renderable files,
   list render blockers, and show the next missing engine capability
-- `openraw process` writes a PNG preview and local JPEG export for
+- `openraw process` writes a PNG preview and local JPEG or lossless 8-bit TIFF export for
   narrow supported uncompressed 12/14/16-bit DNG/Nikon sensor files and
   supported Nikon 34713 lossless files
 - `openraw process --preview-only` writes a JPEG preview for Nikon files with
@@ -181,7 +181,7 @@ OpenRAW Native engine foundation is available.
 Nikon NEF/NRW metadata import is available.
 Nikon NEF/NRW embedded JPEG preview is available when the file contains one.
 Guarded Nikon NEF/NRW native sensor rendering is available for TIFF-style uncompressed Bayer payloads.
-Narrow uncompressed 12/14/16-bit DNG/Nikon preview and local JPEG export are available.
+Narrow uncompressed 12/14/16-bit DNG/Nikon preview and local JPEG/TIFF export are available.
 Supported Nikon 34713 lossless files use an optimized half-resolution preview and full-resolution bilinear export path.
 Supported Nikon 34713 lossless files use conservative inactive-border black-level estimation.
 ```
@@ -213,19 +213,21 @@ openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-outpu
 This writes a PNG preview for narrow uncompressed 12/14/16-bit DNG/Nikon files
 and supported Nikon 34713 lossless files that match the current Native path, or
 a JPEG preview for Nikon files with embedded previews. It intentionally skips
-final JPEG export.
+final export.
 
 Render the first native end-to-end path:
 
 ```powershell
 openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-output"
 openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-output"
+openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-output" --format tiff
 ```
 
 For supported simple uncompressed DNG files, guarded TIFF-style Nikon sensor
-files, and supported Nikon 34713 lossless files, this writes both
-`IMG_0001.preview.png` and `IMG_0001.auto.jpg`. The JPEG is written through the
-local export engine, but the image data is still an early V0.1 render and does
+files, and supported Nikon 34713 lossless files, this writes a preview plus
+`IMG_0001.auto.jpg` by default or `IMG_0001.auto.tif` with `--format tiff`.
+The TIFF is an 8-bit sRGB Deflate-compressed derivative, not a 16-bit linear
+working file. The image data is still an early V0.1 render and does
 not represent final camera-aware color science yet.
 
 Batch export the supported files in one folder:

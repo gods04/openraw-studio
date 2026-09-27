@@ -24,14 +24,14 @@ standard Nikon as-shot white balance from MakerNote tag 0x000c
 exact Nikon D500 camera profile to linear sRGB
 EXIF orientation handling for native Nikon renders
 simple PNG preview support for narrow uncompressed DNG/Nikon files
-local JPEG export engine support for narrow uncompressed DNG/Nikon files
+local JPEG quality and lossless 8-bit TIFF export support for renderable DNG/Nikon files
 12/14-bit packed strip payloads supported for the current DNG/Nikon path
 16-bit strip and tile payloads supported for the current DNG/Nikon path
 guarded Nikon NEF/NRW native sensor decode for TIFF-style uncompressed Bayer payloads
 compressed Nikon 34713 uses half-resolution preview and full-resolution bilinear final export
 camera-aware color is exact for the Nikon D500 and generic for other models
 other compressed/proprietary Nikon NEF/NRW sensor payload variants not decoded yet
-edge-aware demosaic and TIFF export not implemented yet
+edge-aware demosaic and 16-bit linear TIFF export not implemented yet
 ```
 
 The native engine scaffold is implemented in:

@@ -1,3 +1,4 @@
+import json
 import struct
 import tempfile
 import unittest
@@ -801,6 +802,62 @@ class NativeDngMetadataTests(unittest.TestCase):
         self.assertEqual(raw_adjustments["warmth"], -0.25)
         self.assertEqual(raw_adjustments["tint"], 0.15)
         self.assertEqual(raw_adjustments["saturation"], 0.35)
+
+    def test_native_pipeline_writes_lossless_tiff_and_records_output_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "compressed.NEF"
+            output = root / "output"
+            source.write_bytes(synthetic_nikon_nef_compressed_bytes(width=4, height=4))
+
+            result = LocalPhotoPipeline().process(
+                PipelineRequest(source, output, export_format="tiff", export_quality=81)
+            )
+            export_path = output / "exports" / "compressed.auto.tif"
+            recipe = json.loads((output / "recipes" / "compressed.NEF.recipe.json").read_text(encoding="utf-8"))
+            from PIL import Image
+
+            with Image.open(export_path) as opened:
+                image_format = opened.format
+                image_mode = opened.mode
+                compression = opened.tag_v2.get(259)
+            export_size = read_image_size(export_path)
+
+        self.assertEqual(result.exports[0].path, export_path)
+        self.assertEqual(export_size, (4, 4))
+        self.assertEqual(image_format, "TIFF")
+        self.assertEqual(image_mode, "RGB")
+        self.assertEqual(compression, 8)
+        self.assertEqual(recipe["output"]["format"], "tiff")
+        self.assertIsNone(recipe["output"]["quality"])
+        self.assertEqual(recipe["exports"][0]["format"], "tiff")
+        self.assertEqual(recipe["exports"][0]["bit_depth"], 8)
+        self.assertEqual(recipe["exports"][0]["compression"], "tiff_deflate")
+        self.assertIn("TIFF export", recipe["pipeline"]["message"])
+
+    def test_pipeline_jpeg_quality_reaches_native_encoder(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "quality.DNG"
+            source.write_bytes(_minimal_pixel_dng_bytes(width=4, height=4, samples=[512 + index * 180 for index in range(16)]))
+
+            low = LocalPhotoPipeline().process(
+                PipelineRequest(source, root / "low", export_quality=35)
+            )
+            high = LocalPhotoPipeline().process(
+                PipelineRequest(source, root / "high", export_quality=95)
+            )
+            from PIL import Image
+
+            with Image.open(low.exports[0].path) as opened:
+                low_quantization = tuple(opened.quantization[0])
+            with Image.open(high.exports[0].path) as opened:
+                high_quantization = tuple(opened.quantization[0])
+
+        self.assertNotEqual(low_quantization, high_quantization)
+        self.assertGreater(low_quantization[0], high_quantization[0])
+        self.assertEqual(low.recipe["exports"][0]["quality"], 35)
+        self.assertEqual(high.recipe["exports"][0]["quality"], 95)
 
 
 def _minimal_dng_bytes() -> bytes:

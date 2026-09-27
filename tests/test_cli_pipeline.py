@@ -79,6 +79,21 @@ class CliPipelineTests(unittest.TestCase):
             self.assertEqual(recipe["engines"][2]["name"], "openraw-native")
             self.assertEqual(recipe["planned_artifacts"]["export"], str(output / "exports" / "IMG_0001.auto.jpg"))
 
+    def test_dry_run_plans_requested_tiff_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "IMG_0001.NEF"
+            output = root / "output"
+            source.write_bytes(b"fake raw bytes")
+
+            result = LocalPhotoPipeline().process(
+                PipelineRequest(source, output, dry_run=True, export_format="tiff")
+            )
+
+        self.assertEqual(result.recipe["planned_artifacts"]["export"], str(output / "exports" / "IMG_0001.auto.tif"))
+        self.assertEqual(result.recipe["output"]["format"], "tiff")
+        self.assertIsNone(result.recipe["output"]["quality"])
+
     def test_native_render_attempt_writes_recipe_before_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -156,6 +171,37 @@ class CliPipelineTests(unittest.TestCase):
             self.assertEqual(recipe["source"]["metadata"]["nikon_raw"]["bits_per_sample"], 14)
             self.assertEqual(recipe["planned_artifacts"]["preview"], str(preview_path))
             self.assertEqual(recipe["exports"][0]["path"], str(export_path))
+
+    def test_cli_process_writes_requested_tiff_export(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "IMG_0011.NEF"
+            output = root / "output"
+            source.write_bytes(synthetic_nikon_nef_compressed_bytes(width=4, height=4))
+            stdout = StringIO()
+
+            with redirect_stdout(stdout):
+                exit_code = main(
+                    [
+                        "process",
+                        str(source),
+                        "--output",
+                        str(output),
+                        "--format",
+                        "tiff",
+                        "--quality",
+                        "81",
+                    ]
+                )
+            export_path = output / "exports" / "IMG_0011.auto.tif"
+            recipe = json.loads((output / "recipes" / "IMG_0011.NEF.recipe.json").read_text(encoding="utf-8"))
+            export_exists = export_path.exists()
+
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(export_exists)
+        self.assertIn(str(export_path), stdout.getvalue())
+        self.assertEqual(recipe["exports"][0]["format"], "tiff")
+        self.assertIsNone(recipe["exports"][0]["quality"])
 
     def test_nikon_nef_preview_only_writes_embedded_jpeg_preview(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -298,6 +344,12 @@ class CliPipelineTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 2)
 
+    def test_cli_rejects_invalid_jpeg_quality(self) -> None:
+        with redirect_stderr(StringIO()):
+            exit_code = main(["process", "missing.DNG", "--output", "output", "--dry-run", "--quality", "101"])
+
+        self.assertEqual(exit_code, 2)
+
     def test_cli_rejects_dry_run_with_preview_only(self) -> None:
         with redirect_stderr(StringIO()):
             exit_code = main(["process", "missing.DNG", "--output", "output", "--dry-run", "--preview-only"])
@@ -414,6 +466,23 @@ class CliPipelineTests(unittest.TestCase):
         self.assertIn("OpenRAW batch complete.", text)
         self.assertIn("Exported: 1", text)
         self.assertIn("Skipped: 1", text)
+        self.assertTrue(export_exists)
+
+    def test_cli_batch_exports_requested_tiff_format(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source_dir = root / "input"
+            source_dir.mkdir()
+            write_synthetic_dng(source_dir / "sample.DNG", width=4, height=4)
+            output_dir = root / "output"
+
+            with redirect_stdout(StringIO()):
+                exit_code = main(
+                    ["batch", str(source_dir), "--output", str(output_dir), "--format", "tiff"]
+                )
+            export_exists = (output_dir / "exports" / "sample.auto.tif").exists()
+
+        self.assertEqual(exit_code, 0)
         self.assertTrue(export_exists)
 
     def test_cli_batch_returns_one_when_no_files_can_be_processed(self) -> None:

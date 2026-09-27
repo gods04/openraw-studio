@@ -12,7 +12,7 @@ slice while keeping the engines replaceable.
 2. Generate previews into an output artifact folder.
 3. Extract real EXIF/RAW metadata.
 4. Replace the placeholder image reference with real preview dimensions.
-5. Export JPEG through `ExportEngine`.
+5. Export JPEG or lossless 8-bit TIFF through `ExportEngine`.
 6. Add local smoke-test guidance that does not commit private photos.
 7. Add import-folder watching after one-file processing works.
 
@@ -26,7 +26,7 @@ Already present:
 - rule-based `DecisionEngine`
 - `recipe.v1` sidecar writing
 - OpenRAW Native RAW engine scaffold
-- local JPEG `ExportEngine`
+- local JPEG/TIFF `ExportEngine`
 - Nikon `.NEF` / `.NRW` metadata import
 - Nikon `.NEF` / `.NRW` embedded JPEG preview extraction
 - guarded Nikon `.NEF` / `.NRW` native sensor decode for TIFF-style uncompressed Bayer payloads

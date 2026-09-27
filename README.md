@@ -82,7 +82,7 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - Native black/white level normalization for 12/14/16-bit Bayer sensor data
 - Native simple Bayer demosaic baseline
 - Native PNG preview encoding for narrow uncompressed DNG/Nikon test files
-- Local JPEG export engine for final derivative writing and recipe traceability
+- Local JPEG quality control and lossless 8-bit RGB TIFF export with recipe traceability
 - Beginner desktop shell launched with `openraw app` or `scripts/run_app.ps1`
 - App single-photo import, folder import, output-folder selection, conservative Auto Adjust,
   exposure/contrast/highlights/shadows/temperature/tint/saturation adjustments,
@@ -108,6 +108,7 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - Other compressed/proprietary Nikon `.NEF` / `.NRW` sensor payload variants
   are not decoded yet
 - Broad proprietary RAW rendering support is not implemented yet
+- TIFF export is currently 8-bit sRGB; 16-bit linear/working-space TIFF is not implemented yet
 - No AI model weights included
 - No portrait retouching algorithms yet
 - No film engine implementation yet
@@ -191,17 +192,18 @@ render through the guarded native Nikon sensor path when the file exposes a
 supported uncompressed Bayer payload. Import a folder to browse RAW-like files,
 or click `Create Sample DNG` / `Create Sample NEF`, then click `Auto Adjust`
 for a conservative starter look.
-Use `Update Preview` to refresh the preview with the current adjustments. When
-the image looks right, click `Export JPEG`. After importing a folder, click
+Use `Update Preview` to refresh the preview with the current adjustments. Choose
+JPEG or TIFF in the Output section, then click the matching Export button. After importing a folder, click
 `Export Folder` to export every currently supported file using the current basic
 adjustments; unsupported files are skipped and reported.
 The app shows basic photo information, current Native support status, and the
 planned preview, JPEG, and recipe paths before rendering. Nikon RAW files with
 only embedded JPEG previews can use `Update Preview`, while Auto Adjust and
-final JPEG export stay disabled and the app shows the next missing engine step.
+final export stays disabled and the app shows the next missing engine step.
 Nikon RAW files that match the guarded native sensor path can use preview, Auto
-Adjust, and JPEG export. Supported DNG and native-renderable Nikon files create
-a preview PNG, a preview-derived JPEG, and a recipe JSON in the selected output
+Adjust, JPEG/TIFF export, and JPEG quality selection. Supported DNG and
+native-renderable Nikon files create a preview PNG, the selected final
+derivative, and a recipe JSON in the selected output
 folder. Nikon preview-only runs write a `.preview.jpg` file and recipe JSON.
 After `Update Preview`, the desktop app enables `Open Preview JPEG` for those
 preview-only Nikon files so you can open the camera-authored embedded preview
@@ -216,7 +218,7 @@ The compact histogram follows the displayed Before, Camera Preview, or After
 image and reports near-black and near-white clipping percentages. It analyzes
 the displayed rendered 8-bit image, not untouched sensor values.
 The Exposure, Contrast, Highlights, Shadows, Temperature, Tint, and Saturation controls are
-recorded in the recipe and applied to DNG and native-renderable Nikon preview/JPEG export.
+recorded in the recipe and applied to DNG and native-renderable Nikon preview/final export.
 Highlights and Shadows use a smooth tone-region adjustment; lowering Highlights
 cannot reconstruct sensor detail that was already fully clipped. Temperature and
 Tint are normalized manual balance controls rather than camera-calibrated Kelvin values.
@@ -275,11 +277,13 @@ Render the current narrow end-to-end native path:
 ```powershell
 openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-output"
 openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-output"
+openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-output" --format tiff
 ```
 
 For supported simple uncompressed DNG files, guarded TIFF-style Nikon sensor
-files, and supported Nikon 34713 lossless files, this writes both `.preview.png`
-and `.auto.jpg` artifacts through the local JPEG export engine. The image data
+files, and supported Nikon 34713 lossless files, this writes `.preview.png` plus
+`.auto.jpg` by default, or `.auto.tif` with `--format tiff`. TIFF output is
+lossless Deflate-compressed 8-bit sRGB. The image data
 is still an early V0.1 render. It applies available DNG `AsShotNeutral`, inverts
 `ColorMatrix1` from camera space through XYZ, performs Bradford white-point
 adaptation, and converts to linear sRGB before tone mapping. Dual-illuminant
@@ -336,7 +340,7 @@ RAW input
   -> basic scene/portrait detection
   -> processing recipe
   -> base RAW render
-  -> JPEG export
+  -> JPEG or lossless 8-bit TIFF export
   -> recipe sidecar
 ```
 

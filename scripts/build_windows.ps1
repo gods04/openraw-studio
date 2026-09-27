@@ -67,6 +67,25 @@ try {
         Copy-Item -LiteralPath (Join-Path $RepoRoot $Document) -Destination (Join-Path $AppDir $Document) -Force
     }
 
+    $ThirdPartyRoot = Join-Path $AppDir "THIRD_PARTY_LICENSES"
+    New-Item -ItemType Directory -Path $ThirdPartyRoot -Force | Out-Null
+    foreach ($Package in @(
+        @{ Name = "NumPy"; Pattern = "numpy-*.dist-info" },
+        @{ Name = "Pillow"; Pattern = "pillow-*.dist-info" }
+    )) {
+        $DistInfo = Get-ChildItem -Path (Join-Path $BuildVenvDir "Lib\site-packages") -Directory -Filter $Package.Pattern |
+            Sort-Object Name -Descending |
+            Select-Object -First 1
+        if (-not $DistInfo) {
+            throw "Could not locate installed license metadata for $($Package.Name)."
+        }
+        $LicenseSource = Join-Path $DistInfo.FullName "licenses"
+        if (-not (Test-Path $LicenseSource)) {
+            throw "Installed $($Package.Name) package does not include a licenses folder."
+        }
+        Copy-Item -LiteralPath $LicenseSource -Destination (Join-Path $ThirdPartyRoot $Package.Name) -Recurse -Force
+    }
+
     if (Test-Path $ZipPath) {
         Remove-Item -LiteralPath $ZipPath -Force
     }

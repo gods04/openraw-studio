@@ -40,6 +40,7 @@ from openraw_studio.raw.native.synthetic import (
     write_synthetic_nikon_nef,
 )
 from openraw_studio.raw.native.tone import PreviewRgbImage, tone_map_preview
+from openraw_studio.raw.native.tiff import write_tiff_rgb8
 
 __all__ = [
     "DngMetadataReader",
@@ -88,4 +89,5 @@ __all__ = [
     "write_jpeg",
     "write_png",
     "write_ppm",
+    "write_tiff_rgb8",
 ]

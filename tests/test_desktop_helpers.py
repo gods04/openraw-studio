@@ -39,11 +39,15 @@ from openraw_studio.ui.desktop import (
     _library_item_label,
     _load_embedded_camera_preview,
     _load_recipe_adjustments,
+    _load_recipe_export_options,
     _manual_overrides,
+    _open_export_target,
     _open_jpeg_target,
     _planned_output_summary,
     _preview_state_text,
     _recipe_adjustment_overrides,
+    _recipe_export_options,
+    _result_export_format,
     _read_photo_info,
     _result_status,
     _scan_library_folder,
@@ -311,6 +315,15 @@ class DesktopHelperTests(unittest.TestCase):
         self.assertIn(f"JPEG: {Path('exports') / 'IMG_0001.auto.jpg'}", summary)
         self.assertIn(f"Recipe: {Path('recipes') / 'IMG_0001.DNG.recipe.json'}", summary)
 
+    def test_planned_output_summary_names_requested_tiff_artifact(self) -> None:
+        summary = _planned_output_summary(
+            Path("IMG_0001.DNG"),
+            Path("openraw-output"),
+            export_format="tiff",
+        )
+
+        self.assertIn(f"TIFF: {Path('exports') / 'IMG_0001.auto.tif'}", summary)
+
     def test_planned_output_summary_uses_jpeg_preview_for_nikon_raw(self) -> None:
         summary = _planned_output_summary(Path("IMG_0001.NEF"), Path("openraw-output"))
 
@@ -393,6 +406,27 @@ class DesktopHelperTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 _load_recipe_adjustments(recipe_path, root / "IMG_0002.DNG")
 
+    def test_recipe_export_options_restore_tiff_and_default_safely(self) -> None:
+        recipe = new_recipe("IMG_0001.DNG")
+        recipe["output"] = {"format": "tiff", "quality": None}
+
+        self.assertEqual(_recipe_export_options(recipe), ("tiff", 92))
+        self.assertEqual(_recipe_export_options(new_recipe("IMG_0001.DNG")), ("jpeg", 92))
+
+    def test_load_recipe_export_options_requires_matching_source(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "IMG_0001.DNG"
+            recipe = new_recipe(source)
+            recipe["output"] = {"format": "jpeg", "quality": 87}
+            recipe_path = write_recipe(recipe, root / "IMG_0001.DNG.recipe.json")
+
+            options = _load_recipe_export_options(recipe_path, source)
+            with self.assertRaises(ValueError):
+                _load_recipe_export_options(recipe_path, root / "IMG_0002.DNG")
+
+        self.assertEqual(options, ("jpeg", 87))
+
     def test_flatten_rgb_pixels_returns_pillow_ready_bytes(self) -> None:
         self.assertEqual(_flatten_rgb_pixels(((1, 2, 3), (4, 5, 6))), b"\x01\x02\x03\x04\x05\x06")
 
@@ -454,7 +488,21 @@ class DesktopHelperTests(unittest.TestCase):
         path, label = _open_jpeg_target(result)
 
         self.assertIsNone(path)
-        self.assertEqual(label, "Open JPEG")
+        self.assertEqual(label, "Open Export")
+
+    def test_export_helpers_name_tiff_result_from_recipe(self) -> None:
+        result = PipelineResult(
+            recipe={"exports": [{"format": "tiff"}]},
+            exports=(ImageRef(Path("export.tif"), width=1, height=1, color_space="sRGB", role="export"),),
+        )
+
+        path, label = _open_export_target(result)
+
+        self.assertEqual(_result_export_format(result), "tiff")
+        self.assertEqual(path, Path("export.tif"))
+        self.assertEqual(label, "Open TIFF")
+        self.assertIn("TIFF: export.tif", _format_result_summary(result))
+        self.assertEqual(_result_status(result), "TIFF exported")
 
     def test_can_build_inline_before_preview_skips_large_or_camera_preview_paths(self) -> None:
         dng_result = PipelineResult(

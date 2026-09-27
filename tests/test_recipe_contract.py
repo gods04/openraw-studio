@@ -39,6 +39,11 @@ class RecipeContractTests(unittest.TestCase):
         self.assertEqual(plan.recipe_path, Path("output/recipes/IMG_0001.NEF.recipe.json"))
         self.assertEqual(plan.intermediate_path, Path("output/intermediates/IMG_0001.base.tif"))
 
+    def test_artifact_plan_uses_tiff_suffix_when_requested(self) -> None:
+        plan = ArtifactPlan.for_source(Path("IMG_0001.NEF"), Path("output"), export_format="tiff")
+
+        self.assertEqual(plan.export_path, Path("output/exports/IMG_0001.auto.tif"))
+
     def test_json_contract_files_are_parseable(self) -> None:
         paths = [
             ROOT / "schemas" / "processing_recipe.schema.json",

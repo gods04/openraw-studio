@@ -13,7 +13,7 @@ model weights, datasets, LUTs, sample images, icons, and other assets.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Python standard library | library | python.org | project runtime | PSF | yes | yes | yes | allowed | Used for CLI, JSON, filesystem, hashing, and PNG preview encoding. |
 | NumPy | numerical array library | numpy.org / PyPI | >=1.26 | BSD-3-Clause | yes | yes | yes | allowed | Used for chunked full-resolution Bayer interpolation and color processing; not a RAW format decoder. |
-| Pillow | image encoding library | python-pillow.github.io / PyPI | >=10.0 | MIT-CMU / HPND-style permissive license | yes | yes | yes | allowed | Used for JPEG export encoding only; not a RAW engine. |
+| Pillow | image encoding library | python-pillow.github.io / PyPI | >=10.0 | MIT-CMU / HPND-style permissive license | yes | yes | yes | allowed | Used for JPEG/TIFF derivative encoding and desktop display; not a RAW engine. |
 | Nikon D500 camera calibration constants | profile data | Adobe DNG Converter data published in LibRaw `colordata.cpp` | 9-value D500 matrix | factual calibration data; provenance documented | review before closed-source commercial distribution | yes with source notice | yes | open-source-ok | OpenRAW's matrix math is project-authored; no LibRaw code or binary is bundled. |
 
 ## Candidate Components To Review

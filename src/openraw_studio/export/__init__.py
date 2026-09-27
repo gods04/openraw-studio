@@ -2,6 +2,13 @@
 
 from openraw_studio.export.errors import ExportError
 from openraw_studio.export.interfaces import ExportEngine, ExportRequest, ExportResult
-from openraw_studio.export.local import LocalJpegExportEngine
+from openraw_studio.export.local import LocalImageExportEngine, LocalJpegExportEngine
 
-__all__ = ["ExportEngine", "ExportError", "ExportRequest", "ExportResult", "LocalJpegExportEngine"]
+__all__ = [
+    "ExportEngine",
+    "ExportError",
+    "ExportRequest",
+    "ExportResult",
+    "LocalImageExportEngine",
+    "LocalJpegExportEngine",
+]

@@ -14,7 +14,7 @@ Choose RAW file
   -> inspect metadata
   -> generate preview
   -> make a simple AUTO decision
-  -> export JPEG
+  -> export JPEG or lossless 8-bit TIFF
   -> save recipe JSON
 ```
 
@@ -167,7 +167,7 @@ Current status:
 - simple PNG preview encoding exists
 - `--preview-only` pipeline mode exists
 - `darktable-cli` adapter exists only as an explicit experimental backend
-- local JPEG export engine records final derivative exports for supported DNG and guarded Nikon files
+- local export engine records JPEG quality or lossless 8-bit TIFF derivatives for supported DNG and guarded Nikon files
 - single-illuminant DNG white balance and standards-directed ColorMatrix1-to-linear-sRGB conversion are now applied
 - exposure, contrast, highlights, shadows, temperature, tint, and saturation adjustments are available from the CLI and desktop shell and are saved in the recipe
 - rendered-preview RGB/luminance histogram and shadow/highlight clipping feedback are available in the desktop shell
@@ -175,7 +175,7 @@ Current status:
 - Windows startup script creates `.venv`, installs the local package, and opens the app
 - Windows package script and GitHub Actions artifact build exist
 - Nikon D500 camera-aware white balance/color and EXIF orientation are now applied
-- additional Nikon profiles, further speed work, edge-aware demosaic, other compressed Nikon variants, and TIFF export are next
+- additional Nikon profiles, further speed work, edge-aware demosaic, other compressed Nikon variants, and 16-bit linear TIFF are next
 
 ### Step 3 - Minimal Desktop Shell
 
@@ -209,7 +209,7 @@ The first desktop UI should have:
 - before/after comparison for lightweight native paths and camera-preview/result comparison for Nikon 34713
 - Auto Adjust button
 - Update Preview button
-- Export JPEG button
+- JPEG/TIFF format selection, JPEG quality control, and matching Export button
 - Export Folder button for currently supported files
 - export location
 - saved recipe detection for the same photo/output folder

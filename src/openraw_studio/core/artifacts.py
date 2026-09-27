@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from openraw_studio.export.formats import export_suffix, normalize_export_format
+
 
 @dataclass(frozen=True)
 class ArtifactPlan:
@@ -17,14 +19,21 @@ class ArtifactPlan:
     intermediate_path: Path
 
     @classmethod
-    def for_source(cls, source_path: str | Path, output_dir: str | Path) -> "ArtifactPlan":
+    def for_source(
+        cls,
+        source_path: str | Path,
+        output_dir: str | Path,
+        *,
+        export_format: str = "jpeg",
+    ) -> "ArtifactPlan":
         source = Path(source_path)
         root = Path(output_dir)
         stem = source.stem
+        resolved_format = normalize_export_format(export_format)
         return cls(
             output_dir=root,
             preview_path=root / "previews" / f"{stem}.preview.png",
-            export_path=root / "exports" / f"{stem}.auto.jpg",
+            export_path=root / "exports" / f"{stem}.auto{export_suffix(resolved_format)}",
             recipe_path=root / "recipes" / f"{source.name}.recipe.json",
             intermediate_path=root / "intermediates" / f"{stem}.base.tif",
         )

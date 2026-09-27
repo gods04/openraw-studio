@@ -12,7 +12,7 @@ Source RAW
   -> basic analysis
   -> decision and recipe
   -> base render
-  -> export JPEG
+  -> export JPEG or lossless 8-bit TIFF
   -> save recipe JSON
 ```
 
@@ -54,7 +54,7 @@ openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-outpu
 openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-output"
 ```
 
-This path writes a `.preview.png` preview, a preview-derived `.auto.jpg` export,
+This path writes a `.preview.png` preview and either `.auto.jpg` or `.auto.tif`,
 and a recipe sidecar for supported simple uncompressed DNG files and guarded
 TIFF-style Nikon sensor files, including row-aligned 12/14-bit packed strip
 payloads and 16-bit strip/tile payloads. Supported Nikon 34713 lossless
@@ -173,8 +173,9 @@ V0.1 QC can be minimal:
 ### 7. Export
 
 Write the finished derivative and optional sidecar recipe through
-`ExportEngine`. V0.1 uses the local JPEG export engine, which records format,
-quality, source artifact, and engine metadata while preserving the original RAW.
+`ExportEngine`. V0.1 uses the local JPEG/TIFF export engine, which records
+format, JPEG quality or TIFF compression, bit depth, source artifact, and
+engine metadata while preserving the original RAW.
 Exports must include enough metadata to trace the source and engine versions.
 
 ## Failure Handling

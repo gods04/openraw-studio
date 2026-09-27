@@ -271,7 +271,7 @@ def render_nikon_34713_to_file(
     jpeg_quality: int = 92,
     quality: str = "fast",
 ) -> tuple[int, int]:
-    """Render a supported Nikon 34713 RAW file directly to PNG or JPEG."""
+    """Render a supported Nikon 34713 RAW file directly to PNG, JPEG, or TIFF."""
 
     decoded = decode_nikon_34713_lossless(path, metadata)
     return render_decoded_nikon_34713_to_file(
@@ -305,7 +305,7 @@ def render_decoded_nikon_34713_to_file(
     jpeg_quality: int = 92,
     quality: str = "fast",
 ) -> tuple[int, int]:
-    """Render an already decoded Nikon 34713 sensor payload to PNG or JPEG."""
+    """Render an already decoded Nikon 34713 sensor payload to PNG, JPEG, or TIFF."""
 
     destination = Path(output_path)
     rendered = render_decoded_nikon_34713_image(
@@ -333,8 +333,10 @@ def render_decoded_nikon_34713_to_file(
         image.save(destination, format="JPEG", quality=jpeg_quality, optimize=False, progressive=False)
     elif suffix == ".png":
         image.save(destination, format="PNG")
+    elif suffix in {".tif", ".tiff"}:
+        image.save(destination, format="TIFF", compression="tiff_deflate")
     else:
-        raise NikonCompressionError("Nikon 34713 render output must be .png, .jpg, or .jpeg")
+        raise NikonCompressionError("Nikon 34713 render output must be .png, .jpg, .jpeg, .tif, or .tiff")
     return image.size
 
 

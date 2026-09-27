@@ -13,8 +13,9 @@ from openraw_studio.core.recipe import new_recipe, write_recipe
 from openraw_studio.decision.interfaces import DecisionRequest
 from openraw_studio.decision.rules import RuleBasedDecisionEngine
 from openraw_studio.export.errors import ExportError
+from openraw_studio.export.formats import export_display_name, normalize_export_format, validate_export_quality
 from openraw_studio.export.interfaces import ExportEngine, ExportRequest
-from openraw_studio.export.local import LocalJpegExportEngine
+from openraw_studio.export.local import LocalImageExportEngine
 from openraw_studio.pipeline.errors import BackendUnavailableError, PipelineError, SourceFileError
 from openraw_studio.pipeline.interfaces import PipelineRequest, PipelineResult
 from openraw_studio.raw.errors import RawProcessingError
@@ -39,7 +40,7 @@ class LocalPhotoPipeline:
         creative_looks: Mapping[str, Mapping[str, Any]] | None = None,
     ) -> None:
         self.raw_processor = raw_processor or NativeRawProcessor()
-        self.export_engine = export_engine or LocalJpegExportEngine()
+        self.export_engine = export_engine or LocalImageExportEngine()
         self.processing_presets = dict(processing_presets or {"general": {}, "portrait": {}})
         self.creative_looks = dict(creative_looks or {"clean": {}, "warm_film": {}})
         self.vision = HeuristicVisionEngine()
@@ -52,7 +53,13 @@ class LocalPhotoPipeline:
         if not is_supported_raw_path(source):
             raise SourceFileError(f"Unsupported RAW extension: {source.suffix or '<none>'}")
 
-        plan = ArtifactPlan.for_source(source, request.output_dir)
+        try:
+            export_format = normalize_export_format(request.export_format)
+            export_quality = validate_export_quality(request.export_quality)
+        except ValueError as exc:
+            raise PipelineError(str(exc)) from exc
+
+        plan = ArtifactPlan.for_source(source, request.output_dir, export_format=export_format)
         plan.ensure_directories()
         preview_path = _preview_path_for_source(plan, source, self.raw_processor)
         planned_artifacts = _planned_artifacts_with_preview(plan, preview_path)
@@ -135,6 +142,12 @@ class LocalPhotoPipeline:
             self.export_engine.engine_info().__dict__,
         ]
         recipe["exports"] = []
+        recipe["output"] = {
+            "format": export_format,
+            "quality": export_quality if export_format == "jpeg" else None,
+            "bit_depth": 8,
+            "compression": "jpeg" if export_format == "jpeg" else "tiff_deflate",
+        }
         recipe["qc"] = {
             "status": "not_run",
             "reason": "V0.1 QC is not implemented yet.",
@@ -190,6 +203,7 @@ class LocalPhotoPipeline:
                         output_path=plan.export_path,
                         max_dimension=None,
                         color_space="sRGB",
+                        quality=export_quality,
                     )
                 )
                 export_result = self.export_engine.export(
@@ -197,8 +211,8 @@ class LocalPhotoPipeline:
                         image=rendered_ref,
                         recipe=recipe,
                         output_path=plan.export_path,
-                        format="jpeg",
-                        quality=92,
+                        format=export_format,
+                        quality=export_quality,
                         write_recipe_sidecar=False,
                     )
                 )
@@ -232,15 +246,17 @@ class LocalPhotoPipeline:
             recipe["pipeline"] = {
                 "mode": "render",
                 "rendered": True,
-                "message": "Preview and JPEG export were rendered.",
+                "message": f"Preview and {export_display_name(export_format)} export were rendered.",
             }
             recipe["exports"] = [
                 {
                     "path": str(export_ref.path),
-                    "format": "jpeg",
+                    "format": export_format,
                     "width": export_ref.width,
                     "height": export_ref.height,
-                    "quality": export_result.metadata.get("quality", 92),
+                    "quality": export_result.metadata.get("quality"),
+                    "bit_depth": export_result.metadata.get("bit_depth", 8),
+                    "compression": export_result.metadata.get("compression"),
                     "engine": self.export_engine.engine_info().name,
                 }
             ]
@@ -258,6 +274,7 @@ class LocalPhotoPipeline:
                     "dry_run": False,
                     "recipe_path": str(recipe_path),
                     "planned_artifacts": planned_artifacts,
+                    "export_format": export_format,
                 },
             )
 
@@ -272,6 +289,7 @@ class LocalPhotoPipeline:
                 "preview_only": False,
                 "recipe_path": str(recipe_path),
                 "planned_artifacts": planned_artifacts,
+                "export_format": export_format,
             },
         )
 

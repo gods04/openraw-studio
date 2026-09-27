@@ -129,7 +129,7 @@ V0.1 proves the end-to-end pipeline with minimal algorithms:
 - run basic scene and portrait/non-portrait detection
 - choose a processing profile
 - render a base processed image
-- export JPEG
+- export JPEG or lossless 8-bit TIFF
 - save recipe JSON
 
 V0.1 does not implement face slimming, detailed segmentation, beauty retouching,

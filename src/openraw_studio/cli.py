@@ -70,7 +70,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     batch.add_argument("--saturation", type=float, default=0.0, help="Saturation adjustment from -1.0 muted to 1.0 vivid.")
     batch.add_argument("--limit", type=int, default=200, help="Maximum number of RAW-like files to scan.")
-    batch.add_argument("--preview-only", action="store_true", help="Render previews and recipes but skip JPEG export.")
+    batch.add_argument("--format", dest="export_format", choices=("jpeg", "tiff"), default="jpeg", help="Final export format.")
+    batch.add_argument("--quality", dest="export_quality", type=int, default=92, help="JPEG quality from 1 to 100; TIFF is lossless.")
+    batch.add_argument("--preview-only", action="store_true", help="Render previews and recipes but skip final export.")
     batch.add_argument("--json", action="store_true", help="Print a machine-readable batch report.")
 
     process = subparsers.add_parser("process", help="Process or plan processing for one RAW file.")
@@ -100,6 +102,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Tint adjustment from -1.0 greener to 1.0 more magenta.",
     )
     process.add_argument("--saturation", type=float, default=0.0, help="Saturation adjustment from -1.0 muted to 1.0 vivid.")
+    process.add_argument("--format", dest="export_format", choices=("jpeg", "tiff"), default="jpeg", help="Final export format.")
+    process.add_argument("--quality", dest="export_quality", type=int, default=92, help="JPEG quality from 1 to 100; TIFF is lossless.")
     process.add_argument(
         "--raw-backend",
         choices=("native", "darktable-experimental"),
@@ -128,7 +132,7 @@ def _run_doctor(include_experimental_backends: bool, darktable_cli: str | None) 
         "  status: foundation ready; Nikon NEF/NRW metadata import, embedded JPEG preview, "
         "MakerNote compression metadata summary, optimized Nikon 34713 lossless sensor decode/render, "
         "and basic exposure/contrast/highlights/shadows/temperature/tint/saturation controls; simple PNG preview/native render and "
-        "local JPEG export for narrow uncompressed 12/14/16-bit DNG, guarded TIFF-style Nikon sensor "
+        "local JPEG or lossless 8-bit TIFF export for narrow uncompressed 12/14/16-bit DNG, guarded TIFF-style Nikon sensor "
         "files, and supported Nikon 34713 lossless files"
     )
     if include_experimental_backends or darktable_cli:
@@ -219,6 +223,8 @@ def _run_process(args: argparse.Namespace) -> int:
                 },
                 dry_run=args.dry_run,
                 preview_only=args.preview_only,
+                export_format=args.export_format,
+                export_quality=args.export_quality,
             )
         )
     except BackendUnavailableError as exc:
@@ -278,6 +284,8 @@ def _run_batch(args: argparse.Namespace) -> int:
             "saturation": args.saturation,
         },
         preview_only=args.preview_only,
+        export_format=args.export_format,
+        export_quality=args.export_quality,
     )
 
     if args.json:
@@ -334,6 +342,9 @@ def _validate_adjustment_args(args: argparse.Namespace) -> int | None:
         return 2
     if not -1.0 <= args.saturation <= 1.0:
         print("error: --saturation must be between -1.0 and 1.0", file=sys.stderr)
+        return 2
+    if not 1 <= args.export_quality <= 100:
+        print("error: --quality must be between 1 and 100", file=sys.stderr)
         return 2
     return None
 

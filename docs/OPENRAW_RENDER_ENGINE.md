@@ -95,16 +95,16 @@ Status:
 - simple Bayer demosaic exists
 - simple tone mapping and PNG preview encoding exist
 - `openraw process --preview-only` can complete without final export
-- local JPEG export engine records final derivative exports for narrow supported uncompressed DNG files, guarded Nikon sensor files, and supported Nikon 34713 lossless files
+- local export engine records JPEG quality or lossless 8-bit TIFF derivatives for supported DNG/Nikon files
 - DNG AsShotNeutral white balance and ColorMatrix1 transform are applied when available
-- recipe-driven exposure, contrast, highlights, shadows, normalized temperature, tint, and saturation controls are applied to DNG and native-renderable Nikon preview/JPEG export
+- recipe-driven exposure, contrast, highlights, shadows, normalized temperature, tint, and saturation controls are applied to DNG and native-renderable Nikon preview/final export
 - Nikon embedded previews are extracted as camera-authored JPEGs without applying recipe adjustments yet
 - `openraw inspect` reports current Native support status before preview/export
 - first Nikon 34713 lossless compressed sensor decode and fast half-resolution RGB preview exists
 - chunked NumPy full-resolution bilinear Bayer render is used for supported Nikon 34713 final export
 - Nikon 34713 optimized Python bitstream/render loops, MakerNote black levels, and conservative inactive-border fallback exist
 - Nikon D500 standard as-shot white balance, exact camera-to-linear-sRGB profile conversion, and EXIF orientation are applied
-- additional Nikon camera profiles, further speed work, edge-aware demosaic, other compressed Nikon variants, and TIFF export are next
+- additional Nikon camera profiles, further speed work, edge-aware demosaic, other compressed Nikon variants, and 16-bit linear TIFF are next
 
 Current native metadata scope:
 
@@ -136,7 +136,7 @@ Current native pixel scope:
 - simple local-average Bayer demosaic for RGGB, GRBG, GBRG, and BGGR
 - simple gamma preview transform
 - PNG preview output
-- preview-derived JPEG export output
+- JPEG quality and lossless 8-bit sRGB TIFF export output
 - recipe-driven exposure/contrast/highlights/shadows/temperature/tint/saturation adjustment
 
 Not supported yet:
@@ -150,7 +150,7 @@ Not supported yet:
 - edge-aware/high-quality demosaic (the Nikon final path currently uses bilinear interpolation)
 - full camera-aware color conversion, chromatic adaptation, and gamut mapping
 - final tone mapping
-- JPEG/TIFF native export
+- 16-bit linear TIFF export
 
 ### Stage 3 - OpenRAW Color And Tone
 

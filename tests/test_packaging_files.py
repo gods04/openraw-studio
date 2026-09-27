@@ -26,6 +26,9 @@ class PackagingFilesTests(unittest.TestCase):
         script = (ROOT / "scripts" / "build_windows.ps1").read_text(encoding="utf-8")
 
         self.assertIn('@("README.md", "LICENSE", "NOTICE")', script)
+        self.assertIn('"THIRD_PARTY_LICENSES"', script)
+        self.assertIn('@{ Name = "NumPy"; Pattern = "numpy-*.dist-info" }', script)
+        self.assertIn('@{ Name = "Pillow"; Pattern = "pillow-*.dist-info" }', script)
         self.assertIn("Copy-Item", script)
         self.assertTrue((ROOT / "NOTICE").is_file())
 

@@ -8,39 +8,45 @@ from typing import Any, Mapping
 
 from openraw_studio.core.domain import EngineInfo, ImageRef
 from openraw_studio.export.errors import ExportError
+from openraw_studio.export.formats import normalize_export_format, validate_export_quality
 from openraw_studio.export.interfaces import ExportRequest, ExportResult
 
 
 JPEG_SUFFIXES = {".jpg", ".jpeg"}
+TIFF_SUFFIXES = {".tif", ".tiff"}
 
 
-class LocalJpegExportEngine:
-    """Write final JPEG derivatives while preserving RAW immutability."""
+class LocalImageExportEngine:
+    """Write local JPEG/TIFF derivatives while preserving RAW immutability."""
 
     def engine_info(self) -> EngineInfo:
         return EngineInfo(
             name="openraw-export",
-            version="0.1.0",
+            version="0.2.0",
             backend="local-pillow",
             capabilities={
                 "jpeg": True,
-                "quality": True,
+                "tiff": "rgb8-deflate",
+                "jpeg_quality": True,
                 "source_passthrough": True,
                 "recipe_sidecar": True,
             },
         )
 
     def supported_formats(self) -> tuple[str, ...]:
-        return ("jpeg",)
+        return ("jpeg", "tiff")
 
     def export(self, request: ExportRequest) -> ExportResult:
-        export_format = request.format.lower()
-        if export_format not in {"jpeg", "jpg"}:
-            raise ExportError(f"Unsupported export format: {request.format}")
-        if request.output_path.suffix.lower() not in JPEG_SUFFIXES:
+        try:
+            export_format = normalize_export_format(request.format)
+            quality = validate_export_quality(request.quality)
+        except ValueError as exc:
+            raise ExportError(str(exc)) from exc
+        suffix = request.output_path.suffix.lower()
+        if export_format == "jpeg" and suffix not in JPEG_SUFFIXES:
             raise ExportError("JPEG export path must end in .jpg or .jpeg")
-        if not 1 <= request.quality <= 100:
-            raise ExportError("JPEG quality must be between 1 and 100")
+        if export_format == "tiff" and suffix not in TIFF_SUFFIXES:
+            raise ExportError("TIFF export path must end in .tif or .tiff")
         if request.image.width <= 0 or request.image.height <= 0:
             raise ExportError("Export image dimensions must be positive")
 
@@ -49,7 +55,12 @@ class LocalJpegExportEngine:
             if not output_path.exists():
                 raise ExportError(f"Rendered image does not exist: {output_path}")
         else:
-            _write_jpeg_from_existing_image(request.image.path, output_path, quality=request.quality)
+            _write_from_existing_image(
+                request.image.path,
+                output_path,
+                export_format=export_format,
+                quality=quality,
+            )
 
         recipe_path = _write_recipe_sidecar(output_path, request.recipe) if request.write_recipe_sidecar else None
         exported = ImageRef(
@@ -63,8 +74,10 @@ class LocalJpegExportEngine:
             exported=exported,
             recipe_path=recipe_path,
             metadata={
-                "format": "jpeg",
-                "quality": request.quality,
+                "format": export_format,
+                "quality": quality if export_format == "jpeg" else None,
+                "bit_depth": 8,
+                "compression": "jpeg" if export_format == "jpeg" else "tiff_deflate",
                 "source_path": str(request.image.path),
                 "source_role": request.image.role,
                 "engine": self.engine_info().name,
@@ -76,24 +89,37 @@ def _same_path(left: Path, right: Path) -> bool:
     return left.expanduser().resolve() == right.expanduser().resolve()
 
 
-def _write_jpeg_from_existing_image(source_path: Path, output_path: Path, *, quality: int) -> None:
+def _write_from_existing_image(
+    source_path: Path,
+    output_path: Path,
+    *,
+    export_format: str,
+    quality: int,
+) -> None:
     if not source_path.exists():
         raise ExportError(f"Rendered image does not exist: {source_path}")
     try:
         from PIL import Image
     except ImportError as exc:
-        raise ExportError("Pillow is required for JPEG export") from exc
+        raise ExportError("Pillow is required for local image export") from exc
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         with Image.open(source_path) as opened:
             encoded = opened.convert("RGB")
-            encoded.save(output_path, format="JPEG", quality=quality, optimize=False, progressive=False)
+            if export_format == "jpeg":
+                encoded.save(output_path, format="JPEG", quality=quality, optimize=False, progressive=False)
+            else:
+                encoded.save(output_path, format="TIFF", compression="tiff_deflate")
     except OSError as exc:
-        raise ExportError(f"Could not encode JPEG export: {exc}") from exc
+        raise ExportError(f"Could not encode {export_format.upper()} export: {exc}") from exc
 
 
 def _write_recipe_sidecar(output_path: Path, recipe: Mapping[str, Any]) -> Path:
     recipe_path = output_path.with_name(f"{output_path.name}.recipe.json")
     recipe_path.write_text(json.dumps(recipe, indent=2, sort_keys=True), encoding="utf-8")
     return recipe_path
+
+
+# Backward-compatible public name for existing callers.
+LocalJpegExportEngine = LocalImageExportEngine

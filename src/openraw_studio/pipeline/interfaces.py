@@ -21,6 +21,8 @@ class PipelineRequest:
     dry_run: bool = False
     preview_only: bool = False
     overrides: Mapping[str, Any] = field(default_factory=dict)
+    export_format: str = "jpeg"
+    export_quality: int = 92
 
 
 @dataclass(frozen=True)
