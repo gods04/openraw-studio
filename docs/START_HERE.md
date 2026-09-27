@@ -167,7 +167,7 @@ Current status:
 - `--preview-only` pipeline mode exists
 - `darktable-cli` adapter exists only as an explicit experimental backend
 - local JPEG export engine records final derivative exports for supported DNG and guarded Nikon files
-- first-pass DNG white balance and ColorMatrix1 transform are now applied
+- single-illuminant DNG white balance and standards-directed ColorMatrix1-to-linear-sRGB conversion are now applied
 - exposure, contrast, highlights, shadows, temperature, tint, and saturation adjustments are available from the CLI and desktop shell and are saved in the recipe
 - rendered-preview RGB/luminance histogram and shadow/highlight clipping feedback are available in the desktop shell
 - Windows startup script creates `.venv`, installs the local package, and opens the app

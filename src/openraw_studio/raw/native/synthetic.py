@@ -11,6 +11,17 @@ from openraw_studio.raw.native.bitpacking import SensorBitPackingError, pack_row
 BLACK_LEVEL = 64
 WHITE_LEVEL = 4095
 NIKON_WHITE_LEVEL_14 = 16383
+SYNTHETIC_XYZ_D65_TO_CAMERA = [
+    (32404542, 10000000),
+    (-15371385, 10000000),
+    (-4985314, 10000000),
+    (-9692660, 10000000),
+    (18760108, 10000000),
+    (415560, 10000000),
+    (556434, 10000000),
+    (-2040259, 10000000),
+    (10572252, 10000000),
+]
 
 
 def synthetic_dng_bytes(width: int = 16, height: int = 16) -> bytes:
@@ -39,7 +50,7 @@ def synthetic_dng_bytes(width: int = 16, height: int = 16) -> bytes:
         _entry_external(50708, 2, b"OpenRAW Synthetic NativeCam\x00"),
         _entry_inline(50714, 3, 1, _pack_short(BLACK_LEVEL)),
         _entry_inline(50717, 3, 1, _pack_short(WHITE_LEVEL)),
-        _entry_external(50721, 10, _pack_srationals([(1, 1), (0, 1), (0, 1), (0, 1), (1, 1), (0, 1), (0, 1), (0, 1), (1, 1)])),
+        _entry_external(50721, 10, _pack_srationals(SYNTHETIC_XYZ_D65_TO_CAMERA)),
         _entry_external(50728, 5, _pack_rationals([(1, 1), (1, 1), (1, 1)])),
         _entry_inline(50778, 3, 1, _pack_short(21)),
         _entry_pixel_offset(273),

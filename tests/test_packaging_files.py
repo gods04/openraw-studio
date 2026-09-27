@@ -22,6 +22,13 @@ class PackagingFilesTests(unittest.TestCase):
         self.assertIn("scripts\\build_windows.ps1", workflow)
         self.assertIn("dist\\OpenRAW-Studio-windows-x64.zip", workflow)
 
+    def test_windows_bundle_includes_license_notice_and_readme(self) -> None:
+        script = (ROOT / "scripts" / "build_windows.ps1").read_text(encoding="utf-8")
+
+        self.assertIn('@("README.md", "LICENSE", "NOTICE")', script)
+        self.assertIn("Copy-Item", script)
+        self.assertTrue((ROOT / "NOTICE").is_file())
+
     def test_pyinstaller_entrypoint_is_import_safe(self) -> None:
         module_globals = runpy.run_path(str(ROOT / "packaging" / "openraw_app.py"))
 

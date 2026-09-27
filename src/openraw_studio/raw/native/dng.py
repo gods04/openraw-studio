@@ -1,4 +1,7 @@
-"""Minimal TIFF/DNG metadata reader for OpenRAW Native."""
+"""Minimal TIFF/DNG metadata reader for OpenRAW Native.
+
+This product includes DNG technology under license by Adobe.
+"""
 
 from __future__ import annotations
 

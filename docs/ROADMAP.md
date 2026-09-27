@@ -77,6 +77,7 @@ Suggested implementation order:
 32. [done] add region-weighted highlights and shadows controls to preview/export recipes and Auto Adjust
 33. [done] add normalized temperature and green/magenta tint controls with legacy warmth compatibility
 34. [done] add rendered-preview RGB/luminance histogram and clipping feedback that follows Before/After view
+35. [done] replace direct DNG ColorMatrix1 multiplication with inverse camera-to-XYZ, Bradford adaptation, and linear-sRGB conversion
 
 Exit criteria:
 

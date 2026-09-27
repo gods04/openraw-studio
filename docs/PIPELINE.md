@@ -64,6 +64,12 @@ previewed when an embedded JPEG preview is present, but other
 compressed/proprietary Nikon payload variants are not decoded yet. It is an
 honest early render proof, not the final camera-aware color pipeline.
 
+For supported DNG files, the native color path applies `AsShotNeutral`, inverts
+the XYZ-to-camera `ColorMatrix1`, uses Bradford white-point adaptation through
+D50 to D65, and converts to linear sRGB before tone mapping. It currently uses
+one calibration matrix; dual-illuminant interpolation, `ForwardMatrix`, and
+gamut mapping remain explicit next steps.
+
 Current native batch command:
 
 ```powershell

@@ -95,7 +95,9 @@ Then import `sample-data\openraw-synthetic.DNG` or
 ## What Does Not Work Yet?
 
 - No packaged installer yet
-- OpenRAW Native has only a first-pass DNG white-balance and color-matrix transform
+- OpenRAW Native has a single-illuminant DNG white-balance and `ColorMatrix1`
+  conversion to linear sRGB; dual-illuminant interpolation, `ForwardMatrix`, and
+  gamut mapping are not implemented yet
 - OpenRAW Native has a first optimized Nikon 34713 lossless decode/render path,
   but compressed Nikon output is still half-resolution RGB with basic color and
   basic tone; further speed, color, and full-resolution work remains
@@ -270,8 +272,10 @@ openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-outpu
 For supported simple uncompressed DNG files, guarded TIFF-style Nikon sensor
 files, and supported Nikon 34713 lossless files, this writes both `.preview.png`
 and `.auto.jpg` artifacts through the local JPEG export engine. The image data
-is still an early V0.1 render. It applies available DNG `AsShotNeutral` and
-`ColorMatrix1` metadata when present, but Nikon 34713 output is currently
+is still an early V0.1 render. It applies available DNG `AsShotNeutral`, inverts
+`ColorMatrix1` from camera space through XYZ, performs Bradford white-point
+adaptation, and converts to linear sRGB before tone mapping. Dual-illuminant
+DNG profiles are still future work, and Nikon 34713 output is currently
 half-resolution RGB with basic color and basic tone.
 
 Batch export currently renderable DNG/Nikon files from a folder:
@@ -341,6 +345,8 @@ reviewed before they are bundled or redistributed.
 See [docs/MODEL_LICENSES.md](docs/MODEL_LICENSES.md) for the license register.
 See [docs/COMMERCIALIZATION_STRATEGY.md](docs/COMMERCIALIZATION_STRATEGY.md) for
 commercialization planning.
+See [NOTICE](NOTICE) for third-party notices, including the required Adobe DNG
+technology notice.
 
 ## Contributing
 

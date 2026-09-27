@@ -49,7 +49,7 @@ class NativeRawProcessor:
                 "base_render": "preview-derived-jpeg-dng-v0.1",
                 "jpeg_export": "pillow-jpeg-v0.1",
                 "white_balance": "dng-as-shot-neutral-v0.1",
-                "camera_color_matrix": "dng-color-matrix-1-v0.1",
+                "camera_color_matrix": "dng-color-matrix-1-to-linear-srgb-v0.2",
                 "tone_adjustments": "exposure-contrast-highlights-shadows-temperature-tint-saturation-v0.1",
                 "packed_bayer_strips": "12-14-bit-row-aligned-v0.1",
                 "dng_metadata": True,

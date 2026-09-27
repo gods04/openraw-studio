@@ -63,6 +63,10 @@ try {
         throw "PyInstaller did not create the expected app folder: $AppDir"
     }
 
+    foreach ($Document in @("README.md", "LICENSE", "NOTICE")) {
+        Copy-Item -LiteralPath (Join-Path $RepoRoot $Document) -Destination (Join-Path $AppDir $Document) -Force
+    }
+
     if (Test-Path $ZipPath) {
         Remove-Item -LiteralPath $ZipPath -Force
     }

@@ -340,24 +340,70 @@ class NativeDngMetadataTests(unittest.TestCase):
         self.assertEqual(balanced.metadata["white_balance"], "as-shot")
 
     def test_camera_matrix_transforms_linear_rgb(self) -> None:
-        image = demosaic_simple(
-            LinearSensorImage(
-                width=2,
-                height=2,
-                color_filter_array="RGGB",
-                samples=(1.0, 0.5, 0.25, 0.0),
-                black_level=0,
-                white_level=1,
-                source_bit_depth=16,
-            )
+        image = LinearRgbImage(
+            width=1,
+            height=1,
+            pixels=((0.2, 0.8, 0.4),),
+            source_color_filter_array="RGGB",
+        )
+        transformed = apply_camera_matrix(
+            image,
+            (
+                -0.9692660,
+                1.8760108,
+                0.0415560,
+                3.2404542,
+                -1.5371385,
+                -0.4985314,
+                0.0556434,
+                -0.2040259,
+                1.0572252,
+            ),
+        )
+
+        red, green, blue = transformed.pixel_at(0, 0)
+        self.assertAlmostEqual(red, 0.8, places=5)
+        self.assertAlmostEqual(green, 0.2, places=5)
+        self.assertAlmostEqual(blue, 0.4, places=5)
+
+    def test_camera_matrix_preserves_linear_srgb_profile_values(self) -> None:
+        image = LinearRgbImage(
+            width=1,
+            height=1,
+            pixels=((0.15, 0.45, 0.8),),
+            source_color_filter_array="RGGB",
         )
 
         transformed = apply_camera_matrix(
             image,
-            (0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0),
+            (
+                3.2404542,
+                -1.5371385,
+                -0.4985314,
+                -0.9692660,
+                1.8760108,
+                0.0415560,
+                0.0556434,
+                -0.2040259,
+                1.0572252,
+            ),
         )
 
-        self.assertEqual(transformed.pixel_at(0, 0), (0.375, 1.0, 0.0))
+        for actual, expected in zip(transformed.pixel_at(0, 0), image.pixel_at(0, 0)):
+            self.assertAlmostEqual(actual, expected, places=5)
+
+    def test_camera_matrix_rejects_singular_or_non_finite_values(self) -> None:
+        image = LinearRgbImage(
+            width=1,
+            height=1,
+            pixels=((0.2, 0.3, 0.4),),
+            source_color_filter_array="RGGB",
+        )
+
+        with self.assertRaises(ValueError):
+            apply_camera_matrix(image, (1.0, 0.0, 0.0, 2.0, 0.0, 0.0, 3.0, 0.0, 0.0))
+        with self.assertRaises(ValueError):
+            apply_camera_matrix(image, (1.0, 0.0, 0.0, 0.0, float("nan"), 0.0, 0.0, 0.0, 1.0))
 
     def test_simple_demosaic_preserves_known_bayer_samples(self) -> None:
         sensor = LinearSensorImage(
