@@ -22,6 +22,7 @@ class AutoAdjustTests(unittest.TestCase):
 
         self.assertGreater(suggestion.exposure, 0.0)
         self.assertGreater(suggestion.contrast, 0.0)
+        self.assertGreater(suggestion.shadows, 0.0)
         self.assertIn("dark", " ".join(suggestion.rationale))
 
     def test_bright_preview_gets_exposure_reduction(self) -> None:
@@ -35,6 +36,7 @@ class AutoAdjustTests(unittest.TestCase):
         suggestion = suggest_auto_adjustments_from_preview(preview)
 
         self.assertLess(suggestion.exposure, 0.0)
+        self.assertLess(suggestion.highlights, 0.0)
 
     def test_cool_preview_gets_warmth(self) -> None:
         preview = PreviewRgbImage(
@@ -53,7 +55,7 @@ class AutoAdjustTests(unittest.TestCase):
 
         overrides = suggest_auto_adjustments_from_preview(preview).as_overrides()
 
-        self.assertEqual(set(overrides), {"exposure", "contrast", "warmth", "saturation"})
+        self.assertEqual(set(overrides), {"exposure", "contrast", "highlights", "shadows", "warmth", "saturation"})
 
     def test_muted_preview_gets_saturation_lift(self) -> None:
         preview = PreviewRgbImage(
@@ -75,6 +77,8 @@ class AutoAdjustTests(unittest.TestCase):
 
         self.assertLessEqual(abs(suggestion.exposure), 0.6)
         self.assertLessEqual(abs(suggestion.contrast), 0.22)
+        self.assertLessEqual(abs(suggestion.highlights), 0.3)
+        self.assertLessEqual(abs(suggestion.shadows), 0.28)
         self.assertLessEqual(abs(suggestion.warmth), 0.12)
         self.assertLessEqual(abs(suggestion.saturation), 0.14)
 
@@ -87,6 +91,8 @@ class AutoAdjustTests(unittest.TestCase):
 
         self.assertLessEqual(abs(suggestion.exposure), 0.6)
         self.assertLessEqual(abs(suggestion.contrast), 0.22)
+        self.assertLessEqual(abs(suggestion.highlights), 0.3)
+        self.assertLessEqual(abs(suggestion.shadows), 0.28)
         self.assertLessEqual(abs(suggestion.warmth), 0.12)
         self.assertLessEqual(abs(suggestion.saturation), 0.14)
 

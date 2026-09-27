@@ -205,6 +205,8 @@ def render_nikon_34713_to_file(
     max_dimension: int | None = None,
     exposure: float = 0.0,
     contrast: float = 0.0,
+    highlights: float = 0.0,
+    shadows: float = 0.0,
     warmth: float = 0.0,
     saturation: float = 0.0,
     jpeg_quality: int = 92,
@@ -218,6 +220,8 @@ def render_nikon_34713_to_file(
         max_dimension=max_dimension,
         exposure=exposure,
         contrast=contrast,
+        highlights=highlights,
+        shadows=shadows,
         warmth=warmth,
         saturation=saturation,
         jpeg_quality=jpeg_quality,
@@ -231,6 +235,8 @@ def render_decoded_nikon_34713_to_file(
     max_dimension: int | None = None,
     exposure: float = 0.0,
     contrast: float = 0.0,
+    highlights: float = 0.0,
+    shadows: float = 0.0,
     warmth: float = 0.0,
     saturation: float = 0.0,
     jpeg_quality: int = 92,
@@ -243,6 +249,8 @@ def render_decoded_nikon_34713_to_file(
         max_dimension=max_dimension,
         exposure=exposure,
         contrast=contrast,
+        highlights=highlights,
+        shadows=shadows,
         warmth=warmth,
         saturation=saturation,
     )
@@ -270,6 +278,8 @@ def render_decoded_nikon_34713_image(
     max_dimension: int | None = None,
     exposure: float = 0.0,
     contrast: float = 0.0,
+    highlights: float = 0.0,
+    shadows: float = 0.0,
     warmth: float = 0.0,
     saturation: float = 0.0,
 ) -> NikonRenderedRgbImage:
@@ -291,6 +301,8 @@ def render_decoded_nikon_34713_image(
         white_level=decoded.white_level,
         exposure=exposure,
         contrast=contrast,
+        highlights=highlights,
+        shadows=shadows,
         warmth=warmth,
         saturation=saturation,
     )
@@ -535,6 +547,8 @@ def _bayer_blocks_to_rgb8(
     white_level: int,
     exposure: float,
     contrast: float,
+    highlights: float,
+    shadows: float,
     warmth: float,
     saturation: float,
 ) -> tuple[int, int, bytearray]:
@@ -551,6 +565,8 @@ def _bayer_blocks_to_rgb8(
         white_level=white_level,
         exposure=exposure,
         contrast=contrast,
+        highlights=highlights,
+        shadows=shadows,
         warmth=warmth,
     )
     saturation_factor = 1.0 + _clamp_float(saturation, -1.0, 1.0) * 0.75
@@ -654,11 +670,15 @@ def _channel_luts(
     white_level: int,
     exposure: float,
     contrast: float,
+    highlights: float,
+    shadows: float,
     warmth: float,
 ) -> tuple[bytes, bytes, bytes]:
     span = max(1, white_level - black_level)
     exposure_scale = 2.0 ** _clamp_float(exposure, -4.0, 4.0)
     contrast_factor = 1.0 + _clamp_float(contrast, -1.0, 1.0) * 0.75
+    highlights_value = _clamp_float(highlights, -1.0, 1.0)
+    shadows_value = _clamp_float(shadows, -1.0, 1.0)
     warmth_value = _clamp_float(warmth, -1.0, 1.0)
     red_scale = 1.0 + warmth_value * 0.12
     green_scale = 1.0 + warmth_value * 0.03
@@ -669,14 +689,41 @@ def _channel_luts(
     for value in range(65536):
         normalized = _clamp_float((value - black_level) / float(span), 0.0, 1.0)
         exposed = normalized * exposure_scale
-        red[value] = _encode_channel(_apply_contrast(exposed * red_scale, contrast_factor))
-        green[value] = _encode_channel(_apply_contrast(exposed * green_scale, contrast_factor))
-        blue[value] = _encode_channel(_apply_contrast(exposed * blue_scale, contrast_factor))
+        red[value] = _encode_channel(
+            _apply_tonal_regions(
+                _apply_contrast(exposed * red_scale, contrast_factor),
+                highlights=highlights_value,
+                shadows=shadows_value,
+            )
+        )
+        green[value] = _encode_channel(
+            _apply_tonal_regions(
+                _apply_contrast(exposed * green_scale, contrast_factor),
+                highlights=highlights_value,
+                shadows=shadows_value,
+            )
+        )
+        blue[value] = _encode_channel(
+            _apply_tonal_regions(
+                _apply_contrast(exposed * blue_scale, contrast_factor),
+                highlights=highlights_value,
+                shadows=shadows_value,
+            )
+        )
     return bytes(red), bytes(green), bytes(blue)
 
 
 def _apply_contrast(value: float, factor: float) -> float:
     return ((value - 0.18) * factor) + 0.18
+
+
+def _apply_tonal_regions(value: float, *, highlights: float, shadows: float) -> float:
+    if highlights == 0.0 and shadows == 0.0:
+        return value
+    position = _clamp_float(value, 0.0, 1.0)
+    shadow_weight = (1.0 - position) ** 2
+    highlight_weight = position**2
+    return value + (shadows * 0.3 * shadow_weight) + (highlights * 0.3 * highlight_weight)
 
 
 def _encode_channel(value: float) -> int:

@@ -28,7 +28,7 @@ The startup script will:
 Current app flow:
 
 ```text
-Import DNG/NEF or folder -> choose output folder -> renderable files: Auto Adjust -> Update Preview -> refine exposure/contrast/warmth/saturation -> Export JPEG or Export Folder
+Import DNG/NEF or folder -> choose output folder -> renderable files: Auto Adjust -> Update Preview -> refine exposure/contrast/highlights/shadows/warmth/saturation -> Export JPEG or Export Folder
 ```
 
 The app also shows whether the selected file is supported by the current

@@ -50,7 +50,7 @@ class NativeRawProcessor:
                 "jpeg_export": "pillow-jpeg-v0.1",
                 "white_balance": "dng-as-shot-neutral-v0.1",
                 "camera_color_matrix": "dng-color-matrix-1-v0.1",
-                "tone_adjustments": "exposure-contrast-warmth-saturation-v0.1",
+                "tone_adjustments": "exposure-contrast-highlights-shadows-warmth-saturation-v0.1",
                 "packed_bayer_strips": "12-14-bit-row-aligned-v0.1",
                 "dng_metadata": True,
                 "nikon_nef_metadata": True,
@@ -127,6 +127,8 @@ class NativeRawProcessor:
                     output_path,
                     exposure=adjustments.exposure,
                     contrast=adjustments.contrast,
+                    highlights=adjustments.highlights,
+                    shadows=adjustments.shadows,
                     warmth=adjustments.warmth,
                     saturation=adjustments.saturation,
                     max_dimension=max_dimension,
@@ -143,6 +145,8 @@ class NativeRawProcessor:
                 output_path,
                 exposure=adjustments.exposure,
                 contrast=adjustments.contrast,
+                highlights=adjustments.highlights,
+                shadows=adjustments.shadows,
                 warmth=adjustments.warmth,
                 saturation=adjustments.saturation,
                 max_dimension=max_dimension,
@@ -176,6 +180,8 @@ class NativeRawProcessor:
                     plan.output_path,
                     exposure=adjustments.exposure,
                     contrast=adjustments.contrast,
+                    highlights=adjustments.highlights,
+                    shadows=adjustments.shadows,
                     warmth=adjustments.warmth,
                     saturation=adjustments.saturation,
                     max_dimension=request.max_dimension,
@@ -191,6 +197,8 @@ class NativeRawProcessor:
                 plan.source_path,
                 exposure=adjustments.exposure,
                 contrast=adjustments.contrast,
+                highlights=adjustments.highlights,
+                shadows=adjustments.shadows,
                 warmth=adjustments.warmth,
                 saturation=adjustments.saturation,
             )
@@ -282,6 +290,8 @@ def _image_metadata_from_tiff_summary(summary: Mapping[str, Any]) -> dict[str, A
 class RenderAdjustments:
     exposure: float = 0.0
     contrast: float = 0.0
+    highlights: float = 0.0
+    shadows: float = 0.0
     warmth: float = 0.0
     saturation: float = 0.0
 
@@ -294,6 +304,8 @@ def _recipe_render_adjustments(recipe: Mapping[str, Any] | None) -> RenderAdjust
     return RenderAdjustments(
         exposure=_bounded_float(raw.get("exposure", 0.0), minimum=-4.0, maximum=4.0),
         contrast=_bounded_float(raw.get("contrast", 0.0), minimum=-1.0, maximum=1.0),
+        highlights=_bounded_float(raw.get("highlights", 0.0), minimum=-1.0, maximum=1.0),
+        shadows=_bounded_float(raw.get("shadows", 0.0), minimum=-1.0, maximum=1.0),
         warmth=_bounded_float(raw.get("warmth", 0.0), minimum=-1.0, maximum=1.0),
         saturation=_bounded_float(raw.get("saturation", 0.0), minimum=-1.0, maximum=1.0),
     )

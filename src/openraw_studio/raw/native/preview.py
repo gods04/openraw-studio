@@ -30,6 +30,8 @@ def render_png_preview(
     apply_color: bool = True,
     exposure: float = 0.0,
     contrast: float = 0.0,
+    highlights: float = 0.0,
+    shadows: float = 0.0,
     warmth: float = 0.0,
     saturation: float = 0.0,
     max_dimension: int | None = None,
@@ -41,6 +43,8 @@ def render_png_preview(
         apply_color=apply_color,
         exposure=exposure,
         contrast=contrast,
+        highlights=highlights,
+        shadows=shadows,
         warmth=warmth,
         saturation=saturation,
         max_dimension=max_dimension,
@@ -63,6 +67,8 @@ def render_preview_image(
     apply_color: bool = True,
     exposure: float = 0.0,
     contrast: float = 0.0,
+    highlights: float = 0.0,
+    shadows: float = 0.0,
     warmth: float = 0.0,
     saturation: float = 0.0,
     max_dimension: int | None = None,
@@ -73,6 +79,8 @@ def render_preview_image(
         source_path,
         exposure=exposure,
         contrast=contrast,
+        highlights=highlights,
+        shadows=shadows,
         warmth=warmth,
         saturation=saturation,
         max_dimension=max_dimension,
@@ -87,7 +95,15 @@ def render_preview_image(
     linear_rgb = demosaic_simple(linear_sensor)
     if apply_color:
         linear_rgb = apply_camera_matrix(linear_rgb, metadata.get("color_matrix_1"))
-    preview = tone_map_preview(linear_rgb, exposure=exposure, contrast=contrast, warmth=warmth, saturation=saturation)
+    preview = tone_map_preview(
+        linear_rgb,
+        exposure=exposure,
+        contrast=contrast,
+        highlights=highlights,
+        shadows=shadows,
+        warmth=warmth,
+        saturation=saturation,
+    )
     return resize_preview(preview, max_dimension=max_dimension)
 
 
@@ -96,6 +112,8 @@ def _render_nikon_34713_preview_image(
     *,
     exposure: float,
     contrast: float,
+    highlights: float,
+    shadows: float,
     warmth: float,
     saturation: float,
     max_dimension: int | None,
@@ -118,6 +136,8 @@ def _render_nikon_34713_preview_image(
         max_dimension=max_dimension,
         exposure=exposure,
         contrast=contrast,
+        highlights=highlights,
+        shadows=shadows,
         warmth=warmth,
         saturation=saturation,
     )

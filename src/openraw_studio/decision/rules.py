@@ -29,8 +29,11 @@ class RuleBasedDecisionEngine:
         adjustments: dict[str, Any] = {
             "raw": {
                 "exposure": 0.0,
-                "highlight_recovery": 0.15,
-                "shadow_recovery": 0.1,
+                "contrast": 0.0,
+                "highlights": 0.0,
+                "shadows": 0.0,
+                "warmth": 0.0,
+                "saturation": 0.0,
             },
             "portrait": {
                 "global": {

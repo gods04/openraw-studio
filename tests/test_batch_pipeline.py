@@ -30,7 +30,11 @@ class BatchPipelineTests(unittest.TestCase):
             unsupported.write_bytes(b"fake")
             output = root / "output"
 
-            result = run_batch_export([supported, unsupported], output, overrides={"exposure": 0.2, "saturation": 0.3})
+            result = run_batch_export(
+                [supported, unsupported],
+                output,
+                overrides={"exposure": 0.2, "highlights": -0.25, "shadows": 0.2, "saturation": 0.3},
+            )
 
             export_path = output / "exports" / "a.auto.jpg"
             recipe_path = output / "recipes" / "a.DNG.recipe.json"
@@ -45,6 +49,8 @@ class BatchPipelineTests(unittest.TestCase):
         self.assertEqual(result.failed, 0)
         self.assertTrue(export_exists)
         self.assertTrue(recipe_exists)
+        self.assertEqual(recipe["adjustments"]["raw"]["highlights"], -0.25)
+        self.assertEqual(recipe["adjustments"]["raw"]["shadows"], 0.2)
         self.assertEqual(recipe["adjustments"]["raw"]["saturation"], 0.3)
         self.assertEqual(result.items[0].status, "exported")
         self.assertEqual(result.items[1].status, "skipped")

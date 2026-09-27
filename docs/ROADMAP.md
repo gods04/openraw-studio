@@ -74,6 +74,7 @@ Suggested implementation order:
 29. [partial] improve Nikon 34713 black-level inference and Python render speed
 30. improve Nikon 34713 camera-aware color and full-resolution export
 31. add support for more compressed Nikon NEF sensor payload variants
+32. [done] add region-weighted highlights and shadows controls to preview/export recipes and Auto Adjust
 
 Exit criteria:
 

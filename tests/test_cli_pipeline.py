@@ -252,6 +252,18 @@ class CliPipelineTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 2)
 
+    def test_cli_rejects_invalid_highlights(self) -> None:
+        with redirect_stderr(StringIO()):
+            exit_code = main(["process", "missing.DNG", "--output", "output", "--dry-run", "--highlights", "-2"])
+
+        self.assertEqual(exit_code, 2)
+
+    def test_cli_rejects_invalid_shadows(self) -> None:
+        with redirect_stderr(StringIO()):
+            exit_code = main(["process", "missing.DNG", "--output", "output", "--dry-run", "--shadows", "2"])
+
+        self.assertEqual(exit_code, 2)
+
     def test_cli_rejects_invalid_warmth(self) -> None:
         with redirect_stderr(StringIO()):
             exit_code = main(["process", "missing.DNG", "--output", "output", "--dry-run", "--warmth", "-2"])

@@ -312,6 +312,8 @@ def _recipe_adjustment_overrides(recipe: Mapping[str, Any]) -> dict[str, float]:
     return {
         "exposure": _clamped_recipe_float(raw.get("exposure"), default=0.0, minimum=-2.0, maximum=2.0),
         "contrast": _clamped_recipe_float(raw.get("contrast"), default=0.0, minimum=-1.0, maximum=1.0),
+        "highlights": _clamped_recipe_float(raw.get("highlights"), default=0.0, minimum=-1.0, maximum=1.0),
+        "shadows": _clamped_recipe_float(raw.get("shadows"), default=0.0, minimum=-1.0, maximum=1.0),
         "warmth": _clamped_recipe_float(raw.get("warmth"), default=0.0, minimum=-1.0, maximum=1.0),
         "saturation": _clamped_recipe_float(raw.get("saturation"), default=0.0, minimum=-1.0, maximum=1.0),
     }
@@ -372,15 +374,26 @@ def _auto_adjust_status(suggestion: AutoAdjustSuggestion) -> str:
         "Auto Adjust applied: "
         f"{_format_exposure_label(suggestion.exposure)}, "
         f"Contrast {_format_adjustment_label(suggestion.contrast)}, "
+        f"Highlights {_format_adjustment_label(suggestion.highlights)}, "
+        f"Shadows {_format_adjustment_label(suggestion.shadows)}, "
         f"Warmth {_format_adjustment_label(suggestion.warmth)}, "
         f"Saturation {_format_adjustment_label(suggestion.saturation)}"
     )
 
 
-def _manual_overrides(exposure: float, contrast: float, warmth: float, saturation: float) -> dict[str, float]:
+def _manual_overrides(
+    exposure: float,
+    contrast: float,
+    highlights: float,
+    shadows: float,
+    warmth: float,
+    saturation: float,
+) -> dict[str, float]:
     return {
         "exposure": float(exposure),
         "contrast": float(contrast),
+        "highlights": float(highlights),
+        "shadows": float(shadows),
         "warmth": float(warmth),
         "saturation": float(saturation),
     }
@@ -394,7 +407,7 @@ def _adjustments_match(
 ) -> bool:
     if rendered is None:
         return False
-    for key in ("exposure", "contrast", "warmth", "saturation"):
+    for key in ("exposure", "contrast", "highlights", "shadows", "warmth", "saturation"):
         if abs(float(rendered.get(key, 0.0)) - float(current.get(key, 0.0))) > tolerance:
             return False
     return True
@@ -490,10 +503,14 @@ def launch_desktop_app() -> None:
             self.preview_state_var = tk.StringVar(value="No preview yet")
             self.exposure_var = tk.DoubleVar(value=0.0)
             self.contrast_var = tk.DoubleVar(value=0.0)
+            self.highlights_var = tk.DoubleVar(value=0.0)
+            self.shadows_var = tk.DoubleVar(value=0.0)
             self.warmth_var = tk.DoubleVar(value=0.0)
             self.saturation_var = tk.DoubleVar(value=0.0)
             self.exposure_label_var = tk.StringVar(value=_format_exposure_label(0.0))
             self.contrast_label_var = tk.StringVar(value=_format_adjustment_label(0.0))
+            self.highlights_label_var = tk.StringVar(value=_format_adjustment_label(0.0))
+            self.shadows_label_var = tk.StringVar(value=_format_adjustment_label(0.0))
             self.warmth_label_var = tk.StringVar(value=_format_adjustment_label(0.0))
             self.saturation_label_var = tk.StringVar(value=_format_adjustment_label(0.0))
             self._build_style(ttk)
@@ -620,6 +637,32 @@ def launch_desktop_app() -> None:
                 from_=-1.0,
                 to=1.0,
                 variable=self.contrast_var,
+                orient="horizontal",
+                command=self._sync_adjustment_labels,
+            ).pack(fill="x", pady=(6, 8))
+
+            highlights_header = ttk_module.Frame(controls, style="Panel.TFrame")
+            highlights_header.pack(fill="x")
+            ttk_module.Label(highlights_header, text="Highlights", style="Panel.TLabel").pack(side="left")
+            ttk_module.Label(highlights_header, textvariable=self.highlights_label_var, style="Muted.TLabel").pack(side="right")
+            ttk_module.Scale(
+                controls,
+                from_=-1.0,
+                to=1.0,
+                variable=self.highlights_var,
+                orient="horizontal",
+                command=self._sync_adjustment_labels,
+            ).pack(fill="x", pady=(6, 8))
+
+            shadows_header = ttk_module.Frame(controls, style="Panel.TFrame")
+            shadows_header.pack(fill="x")
+            ttk_module.Label(shadows_header, text="Shadows", style="Panel.TLabel").pack(side="left")
+            ttk_module.Label(shadows_header, textvariable=self.shadows_label_var, style="Muted.TLabel").pack(side="right")
+            ttk_module.Scale(
+                controls,
+                from_=-1.0,
+                to=1.0,
+                variable=self.shadows_var,
                 orient="horizontal",
                 command=self._sync_adjustment_labels,
             ).pack(fill="x", pady=(6, 8))
@@ -861,7 +904,7 @@ def launch_desktop_app() -> None:
                 self.output_var.set(str(self.output_dir))
             self._refresh_output_info()
             self._clear_result()
-            self._set_adjustment_values(_manual_overrides(0.0, 0.0, 0.0, 0.0))
+            self._set_adjustment_values(_manual_overrides(0.0, 0.0, 0.0, 0.0, 0.0, 0.0))
             recipe_status = self._restore_recipe_if_available()
             self._set_busy(False)
             self.status_var.set(recipe_status or ready_status)
@@ -898,6 +941,8 @@ def launch_desktop_app() -> None:
         def _set_adjustment_values(self, overrides: Mapping[str, float]) -> None:
             self.exposure_var.set(float(overrides.get("exposure", 0.0)))
             self.contrast_var.set(float(overrides.get("contrast", 0.0)))
+            self.highlights_var.set(float(overrides.get("highlights", 0.0)))
+            self.shadows_var.set(float(overrides.get("shadows", 0.0)))
             self.warmth_var.set(float(overrides.get("warmth", 0.0)))
             self.saturation_var.set(float(overrides.get("saturation", 0.0)))
             self._sync_adjustment_labels(update_status=False)
@@ -940,6 +985,8 @@ def launch_desktop_app() -> None:
         def _sync_adjustment_labels(self, *_: Any, update_status: bool = True) -> None:
             self.exposure_label_var.set(_format_exposure_label(float(self.exposure_var.get())))
             self.contrast_label_var.set(_format_adjustment_label(float(self.contrast_var.get())))
+            self.highlights_label_var.set(_format_adjustment_label(float(self.highlights_var.get())))
+            self.shadows_label_var.set(_format_adjustment_label(float(self.shadows_var.get())))
             self.warmth_label_var.set(_format_adjustment_label(float(self.warmth_var.get())))
             self.saturation_label_var.set(_format_adjustment_label(float(self.saturation_var.get())))
             if update_status and self.source_path is not None and not self.is_busy:
@@ -949,6 +996,8 @@ def launch_desktop_app() -> None:
         def _reset_adjustments(self) -> None:
             self.exposure_var.set(0.0)
             self.contrast_var.set(0.0)
+            self.highlights_var.set(0.0)
+            self.shadows_var.set(0.0)
             self.warmth_var.set(0.0)
             self.saturation_var.set(0.0)
             self._sync_adjustment_labels()
@@ -977,6 +1026,8 @@ def launch_desktop_app() -> None:
                 return
             self.exposure_var.set(suggestion.exposure)
             self.contrast_var.set(suggestion.contrast)
+            self.highlights_var.set(suggestion.highlights)
+            self.shadows_var.set(suggestion.shadows)
             self.warmth_var.set(suggestion.warmth)
             self.saturation_var.set(suggestion.saturation)
             self._sync_adjustment_labels()
@@ -1121,6 +1172,8 @@ def launch_desktop_app() -> None:
             return _manual_overrides(
                 float(self.exposure_var.get()),
                 float(self.contrast_var.get()),
+                float(self.highlights_var.get()),
+                float(self.shadows_var.get()),
                 float(self.warmth_var.get()),
                 float(self.saturation_var.get()),
             )

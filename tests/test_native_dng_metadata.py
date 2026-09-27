@@ -23,7 +23,7 @@ from openraw_studio.raw.native import (
     write_png,
 )
 from openraw_studio.raw.native.decoder import RawSensorData
-from openraw_studio.raw.native.demosaic import DemosaicError
+from openraw_studio.raw.native.demosaic import DemosaicError, LinearRgbImage
 from openraw_studio.raw.native.sensor import LinearSensorImage
 from openraw_studio.raw.native.sensor import SensorNormalizationError
 
@@ -463,6 +463,25 @@ class NativeDngMetadataTests(unittest.TestCase):
         self.assertLess(max(muted) - min(muted), max(neutral) - min(neutral))
         self.assertLess(vivid[1], neutral[1])
 
+    def test_tone_map_preview_applies_highlights_and_shadows_by_region(self) -> None:
+        linear_rgb = LinearRgbImage(
+            width=2,
+            height=1,
+            pixels=((0.1, 0.1, 0.1), (0.9, 0.9, 0.9)),
+            source_color_filter_array="RGGB",
+        )
+
+        neutral = tone_map_preview(linear_rgb, gamma=1.0)
+        lifted_shadows = tone_map_preview(linear_rgb, shadows=1.0, gamma=1.0)
+        lowered_highlights = tone_map_preview(linear_rgb, highlights=-1.0, gamma=1.0)
+
+        shadow_lift_low = lifted_shadows.pixel_at(0, 0)[0] - neutral.pixel_at(0, 0)[0]
+        shadow_lift_high = lifted_shadows.pixel_at(0, 1)[0] - neutral.pixel_at(0, 1)[0]
+        highlight_drop_low = neutral.pixel_at(0, 0)[0] - lowered_highlights.pixel_at(0, 0)[0]
+        highlight_drop_high = neutral.pixel_at(0, 1)[0] - lowered_highlights.pixel_at(0, 1)[0]
+        self.assertGreater(shadow_lift_low, shadow_lift_high)
+        self.assertGreater(highlight_drop_high, highlight_drop_low)
+
     def test_png_writer_outputs_readable_dimensions(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "preview.png"
@@ -638,7 +657,14 @@ class NativeDngMetadataTests(unittest.TestCase):
                 PipelineRequest(
                     source,
                     output,
-                    overrides={"exposure": 0.3, "contrast": 0.1, "warmth": 0.2, "saturation": 0.3},
+                    overrides={
+                        "exposure": 0.3,
+                        "contrast": 0.1,
+                        "highlights": -0.2,
+                        "shadows": 0.25,
+                        "warmth": 0.2,
+                        "saturation": 0.3,
+                    },
                 )
             )
             preview_path = output / "previews" / "compressed.preview.png"
@@ -666,13 +692,22 @@ class NativeDngMetadataTests(unittest.TestCase):
                 PipelineRequest(
                     source,
                     output,
-                    overrides={"exposure": 0.5, "contrast": 0.4, "warmth": -0.25, "saturation": 0.35},
+                    overrides={
+                        "exposure": 0.5,
+                        "contrast": 0.4,
+                        "highlights": -0.3,
+                        "shadows": 0.2,
+                        "warmth": -0.25,
+                        "saturation": 0.35,
+                    },
                 )
             )
 
         raw_adjustments = result.recipe["adjustments"]["raw"]
         self.assertEqual(raw_adjustments["exposure"], 0.5)
         self.assertEqual(raw_adjustments["contrast"], 0.4)
+        self.assertEqual(raw_adjustments["highlights"], -0.3)
+        self.assertEqual(raw_adjustments["shadows"], 0.2)
         self.assertEqual(raw_adjustments["warmth"], -0.25)
         self.assertEqual(raw_adjustments["saturation"], 0.35)
 

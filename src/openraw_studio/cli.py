@@ -50,6 +50,8 @@ def build_parser() -> argparse.ArgumentParser:
     batch.add_argument("--auto-strength", type=float, default=0.5, help="AUTO strength from 0.0 to 1.0.")
     batch.add_argument("--exposure", type=float, default=0.0, help="Exposure adjustment in stops (-4.0 to 4.0).")
     batch.add_argument("--contrast", type=float, default=0.0, help="Contrast adjustment from -1.0 to 1.0.")
+    batch.add_argument("--highlights", type=float, default=0.0, help="Highlight adjustment from -1.0 darker to 1.0 brighter.")
+    batch.add_argument("--shadows", type=float, default=0.0, help="Shadow adjustment from -1.0 deeper to 1.0 lifted.")
     batch.add_argument("--warmth", type=float, default=0.0, help="Warmth adjustment from -1.0 cooler to 1.0 warmer.")
     batch.add_argument("--saturation", type=float, default=0.0, help="Saturation adjustment from -1.0 muted to 1.0 vivid.")
     batch.add_argument("--limit", type=int, default=200, help="Maximum number of RAW-like files to scan.")
@@ -64,6 +66,8 @@ def build_parser() -> argparse.ArgumentParser:
     process.add_argument("--auto-strength", type=float, default=0.5, help="AUTO strength from 0.0 to 1.0.")
     process.add_argument("--exposure", type=float, default=0.0, help="Exposure adjustment in stops (-4.0 to 4.0).")
     process.add_argument("--contrast", type=float, default=0.0, help="Contrast adjustment from -1.0 to 1.0.")
+    process.add_argument("--highlights", type=float, default=0.0, help="Highlight adjustment from -1.0 darker to 1.0 brighter.")
+    process.add_argument("--shadows", type=float, default=0.0, help="Shadow adjustment from -1.0 deeper to 1.0 lifted.")
     process.add_argument("--warmth", type=float, default=0.0, help="Warmth adjustment from -1.0 cooler to 1.0 warmer.")
     process.add_argument("--saturation", type=float, default=0.0, help="Saturation adjustment from -1.0 muted to 1.0 vivid.")
     process.add_argument(
@@ -93,7 +97,7 @@ def _run_doctor(include_experimental_backends: bool, darktable_cli: str | None) 
     print(
         "  status: foundation ready; Nikon NEF/NRW metadata import, embedded JPEG preview, "
         "MakerNote compression metadata summary, optimized Nikon 34713 lossless sensor decode/render, "
-        "and basic exposure/contrast/warmth/saturation controls; simple PNG preview/native render and "
+        "and basic exposure/contrast/highlights/shadows/warmth/saturation controls; simple PNG preview/native render and "
         "local JPEG export for narrow uncompressed 12/14/16-bit DNG, guarded TIFF-style Nikon sensor "
         "files, and supported Nikon 34713 lossless files"
     )
@@ -177,6 +181,8 @@ def _run_process(args: argparse.Namespace) -> int:
                 overrides={
                     "exposure": args.exposure,
                     "contrast": args.contrast,
+                    "highlights": args.highlights,
+                    "shadows": args.shadows,
                     "warmth": args.warmth,
                     "saturation": args.saturation,
                 },
@@ -234,6 +240,8 @@ def _run_batch(args: argparse.Namespace) -> int:
         overrides={
             "exposure": args.exposure,
             "contrast": args.contrast,
+            "highlights": args.highlights,
+            "shadows": args.shadows,
             "warmth": args.warmth,
             "saturation": args.saturation,
         },
@@ -279,6 +287,12 @@ def _validate_adjustment_args(args: argparse.Namespace) -> int | None:
         return 2
     if not -1.0 <= args.contrast <= 1.0:
         print("error: --contrast must be between -1.0 and 1.0", file=sys.stderr)
+        return 2
+    if not -1.0 <= args.highlights <= 1.0:
+        print("error: --highlights must be between -1.0 and 1.0", file=sys.stderr)
+        return 2
+    if not -1.0 <= args.shadows <= 1.0:
+        print("error: --shadows must be between -1.0 and 1.0", file=sys.stderr)
         return 2
     if not -1.0 <= args.warmth <= 1.0:
         print("error: --warmth must be between -1.0 and 1.0", file=sys.stderr)

@@ -15,6 +15,8 @@ class AutoAdjustSuggestion:
 
     exposure: float
     contrast: float
+    highlights: float
+    shadows: float
     warmth: float
     saturation: float
     rationale: tuple[str, ...]
@@ -23,6 +25,8 @@ class AutoAdjustSuggestion:
         return {
             "exposure": self.exposure,
             "contrast": self.contrast,
+            "highlights": self.highlights,
+            "shadows": self.shadows,
             "warmth": self.warmth,
             "saturation": self.saturation,
         }
@@ -53,14 +57,22 @@ def suggest_auto_adjustments_from_preview(preview: PreviewRgbImage) -> AutoAdjus
     stats = _preview_stats(preview)
     exposure, exposure_note = _suggest_exposure(stats.mean_luma)
     contrast, contrast_note = _suggest_contrast(stats.luma_range)
+    highlights, highlights_note = _suggest_highlights(stats.highlight_luma)
+    shadows, shadows_note = _suggest_shadows(stats.shadow_luma)
     warmth, warmth_note = _suggest_warmth(stats.red_mean, stats.blue_mean)
     saturation, saturation_note = _suggest_saturation(stats.mean_chroma, stats.luma_range)
     return AutoAdjustSuggestion(
         exposure=exposure,
         contrast=contrast,
+        highlights=highlights,
+        shadows=shadows,
         warmth=warmth,
         saturation=saturation,
-        rationale=tuple(note for note in (exposure_note, contrast_note, warmth_note, saturation_note) if note),
+        rationale=tuple(
+            note
+            for note in (exposure_note, contrast_note, highlights_note, shadows_note, warmth_note, saturation_note)
+            if note
+        ),
     )
 
 
@@ -105,6 +117,26 @@ def _suggest_contrast(luma_range: float) -> tuple[float, str]:
     if luma_range > 0.78:
         return -0.08, "Softened contrast for a high-range preview."
     return 0.06, "Kept contrast subtle."
+
+
+def _suggest_highlights(highlight_luma: float) -> tuple[float, str]:
+    if highlight_luma > 0.92:
+        return -0.3, "Lowered very bright highlights."
+    if highlight_luma > 0.82:
+        return -0.16, "Added gentle highlight control."
+    if highlight_luma < 0.58:
+        return 0.08, "Lifted subdued highlights slightly."
+    return 0.0, "Highlights already look balanced."
+
+
+def _suggest_shadows(shadow_luma: float) -> tuple[float, str]:
+    if shadow_luma < 0.06:
+        return 0.28, "Opened very dark shadows."
+    if shadow_luma < 0.13:
+        return 0.16, "Lifted dark shadow detail."
+    if shadow_luma > 0.3:
+        return -0.06, "Deepened light shadows slightly."
+    return 0.04, "Kept shadow detail open."
 
 
 def _suggest_warmth(red_mean: float, blue_mean: float) -> tuple[float, str]:

@@ -29,6 +29,8 @@ def tone_map_preview(
     *,
     exposure: float = 0.0,
     contrast: float = 0.0,
+    highlights: float = 0.0,
+    shadows: float = 0.0,
     warmth: float = 0.0,
     saturation: float = 0.0,
     gamma: float = 2.2,
@@ -44,6 +46,8 @@ def tone_map_preview(
 
     exposure_scale = 2.0**exposure
     contrast_factor = 1.0 + _clamp(contrast, -1.0, 1.0) * 0.75
+    highlights_value = _clamp(highlights, -1.0, 1.0)
+    shadows_value = _clamp(shadows, -1.0, 1.0)
     warmth_value = _clamp(warmth, -1.0, 1.0)
     saturation_factor = 1.0 + _clamp(saturation, -1.0, 1.0) * 0.75
     pixels = tuple(
@@ -53,6 +57,8 @@ def tone_map_preview(
             blue,
             exposure_scale=exposure_scale,
             contrast_factor=contrast_factor,
+            highlights=highlights_value,
+            shadows=shadows_value,
             warmth=warmth_value,
             saturation_factor=saturation_factor,
             gamma=gamma,
@@ -69,14 +75,16 @@ def _encode_pixel(
     *,
     exposure_scale: float,
     contrast_factor: float,
+    highlights: float,
+    shadows: float,
     warmth: float,
     saturation_factor: float,
     gamma: float,
 ) -> tuple[int, int, int]:
     red, green, blue = _apply_warmth(red, green, blue, warmth=warmth)
-    red = _apply_contrast(red * exposure_scale, contrast_factor)
-    green = _apply_contrast(green * exposure_scale, contrast_factor)
-    blue = _apply_contrast(blue * exposure_scale, contrast_factor)
+    red = _apply_tonal_regions(_apply_contrast(red * exposure_scale, contrast_factor), highlights=highlights, shadows=shadows)
+    green = _apply_tonal_regions(_apply_contrast(green * exposure_scale, contrast_factor), highlights=highlights, shadows=shadows)
+    blue = _apply_tonal_regions(_apply_contrast(blue * exposure_scale, contrast_factor), highlights=highlights, shadows=shadows)
     red, green, blue = _apply_saturation(red, green, blue, factor=saturation_factor)
     return (
         _encode_channel(red, gamma),
@@ -95,6 +103,15 @@ def _apply_warmth(red: float, green: float, blue: float, *, warmth: float) -> tu
 def _apply_contrast(value: float, factor: float) -> float:
     pivot = 0.18
     return ((value - pivot) * factor) + pivot
+
+
+def _apply_tonal_regions(value: float, *, highlights: float, shadows: float) -> float:
+    if highlights == 0.0 and shadows == 0.0:
+        return value
+    position = _clamp01(value)
+    shadow_weight = (1.0 - position) ** 2
+    highlight_weight = position**2
+    return value + (shadows * 0.3 * shadow_weight) + (highlights * 0.3 * highlight_weight)
 
 
 def _apply_saturation(red: float, green: float, blue: float, *, factor: float) -> tuple[float, float, float]:

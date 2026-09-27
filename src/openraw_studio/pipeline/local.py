@@ -319,7 +319,7 @@ def _raw_adjustments_with_overrides(
     overrides: Mapping[str, Any],
 ) -> dict[str, Any]:
     updated = dict(raw_adjustments)
-    for key in ("exposure", "contrast", "warmth", "saturation"):
+    for key in ("exposure", "contrast", "highlights", "shadows", "warmth", "saturation"):
         if key in overrides:
             updated[key] = overrides[key]
     return updated
