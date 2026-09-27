@@ -442,6 +442,22 @@ class NativeDngMetadataTests(unittest.TestCase):
         self.assertNotEqual(neutral.pixel_at(0, 0), adjusted.pixel_at(0, 0))
         self.assertGreater(adjusted.pixel_at(0, 0)[0], adjusted.pixel_at(0, 0)[2])
 
+    def test_tone_map_preview_applies_green_magenta_tint(self) -> None:
+        linear_rgb = LinearRgbImage(
+            width=1,
+            height=1,
+            pixels=((0.5, 0.5, 0.5),),
+            source_color_filter_array="RGGB",
+        )
+
+        magenta = tone_map_preview(linear_rgb, tint=1.0, gamma=1.0).pixel_at(0, 0)
+        green = tone_map_preview(linear_rgb, tint=-1.0, gamma=1.0).pixel_at(0, 0)
+
+        self.assertGreater(magenta[0], magenta[1])
+        self.assertGreater(magenta[2], magenta[1])
+        self.assertGreater(green[1], green[0])
+        self.assertGreater(green[1], green[2])
+
     def test_tone_map_preview_applies_saturation(self) -> None:
         sensor = LinearSensorImage(
             width=2,
@@ -663,6 +679,7 @@ class NativeDngMetadataTests(unittest.TestCase):
                         "highlights": -0.2,
                         "shadows": 0.25,
                         "warmth": 0.2,
+                        "tint": -0.15,
                         "saturation": 0.3,
                     },
                 )
@@ -698,6 +715,7 @@ class NativeDngMetadataTests(unittest.TestCase):
                         "highlights": -0.3,
                         "shadows": 0.2,
                         "warmth": -0.25,
+                        "tint": 0.15,
                         "saturation": 0.35,
                     },
                 )
@@ -709,6 +727,7 @@ class NativeDngMetadataTests(unittest.TestCase):
         self.assertEqual(raw_adjustments["highlights"], -0.3)
         self.assertEqual(raw_adjustments["shadows"], 0.2)
         self.assertEqual(raw_adjustments["warmth"], -0.25)
+        self.assertEqual(raw_adjustments["tint"], 0.15)
         self.assertEqual(raw_adjustments["saturation"], 0.35)
 
 

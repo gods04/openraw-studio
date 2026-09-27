@@ -18,6 +18,7 @@ class AutoAdjustSuggestion:
     highlights: float
     shadows: float
     warmth: float
+    tint: float
     saturation: float
     rationale: tuple[str, ...]
 
@@ -28,6 +29,7 @@ class AutoAdjustSuggestion:
             "highlights": self.highlights,
             "shadows": self.shadows,
             "warmth": self.warmth,
+            "tint": self.tint,
             "saturation": self.saturation,
         }
 
@@ -38,6 +40,7 @@ class PreviewStats:
     shadow_luma: float
     highlight_luma: float
     red_mean: float
+    green_mean: float
     blue_mean: float
     mean_chroma: float
 
@@ -60,6 +63,7 @@ def suggest_auto_adjustments_from_preview(preview: PreviewRgbImage) -> AutoAdjus
     highlights, highlights_note = _suggest_highlights(stats.highlight_luma)
     shadows, shadows_note = _suggest_shadows(stats.shadow_luma)
     warmth, warmth_note = _suggest_warmth(stats.red_mean, stats.blue_mean)
+    tint, tint_note = _suggest_tint(stats.red_mean, stats.green_mean, stats.blue_mean)
     saturation, saturation_note = _suggest_saturation(stats.mean_chroma, stats.luma_range)
     return AutoAdjustSuggestion(
         exposure=exposure,
@@ -67,10 +71,11 @@ def suggest_auto_adjustments_from_preview(preview: PreviewRgbImage) -> AutoAdjus
         highlights=highlights,
         shadows=shadows,
         warmth=warmth,
+        tint=tint,
         saturation=saturation,
         rationale=tuple(
             note
-            for note in (exposure_note, contrast_note, highlights_note, shadows_note, warmth_note, saturation_note)
+            for note in (exposure_note, contrast_note, highlights_note, shadows_note, warmth_note, tint_note, saturation_note)
             if note
         ),
     )
@@ -85,6 +90,7 @@ def _preview_stats(preview: PreviewRgbImage) -> PreviewStats:
     shadow_index = max(0, min(pixel_count - 1, int(pixel_count * 0.05)))
     highlight_index = max(0, min(pixel_count - 1, int(pixel_count * 0.95)))
     red_mean = sum(red for red, _green, _blue in preview.pixels) / (255.0 * pixel_count)
+    green_mean = sum(green for _red, green, _blue in preview.pixels) / (255.0 * pixel_count)
     blue_mean = sum(blue for _red, _green, blue in preview.pixels) / (255.0 * pixel_count)
     mean_chroma = sum((max(red, green, blue) - min(red, green, blue)) / 255.0 for red, green, blue in preview.pixels) / pixel_count
     return PreviewStats(
@@ -92,6 +98,7 @@ def _preview_stats(preview: PreviewRgbImage) -> PreviewStats:
         shadow_luma=lumas[shadow_index],
         highlight_luma=lumas[highlight_index],
         red_mean=red_mean,
+        green_mean=green_mean,
         blue_mean=blue_mean,
         mean_chroma=mean_chroma,
     )
@@ -145,6 +152,15 @@ def _suggest_warmth(red_mean: float, blue_mean: float) -> tuple[float, str]:
     if red_mean > blue_mean * 1.18:
         return -0.06, "Cooled a very warm preview slightly."
     return 0.04, "Added a gentle warmth bias."
+
+
+def _suggest_tint(red_mean: float, green_mean: float, blue_mean: float) -> tuple[float, str]:
+    magenta_mean = (red_mean + blue_mean) / 2.0
+    if green_mean > magenta_mean * 1.16:
+        return 0.1, "Added a subtle magenta tint to balance green."
+    if magenta_mean > green_mean * 1.16:
+        return -0.08, "Added a subtle green tint to balance magenta."
+    return 0.0, "Tint already looks balanced."
 
 
 def _suggest_saturation(mean_chroma: float, luma_range: float) -> tuple[float, str]:

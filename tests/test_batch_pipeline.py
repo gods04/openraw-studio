@@ -33,7 +33,7 @@ class BatchPipelineTests(unittest.TestCase):
             result = run_batch_export(
                 [supported, unsupported],
                 output,
-                overrides={"exposure": 0.2, "highlights": -0.25, "shadows": 0.2, "saturation": 0.3},
+                overrides={"exposure": 0.2, "highlights": -0.25, "shadows": 0.2, "tint": -0.1, "saturation": 0.3},
             )
 
             export_path = output / "exports" / "a.auto.jpg"
@@ -51,6 +51,7 @@ class BatchPipelineTests(unittest.TestCase):
         self.assertTrue(recipe_exists)
         self.assertEqual(recipe["adjustments"]["raw"]["highlights"], -0.25)
         self.assertEqual(recipe["adjustments"]["raw"]["shadows"], 0.2)
+        self.assertEqual(recipe["adjustments"]["raw"]["tint"], -0.1)
         self.assertEqual(recipe["adjustments"]["raw"]["saturation"], 0.3)
         self.assertEqual(result.items[0].status, "exported")
         self.assertEqual(result.items[1].status, "skipped")

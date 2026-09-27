@@ -302,6 +302,7 @@ class DesktopHelperTests(unittest.TestCase):
             "highlights": -1.4,
             "shadows": "0.4",
             "warmth": "0.25",
+            "tint": -1.3,
             "saturation": 1.4,
         }
 
@@ -313,6 +314,7 @@ class DesktopHelperTests(unittest.TestCase):
                 "highlights": -1.0,
                 "shadows": 0.4,
                 "warmth": 0.25,
+                "tint": -1.0,
                 "saturation": 1.0,
             },
         )
@@ -342,6 +344,7 @@ class DesktopHelperTests(unittest.TestCase):
                 "highlights": -0.15,
                 "shadows": 0.25,
                 "warmth": -0.1,
+                "tint": 0.0,
                 "saturation": 0.3,
             },
         )
@@ -467,6 +470,7 @@ class DesktopHelperTests(unittest.TestCase):
             highlights=-0.16,
             shadows=0.16,
             warmth=-0.06,
+            tint=0.1,
             saturation=0.08,
             rationale=("test",),
         )
@@ -477,18 +481,20 @@ class DesktopHelperTests(unittest.TestCase):
         self.assertIn("Contrast +12", status)
         self.assertIn("Highlights -16", status)
         self.assertIn("Shadows +16", status)
-        self.assertIn("Warmth -6", status)
+        self.assertIn("Temperature -6", status)
+        self.assertIn("Tint +10", status)
         self.assertIn("Saturation +8", status)
 
     def test_manual_overrides_collects_tone_controls(self) -> None:
         self.assertEqual(
-            _manual_overrides(0.5, -0.25, -0.3, 0.4, 0.75, 0.2),
+            _manual_overrides(0.5, -0.25, -0.3, 0.4, 0.75, -0.15, 0.2),
             {
                 "exposure": 0.5,
                 "contrast": -0.25,
                 "highlights": -0.3,
                 "shadows": 0.4,
                 "warmth": 0.75,
+                "tint": -0.15,
                 "saturation": 0.2,
             },
         )
@@ -500,6 +506,7 @@ class DesktopHelperTests(unittest.TestCase):
             "highlights": -0.3,
             "shadows": 0.4,
             "warmth": 0.75,
+            "tint": -0.15,
             "saturation": 0.2,
         }
         current = {**rendered, "exposure": 0.50001}
@@ -508,6 +515,7 @@ class DesktopHelperTests(unittest.TestCase):
         self.assertFalse(_adjustments_match(rendered, {**current, "warmth": 0.5}))
         self.assertFalse(_adjustments_match(rendered, {**current, "highlights": 0.2}))
         self.assertFalse(_adjustments_match(rendered, {**current, "shadows": -0.2}))
+        self.assertFalse(_adjustments_match(rendered, {**current, "tint": 0.2}))
         self.assertFalse(_adjustments_match(rendered, {**current, "saturation": -0.2}))
 
     def test_preview_state_text_marks_stale_preview(self) -> None:
@@ -517,6 +525,7 @@ class DesktopHelperTests(unittest.TestCase):
             "highlights": 0.0,
             "shadows": 0.0,
             "warmth": 0.0,
+            "tint": 0.0,
             "saturation": 0.0,
         }
 

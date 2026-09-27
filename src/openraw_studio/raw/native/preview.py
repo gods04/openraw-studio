@@ -33,6 +33,7 @@ def render_png_preview(
     highlights: float = 0.0,
     shadows: float = 0.0,
     warmth: float = 0.0,
+    tint: float = 0.0,
     saturation: float = 0.0,
     max_dimension: int | None = None,
 ) -> PreviewRgbImage:
@@ -46,6 +47,7 @@ def render_png_preview(
         highlights=highlights,
         shadows=shadows,
         warmth=warmth,
+        tint=tint,
         saturation=saturation,
         max_dimension=max_dimension,
     )
@@ -70,6 +72,7 @@ def render_preview_image(
     highlights: float = 0.0,
     shadows: float = 0.0,
     warmth: float = 0.0,
+    tint: float = 0.0,
     saturation: float = 0.0,
     max_dimension: int | None = None,
 ) -> PreviewRgbImage:
@@ -82,6 +85,7 @@ def render_preview_image(
         highlights=highlights,
         shadows=shadows,
         warmth=warmth,
+        tint=tint,
         saturation=saturation,
         max_dimension=max_dimension,
     ):
@@ -102,6 +106,7 @@ def render_preview_image(
         highlights=highlights,
         shadows=shadows,
         warmth=warmth,
+        tint=tint,
         saturation=saturation,
     )
     return resize_preview(preview, max_dimension=max_dimension)
@@ -115,6 +120,7 @@ def _render_nikon_34713_preview_image(
     highlights: float,
     shadows: float,
     warmth: float,
+    tint: float,
     saturation: float,
     max_dimension: int | None,
 ) -> PreviewRgbImage | None:
@@ -139,6 +145,7 @@ def _render_nikon_34713_preview_image(
         highlights=highlights,
         shadows=shadows,
         warmth=warmth,
+        tint=tint,
         saturation=saturation,
     )
     return PreviewRgbImage(

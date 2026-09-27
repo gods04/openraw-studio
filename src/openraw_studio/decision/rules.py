@@ -33,6 +33,7 @@ class RuleBasedDecisionEngine:
                 "highlights": 0.0,
                 "shadows": 0.0,
                 "warmth": 0.0,
+                "tint": 0.0,
                 "saturation": 0.0,
             },
             "portrait": {

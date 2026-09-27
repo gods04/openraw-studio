@@ -82,7 +82,7 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - Local JPEG export engine for final derivative writing and recipe traceability
 - Beginner desktop shell launched with `openraw app` or `scripts/run_app.ps1`
 - App single-photo import, folder import, output-folder selection, conservative Auto Adjust,
-  exposure/contrast/highlights/shadows/warmth/saturation adjustments, before/after comparison, built-in
+  exposure/contrast/highlights/shadows/temperature/tint/saturation adjustments, before/after comparison, built-in
   sample DNG creation, photo/output information display, batch folder export,
   and direct output opening
 - Saved recipe detection that restores basic desktop adjustments for the same
@@ -201,10 +201,12 @@ preview-only Nikon files so you can open the camera-authored embedded preview
 directly without treating it as a finished RAW export.
 After preview or export, `Show Before` lets you compare the basic demosaiced
 image with the OpenRAW color-treated result.
-The Exposure, Contrast, Highlights, Shadows, Warmth, and Saturation controls are
+The Exposure, Contrast, Highlights, Shadows, Temperature, Tint, and Saturation controls are
 recorded in the recipe and applied to DNG and native-renderable Nikon preview/JPEG export.
 Highlights and Shadows use a smooth tone-region adjustment; lowering Highlights
-cannot reconstruct sensor detail that was already fully clipped. Nikon embedded
+cannot reconstruct sensor detail that was already fully clipped. Temperature and
+Tint are normalized manual balance controls rather than camera-calibrated Kelvin values.
+Nikon embedded
 previews are currently extracted as camera-authored JPEGs without applying
 those adjustments yet.
 `Open Output Folder` opens the generated files directly. When adjustments
@@ -212,7 +214,7 @@ change after a preview render, the desktop app marks the preview as needing an
 update.
 If the selected output folder already contains a matching recipe for the photo,
 the desktop app restores the saved Exposure, Contrast, Highlights, Shadows,
-Warmth, and Saturation values.
+Temperature, Tint, and Saturation values.
 The on-screen preview is capped at 2048 pixels on its longest side; export keeps
 the source dimensions supported by the current Native path.
 
@@ -232,11 +234,13 @@ stops:
 openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-output" --exposure 0.7
 ```
 
-You can also pass contrast, highlights, shadows, warmth, and saturation controls:
+You can also pass contrast, highlights, shadows, temperature, tint, and saturation controls:
 
 ```powershell
-openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-output" --contrast 0.25 --highlights -0.3 --shadows 0.2 --warmth 0.2 --saturation 0.15
+openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-output" --contrast 0.25 --highlights -0.3 --shadows 0.2 --temperature 0.2 --tint -0.1 --saturation 0.15
 ```
+
+`--warmth` remains available as a compatibility alias for `--temperature`.
 
 Render the current native preview-only path for a narrow supported
 uncompressed DNG, a native-renderable Nikon RAW file, or a Nikon RAW file with

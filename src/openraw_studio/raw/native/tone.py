@@ -32,6 +32,7 @@ def tone_map_preview(
     highlights: float = 0.0,
     shadows: float = 0.0,
     warmth: float = 0.0,
+    tint: float = 0.0,
     saturation: float = 0.0,
     gamma: float = 2.2,
 ) -> PreviewRgbImage:
@@ -49,6 +50,7 @@ def tone_map_preview(
     highlights_value = _clamp(highlights, -1.0, 1.0)
     shadows_value = _clamp(shadows, -1.0, 1.0)
     warmth_value = _clamp(warmth, -1.0, 1.0)
+    tint_value = _clamp(tint, -1.0, 1.0)
     saturation_factor = 1.0 + _clamp(saturation, -1.0, 1.0) * 0.75
     pixels = tuple(
         _encode_pixel(
@@ -60,6 +62,7 @@ def tone_map_preview(
             highlights=highlights_value,
             shadows=shadows_value,
             warmth=warmth_value,
+            tint=tint_value,
             saturation_factor=saturation_factor,
             gamma=gamma,
         )
@@ -78,10 +81,11 @@ def _encode_pixel(
     highlights: float,
     shadows: float,
     warmth: float,
+    tint: float,
     saturation_factor: float,
     gamma: float,
 ) -> tuple[int, int, int]:
-    red, green, blue = _apply_warmth(red, green, blue, warmth=warmth)
+    red, green, blue = _apply_white_balance(red, green, blue, warmth=warmth, tint=tint)
     red = _apply_tonal_regions(_apply_contrast(red * exposure_scale, contrast_factor), highlights=highlights, shadows=shadows)
     green = _apply_tonal_regions(_apply_contrast(green * exposure_scale, contrast_factor), highlights=highlights, shadows=shadows)
     blue = _apply_tonal_regions(_apply_contrast(blue * exposure_scale, contrast_factor), highlights=highlights, shadows=shadows)
@@ -93,10 +97,17 @@ def _encode_pixel(
     )
 
 
-def _apply_warmth(red: float, green: float, blue: float, *, warmth: float) -> tuple[float, float, float]:
-    red_scale = 1.0 + warmth * 0.12
-    blue_scale = 1.0 - warmth * 0.12
-    green_scale = 1.0 + warmth * 0.03
+def _apply_white_balance(
+    red: float,
+    green: float,
+    blue: float,
+    *,
+    warmth: float,
+    tint: float,
+) -> tuple[float, float, float]:
+    red_scale = (1.0 + warmth * 0.12) * (1.0 + tint * 0.08)
+    blue_scale = (1.0 - warmth * 0.12) * (1.0 + tint * 0.08)
+    green_scale = (1.0 + warmth * 0.03) * (1.0 - tint * 0.12)
     return red * red_scale, green * green_scale, blue * blue_scale
 
 

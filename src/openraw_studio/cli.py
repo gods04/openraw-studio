@@ -52,7 +52,22 @@ def build_parser() -> argparse.ArgumentParser:
     batch.add_argument("--contrast", type=float, default=0.0, help="Contrast adjustment from -1.0 to 1.0.")
     batch.add_argument("--highlights", type=float, default=0.0, help="Highlight adjustment from -1.0 darker to 1.0 brighter.")
     batch.add_argument("--shadows", type=float, default=0.0, help="Shadow adjustment from -1.0 deeper to 1.0 lifted.")
-    batch.add_argument("--warmth", type=float, default=0.0, help="Warmth adjustment from -1.0 cooler to 1.0 warmer.")
+    batch.add_argument(
+        "--temperature",
+        "--warmth",
+        dest="warmth",
+        type=float,
+        default=0.0,
+        metavar="VALUE",
+        help="Temperature adjustment from -1.0 cooler to 1.0 warmer.",
+    )
+    batch.add_argument(
+        "--tint",
+        type=float,
+        default=0.0,
+        metavar="VALUE",
+        help="Tint adjustment from -1.0 greener to 1.0 more magenta.",
+    )
     batch.add_argument("--saturation", type=float, default=0.0, help="Saturation adjustment from -1.0 muted to 1.0 vivid.")
     batch.add_argument("--limit", type=int, default=200, help="Maximum number of RAW-like files to scan.")
     batch.add_argument("--preview-only", action="store_true", help="Render previews and recipes but skip JPEG export.")
@@ -68,7 +83,22 @@ def build_parser() -> argparse.ArgumentParser:
     process.add_argument("--contrast", type=float, default=0.0, help="Contrast adjustment from -1.0 to 1.0.")
     process.add_argument("--highlights", type=float, default=0.0, help="Highlight adjustment from -1.0 darker to 1.0 brighter.")
     process.add_argument("--shadows", type=float, default=0.0, help="Shadow adjustment from -1.0 deeper to 1.0 lifted.")
-    process.add_argument("--warmth", type=float, default=0.0, help="Warmth adjustment from -1.0 cooler to 1.0 warmer.")
+    process.add_argument(
+        "--temperature",
+        "--warmth",
+        dest="warmth",
+        type=float,
+        default=0.0,
+        metavar="VALUE",
+        help="Temperature adjustment from -1.0 cooler to 1.0 warmer.",
+    )
+    process.add_argument(
+        "--tint",
+        type=float,
+        default=0.0,
+        metavar="VALUE",
+        help="Tint adjustment from -1.0 greener to 1.0 more magenta.",
+    )
     process.add_argument("--saturation", type=float, default=0.0, help="Saturation adjustment from -1.0 muted to 1.0 vivid.")
     process.add_argument(
         "--raw-backend",
@@ -97,7 +127,7 @@ def _run_doctor(include_experimental_backends: bool, darktable_cli: str | None) 
     print(
         "  status: foundation ready; Nikon NEF/NRW metadata import, embedded JPEG preview, "
         "MakerNote compression metadata summary, optimized Nikon 34713 lossless sensor decode/render, "
-        "and basic exposure/contrast/highlights/shadows/warmth/saturation controls; simple PNG preview/native render and "
+        "and basic exposure/contrast/highlights/shadows/temperature/tint/saturation controls; simple PNG preview/native render and "
         "local JPEG export for narrow uncompressed 12/14/16-bit DNG, guarded TIFF-style Nikon sensor "
         "files, and supported Nikon 34713 lossless files"
     )
@@ -184,6 +214,7 @@ def _run_process(args: argparse.Namespace) -> int:
                     "highlights": args.highlights,
                     "shadows": args.shadows,
                     "warmth": args.warmth,
+                    "tint": args.tint,
                     "saturation": args.saturation,
                 },
                 dry_run=args.dry_run,
@@ -243,6 +274,7 @@ def _run_batch(args: argparse.Namespace) -> int:
             "highlights": args.highlights,
             "shadows": args.shadows,
             "warmth": args.warmth,
+            "tint": args.tint,
             "saturation": args.saturation,
         },
         preview_only=args.preview_only,
@@ -295,7 +327,10 @@ def _validate_adjustment_args(args: argparse.Namespace) -> int | None:
         print("error: --shadows must be between -1.0 and 1.0", file=sys.stderr)
         return 2
     if not -1.0 <= args.warmth <= 1.0:
-        print("error: --warmth must be between -1.0 and 1.0", file=sys.stderr)
+        print("error: --temperature/--warmth must be between -1.0 and 1.0", file=sys.stderr)
+        return 2
+    if not -1.0 <= args.tint <= 1.0:
+        print("error: --tint must be between -1.0 and 1.0", file=sys.stderr)
         return 2
     if not -1.0 <= args.saturation <= 1.0:
         print("error: --saturation must be between -1.0 and 1.0", file=sys.stderr)

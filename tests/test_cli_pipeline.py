@@ -235,10 +235,26 @@ class CliPipelineTests(unittest.TestCase):
             source.write_bytes(b"fake raw bytes")
 
             with redirect_stdout(StringIO()):
-                exit_code = main(["process", str(source), "--output", str(output), "--dry-run"])
+                exit_code = main(
+                    [
+                        "process",
+                        str(source),
+                        "--output",
+                        str(output),
+                        "--dry-run",
+                        "--temperature",
+                        "0.2",
+                        "--tint",
+                        "-0.15",
+                    ]
+                )
+
+            recipe = json.loads((output / "recipes" / "IMG_0002.DNG.recipe.json").read_text(encoding="utf-8"))
 
             self.assertEqual(exit_code, 0)
             self.assertTrue((output / "recipes" / "IMG_0002.DNG.recipe.json").exists())
+            self.assertEqual(recipe["adjustments"]["raw"]["warmth"], 0.2)
+            self.assertEqual(recipe["adjustments"]["raw"]["tint"], -0.15)
 
     def test_cli_rejects_invalid_auto_strength(self) -> None:
         with redirect_stderr(StringIO()):
@@ -267,6 +283,12 @@ class CliPipelineTests(unittest.TestCase):
     def test_cli_rejects_invalid_warmth(self) -> None:
         with redirect_stderr(StringIO()):
             exit_code = main(["process", "missing.DNG", "--output", "output", "--dry-run", "--warmth", "-2"])
+
+        self.assertEqual(exit_code, 2)
+
+    def test_cli_rejects_invalid_tint(self) -> None:
+        with redirect_stderr(StringIO()):
+            exit_code = main(["process", "missing.DNG", "--output", "output", "--dry-run", "--tint", "2"])
 
         self.assertEqual(exit_code, 2)
 

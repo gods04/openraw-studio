@@ -208,6 +208,7 @@ def render_nikon_34713_to_file(
     highlights: float = 0.0,
     shadows: float = 0.0,
     warmth: float = 0.0,
+    tint: float = 0.0,
     saturation: float = 0.0,
     jpeg_quality: int = 92,
 ) -> tuple[int, int]:
@@ -223,6 +224,7 @@ def render_nikon_34713_to_file(
         highlights=highlights,
         shadows=shadows,
         warmth=warmth,
+        tint=tint,
         saturation=saturation,
         jpeg_quality=jpeg_quality,
     )
@@ -238,6 +240,7 @@ def render_decoded_nikon_34713_to_file(
     highlights: float = 0.0,
     shadows: float = 0.0,
     warmth: float = 0.0,
+    tint: float = 0.0,
     saturation: float = 0.0,
     jpeg_quality: int = 92,
 ) -> tuple[int, int]:
@@ -252,6 +255,7 @@ def render_decoded_nikon_34713_to_file(
         highlights=highlights,
         shadows=shadows,
         warmth=warmth,
+        tint=tint,
         saturation=saturation,
     )
     try:
@@ -281,6 +285,7 @@ def render_decoded_nikon_34713_image(
     highlights: float = 0.0,
     shadows: float = 0.0,
     warmth: float = 0.0,
+    tint: float = 0.0,
     saturation: float = 0.0,
 ) -> NikonRenderedRgbImage:
     """Render an already decoded Nikon 34713 sensor payload into packed RGB bytes."""
@@ -304,6 +309,7 @@ def render_decoded_nikon_34713_image(
         highlights=highlights,
         shadows=shadows,
         warmth=warmth,
+        tint=tint,
         saturation=saturation,
     )
     try:
@@ -550,6 +556,7 @@ def _bayer_blocks_to_rgb8(
     highlights: float,
     shadows: float,
     warmth: float,
+    tint: float,
     saturation: float,
 ) -> tuple[int, int, bytearray]:
     del source_height
@@ -568,6 +575,7 @@ def _bayer_blocks_to_rgb8(
         highlights=highlights,
         shadows=shadows,
         warmth=warmth,
+        tint=tint,
     )
     saturation_factor = 1.0 + _clamp_float(saturation, -1.0, 1.0) * 0.75
     output = bytearray(out_width * out_height * 3)
@@ -673,6 +681,7 @@ def _channel_luts(
     highlights: float,
     shadows: float,
     warmth: float,
+    tint: float,
 ) -> tuple[bytes, bytes, bytes]:
     span = max(1, white_level - black_level)
     exposure_scale = 2.0 ** _clamp_float(exposure, -4.0, 4.0)
@@ -680,9 +689,10 @@ def _channel_luts(
     highlights_value = _clamp_float(highlights, -1.0, 1.0)
     shadows_value = _clamp_float(shadows, -1.0, 1.0)
     warmth_value = _clamp_float(warmth, -1.0, 1.0)
-    red_scale = 1.0 + warmth_value * 0.12
-    green_scale = 1.0 + warmth_value * 0.03
-    blue_scale = 1.0 - warmth_value * 0.12
+    tint_value = _clamp_float(tint, -1.0, 1.0)
+    red_scale = (1.0 + warmth_value * 0.12) * (1.0 + tint_value * 0.08)
+    green_scale = (1.0 + warmth_value * 0.03) * (1.0 - tint_value * 0.12)
+    blue_scale = (1.0 - warmth_value * 0.12) * (1.0 + tint_value * 0.08)
     red = bytearray(65536)
     green = bytearray(65536)
     blue = bytearray(65536)

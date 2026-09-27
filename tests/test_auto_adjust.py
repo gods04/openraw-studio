@@ -50,12 +50,24 @@ class AutoAdjustTests(unittest.TestCase):
 
         self.assertGreater(suggestion.warmth, 0.0)
 
+    def test_green_preview_gets_magenta_tint(self) -> None:
+        preview = PreviewRgbImage(
+            width=2,
+            height=2,
+            pixels=((90, 150, 100), (90, 150, 100), (90, 150, 100), (90, 150, 100)),
+            transfer="gamma-1",
+        )
+
+        suggestion = suggest_auto_adjustments_from_preview(preview)
+
+        self.assertGreater(suggestion.tint, 0.0)
+
     def test_suggestion_exports_recipe_overrides(self) -> None:
         preview = PreviewRgbImage(width=1, height=1, pixels=((128, 128, 128),), transfer="gamma-1")
 
         overrides = suggest_auto_adjustments_from_preview(preview).as_overrides()
 
-        self.assertEqual(set(overrides), {"exposure", "contrast", "highlights", "shadows", "warmth", "saturation"})
+        self.assertEqual(set(overrides), {"exposure", "contrast", "highlights", "shadows", "warmth", "tint", "saturation"})
 
     def test_muted_preview_gets_saturation_lift(self) -> None:
         preview = PreviewRgbImage(
@@ -80,6 +92,7 @@ class AutoAdjustTests(unittest.TestCase):
         self.assertLessEqual(abs(suggestion.highlights), 0.3)
         self.assertLessEqual(abs(suggestion.shadows), 0.28)
         self.assertLessEqual(abs(suggestion.warmth), 0.12)
+        self.assertLessEqual(abs(suggestion.tint), 0.1)
         self.assertLessEqual(abs(suggestion.saturation), 0.14)
 
     def test_suggest_auto_adjustments_reads_nikon_34713_lossless_nef(self) -> None:
@@ -94,6 +107,7 @@ class AutoAdjustTests(unittest.TestCase):
         self.assertLessEqual(abs(suggestion.highlights), 0.3)
         self.assertLessEqual(abs(suggestion.shadows), 0.28)
         self.assertLessEqual(abs(suggestion.warmth), 0.12)
+        self.assertLessEqual(abs(suggestion.tint), 0.1)
         self.assertLessEqual(abs(suggestion.saturation), 0.14)
 
 

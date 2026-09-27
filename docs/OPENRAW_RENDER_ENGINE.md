@@ -97,7 +97,7 @@ Status:
 - `openraw process --preview-only` can complete without final export
 - local JPEG export engine records final derivative exports for narrow supported uncompressed DNG files, guarded Nikon sensor files, and supported Nikon 34713 lossless files
 - DNG AsShotNeutral white balance and ColorMatrix1 transform are applied when available
-- recipe-driven exposure, contrast, highlights, shadows, warmth, and saturation controls are applied to DNG and native-renderable Nikon preview/JPEG export
+- recipe-driven exposure, contrast, highlights, shadows, normalized temperature, tint, and saturation controls are applied to DNG and native-renderable Nikon preview/JPEG export
 - Nikon embedded previews are extracted as camera-authored JPEGs without applying recipe adjustments yet
 - `openraw inspect` reports current Native support status before preview/export
 - first Nikon 34713 lossless compressed sensor decode and half-resolution RGB render exists
@@ -135,7 +135,7 @@ Current native pixel scope:
 - simple gamma preview transform
 - PNG preview output
 - preview-derived JPEG export output
-- recipe-driven exposure/contrast/highlights/shadows/warmth/saturation adjustment
+- recipe-driven exposure/contrast/highlights/shadows/temperature/tint/saturation adjustment
 
 Not supported yet:
 
