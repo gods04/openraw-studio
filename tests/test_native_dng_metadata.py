@@ -24,6 +24,7 @@ from openraw_studio.raw.native import (
 )
 from openraw_studio.raw.native.decoder import RawSensorData
 from openraw_studio.raw.native.demosaic import DemosaicError, LinearRgbImage
+from openraw_studio.raw.native.color import camera_profile_to_linear_srgb_matrix
 from openraw_studio.raw.native.sensor import LinearSensorImage
 from openraw_studio.raw.native.sensor import SensorNormalizationError
 
@@ -404,6 +405,29 @@ class NativeDngMetadataTests(unittest.TestCase):
             apply_camera_matrix(image, (1.0, 0.0, 0.0, 2.0, 0.0, 0.0, 3.0, 0.0, 0.0))
         with self.assertRaises(ValueError):
             apply_camera_matrix(image, (1.0, 0.0, 0.0, 0.0, float("nan"), 0.0, 0.0, 0.0, 1.0))
+
+    def test_camera_profile_matrix_preserves_neutral_and_matches_d500_reference(self) -> None:
+        matrix = camera_profile_to_linear_srgb_matrix(
+            (
+                (0.8813, -0.3210, -0.1036),
+                (-0.4703, 1.2868, 0.2021),
+                (-0.1054, 0.1940, 0.6129),
+            )
+        )
+
+        expected = (
+            (1.4137409, -0.3210439, -0.0926970),
+            (-0.1585019, 1.5165296, -0.3580278),
+            (0.0242003, -0.4519030, 1.4277027),
+        )
+        for actual_row, expected_row in zip(matrix, expected):
+            for actual, target in zip(actual_row, expected_row):
+                self.assertAlmostEqual(actual, target, places=6)
+            self.assertAlmostEqual(sum(actual_row), 1.0, places=6)
+
+    def test_camera_profile_matrix_rejects_invalid_neutral_response(self) -> None:
+        with self.assertRaises(ValueError):
+            camera_profile_to_linear_srgb_matrix((1.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 1.0))
 
     def test_simple_demosaic_preserves_known_bayer_samples(self) -> None:
         sensor = LinearSensorImage(

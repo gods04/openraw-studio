@@ -136,6 +136,29 @@ class NativeSupportTests(unittest.TestCase):
         self.assertIn("Compression: Nikon 34713 lossless Huffman", report.details)
         self.assertIn("Render: native Nikon 34713 lossless sensor decode", report.details)
 
+    def test_nikon_support_reports_as_shot_white_balance_source(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "sample-white-balance.NEF"
+            source.write_bytes(
+                synthetic_nikon_nef_compressed_bytes(
+                    width=4,
+                    height=4,
+                    white_balance_rb_levels=(3.0, 1.25, 1.0, 1.0),
+                    maker_black_levels=(400, 400, 400, 400),
+                    model="NIKON D500",
+                )
+            )
+
+            report = inspect_native_support(source)
+
+        self.assertEqual(report.metadata["nikon_makernote"]["white_balance_source"], "0x000c")
+        self.assertIn(
+            "Nikon as-shot white balance from 0x000c: R 3.000, G 1.000, B 1.250, mode AUTO1",
+            report.details,
+        )
+        self.assertIn("Nikon black levels from 0x003d: 400, 400, 400, 400", report.details)
+        self.assertIn("Color: exact native profile for NIKON D500 to linear sRGB", report.details)
+
     def test_native_processor_writes_nikon_embedded_jpeg_preview(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

@@ -70,8 +70,10 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - Nikon MakerNote summary for compressed NEF render blockers, including
   0x0096 compression-table and 0x008c curve/table detection
 - Native Nikon 34713 lossless Huffman sensor decoding with optimized Python
-  bitstream/render loops, conservative inactive-border black-level estimation,
+  bitstream/render loops, MakerNote black levels with inactive-border fallback,
   and half-resolution RGB preview/JPEG output for supported files
+- Camera-aware Nikon D500 rendering with standard as-shot white balance, an
+  exact camera-to-linear-sRGB profile, and EXIF orientation handling
 - Native extraction for simple uncompressed DNG 12/14-bit packed strip payloads
   and 16-bit strip/tile pixel payloads
 - Guarded native Nikon `.NEF` / `.NRW` sensor decode for TIFF-style
@@ -99,8 +101,9 @@ Then import `sample-data\openraw-synthetic.DNG` or
   conversion to linear sRGB; dual-illuminant interpolation, `ForwardMatrix`, and
   gamut mapping are not implemented yet
 - OpenRAW Native has a first optimized Nikon 34713 lossless decode/render path,
-  but compressed Nikon output is still half-resolution RGB with basic color and
-  basic tone; further speed, color, and full-resolution work remains
+  but compressed Nikon output is still half-resolution RGB. Camera-aware color
+  is exact for the D500 and generic for other models; further speed, profiles,
+  and full-resolution work remains
 - Other compressed/proprietary Nikon `.NEF` / `.NRW` sensor payload variants
   are not decoded yet
 - Broad proprietary RAW rendering support is not implemented yet
@@ -280,7 +283,8 @@ is still an early V0.1 render. It applies available DNG `AsShotNeutral`, inverts
 `ColorMatrix1` from camera space through XYZ, performs Bradford white-point
 adaptation, and converts to linear sRGB before tone mapping. Dual-illuminant
 DNG profiles are still future work, and Nikon 34713 output is currently
-half-resolution RGB with basic color and basic tone.
+half-resolution RGB. The D500 has an exact native color profile while other
+Nikon models still use generic camera RGB.
 
 Batch export currently renderable DNG/Nikon files from a folder:
 

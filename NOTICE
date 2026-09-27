@@ -8,3 +8,15 @@ This product includes DNG technology under license by Adobe.
 
 The public DNG specification and its patent license are published by Adobe:
 https://helpx.adobe.com/camera-raw/desktop/dng-and-file-formats/digital-negative.html
+
+Nikon D500 Camera Calibration Data
+----------------------------------
+
+OpenRAW Native includes nine numeric Nikon D500 camera-calibration constants
+published as Adobe DNG Converter profile data. The OpenRAW transform and render
+implementation is project-authored. LibRaw was used as a development reference
+and validation oracle; no LibRaw code or binary is bundled as a runtime
+dependency.
+
+Reference table:
+https://github.com/LibRaw/LibRaw/blob/master/src/tables/colordata.cpp

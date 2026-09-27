@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from array import array
 from dataclasses import dataclass
+import math
 from pathlib import Path
 import struct
 from typing import Any
 
 from openraw_studio.raw.native.dng import DngMetadata, DngMetadataError, DngMetadataReader, TiffIfd
+from openraw_studio.raw.native.profiles import CameraColorProfile, Matrix3, find_camera_color_profile
 
 
 MAKER_NOTE_TAG = 37500
@@ -43,6 +45,10 @@ class NikonMakerNoteSummary:
     curve_prefix: str | None = None
     compression_table_byte_count: int | None = None
     compression_table_prefix: str | None = None
+    white_balance_mode: str | None = None
+    as_shot_white_balance: tuple[float, float, float] | None = None
+    white_balance_source: str | None = None
+    black_levels: tuple[int, ...] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -57,6 +63,10 @@ class NikonMakerNoteSummary:
             "curve_prefix": self.curve_prefix,
             "compression_table_byte_count": self.compression_table_byte_count,
             "compression_table_prefix": self.compression_table_prefix,
+            "white_balance_mode": self.white_balance_mode,
+            "as_shot_white_balance": self.as_shot_white_balance,
+            "white_balance_source": self.white_balance_source,
+            "black_levels": self.black_levels,
         }
 
 
@@ -69,6 +79,21 @@ class NikonCompressionSetup:
     initial_predictors: tuple[tuple[int, int], tuple[int, int]]
     active_area: tuple[int, ...] | None = None
     compression_mode: int | None = None
+
+
+@dataclass(frozen=True)
+class NikonWhiteBalance:
+    """Validated as-shot channel gains extracted from a Nikon MakerNote."""
+
+    red_gain: float
+    green_gain: float
+    blue_gain: float
+    source_tag: str
+    mode: str | None = None
+
+    @property
+    def gains(self) -> tuple[float, float, float]:
+        return self.red_gain, self.green_gain, self.blue_gain
 
 
 @dataclass(frozen=True)
@@ -87,10 +112,16 @@ class NikonDecodedPixelData:
     strip_byte_counts: tuple[int, ...]
     rows_per_strip: int | None
     black_level: int
+    black_levels: tuple[int, int, int, int]
     white_level: int
     cfa_pattern: tuple[int, ...] | None
     compression: int
     compression_setup: NikonCompressionSetup
+    white_balance: NikonWhiteBalance | None = None
+    camera_profile: CameraColorProfile | None = None
+    camera_make: str | None = None
+    camera_model: str | None = None
+    orientation: int = 1
 
 
 @dataclass(frozen=True)
@@ -125,6 +156,20 @@ def can_decode_nikon_34713_lossless(metadata: DngMetadata) -> bool:
     except NikonCompressionError:
         return False
     return True
+
+
+def extract_nikon_as_shot_white_balance(metadata: DngMetadata) -> NikonWhiteBalance | None:
+    """Return conservative Nikon as-shot gains from MakerNote tag 0x000c.
+
+    Tag 0x003b contains a separate multi-exposure white-balance record and is
+    deliberately not used as a normal camera multiplier. Unity, malformed,
+    non-finite, and implausible values are treated as unavailable.
+    """
+
+    maker_ifd = _nikon_makernote_ifd(metadata)
+    if maker_ifd is None:
+        return None
+    return _white_balance_from_makernote_ifd(maker_ifd)
 
 
 def decode_nikon_34713_lossless(path: str | Path, metadata: DngMetadata | None = None) -> NikonDecodedPixelData:
@@ -166,13 +211,19 @@ def decode_nikon_34713_lossless(path: str | Path, metadata: DngMetadata | None =
         maximum=(1 << bits_per_sample) - 1,
     )
     white_level = (1 << bits_per_sample) - 1
-    black_level = _estimate_nikon_black_level(
+    black_levels = _nikon_black_levels(
+        source_metadata,
         samples,
         width=width,
         height=height,
         active_area=setup.active_area,
         white_level=white_level,
     )
+    black_level = min(black_levels)
+    white_balance = extract_nikon_as_shot_white_balance(source_metadata)
+    make = _optional_text(source_metadata.summary.get("make"))
+    model = _optional_text(source_metadata.summary.get("model"))
+    camera_profile = find_camera_color_profile(make, model)
 
     output = array("H", samples)
     if struct.pack("=H", 1) != b"\x01\x00":
@@ -190,10 +241,16 @@ def decode_nikon_34713_lossless(path: str | Path, metadata: DngMetadata | None =
         strip_byte_counts=strip_byte_counts,
         rows_per_strip=_optional_int(pixel_ifd, 278),
         black_level=black_level,
+        black_levels=black_levels,
         white_level=white_level,
         cfa_pattern=_optional_int_tuple(pixel_ifd, 33422),
         compression=compression,
         compression_setup=setup,
+        white_balance=white_balance,
+        camera_profile=camera_profile,
+        camera_make=make,
+        camera_model=model,
+        orientation=_coerce_orientation(source_metadata.summary.get("orientation")),
     )
 
 
@@ -303,6 +360,7 @@ def render_decoded_nikon_34713_image(
         crop=crop,
         cfa_pattern=decoded.cfa_pattern,
         black_level=decoded.black_level,
+        black_levels=decoded.black_levels,
         white_level=decoded.white_level,
         exposure=exposure,
         contrast=contrast,
@@ -311,6 +369,12 @@ def render_decoded_nikon_34713_image(
         warmth=warmth,
         tint=tint,
         saturation=saturation,
+        camera_white_balance=decoded.white_balance,
+        camera_to_linear_srgb=(
+            decoded.camera_profile.camera_to_linear_srgb
+            if decoded.camera_profile is not None
+            else None
+        ),
     )
     try:
         from PIL import Image
@@ -318,6 +382,7 @@ def render_decoded_nikon_34713_image(
         raise NikonCompressionError("Pillow is required for Nikon 34713 rendering") from exc
 
     image = Image.frombytes("RGB", (width, height), bytes(rgb))
+    image = _apply_exif_orientation(image, decoded.orientation)
     if max_dimension is not None:
         image = _resize_pillow_image(image, max_dimension=max_dimension)
     return NikonRenderedRgbImage(width=image.size[0], height=image.size[1], rgb_bytes=image.tobytes())
@@ -339,6 +404,7 @@ def summarize_nikon_makernote_payload(payload: bytes) -> NikonMakerNoteSummary |
     ifd = ifds[0]
     curve_payload = _tag_bytes(ifd, 0x008C)
     compression_table_payload = _tag_bytes(ifd, 0x0096)
+    white_balance = _white_balance_from_makernote_ifd(ifd)
     return NikonMakerNoteSummary(
         kind=kind,
         byte_order=byte_order,
@@ -351,6 +417,10 @@ def summarize_nikon_makernote_payload(payload: bytes) -> NikonMakerNoteSummary |
         curve_prefix=_ascii_prefix(curve_payload) if curve_payload is not None else None,
         compression_table_byte_count=len(compression_table_payload) if compression_table_payload is not None else None,
         compression_table_prefix=_ascii_prefix(compression_table_payload) if compression_table_payload is not None else None,
+        white_balance_mode=white_balance.mode if white_balance is not None else _tag_ascii(ifd, 0x0005),
+        as_shot_white_balance=white_balance.gains if white_balance is not None else None,
+        white_balance_source=white_balance.source_tag if white_balance is not None else None,
+        black_levels=_tag_int_tuple(ifd, 0x003D),
     )
 
 
@@ -522,6 +592,32 @@ def _estimate_nikon_black_level(
     return _clamp_int(low_percentile, 0, max(0, white_level // 8))
 
 
+def _nikon_black_levels(
+    metadata: DngMetadata,
+    samples: array,
+    *,
+    width: int,
+    height: int,
+    active_area: tuple[int, ...] | None,
+    white_level: int,
+) -> tuple[int, int, int, int]:
+    maker_ifd = _nikon_makernote_ifd(metadata)
+    levels = _tag_int_tuple(maker_ifd, 0x003D) if maker_ifd is not None else None
+    if levels is not None and len(levels) == 4:
+        validated = tuple(int(value) for value in levels)
+        if all(0 <= value < white_level for value in validated):
+            return validated  # type: ignore[return-value]
+
+    estimated = _estimate_nikon_black_level(
+        samples,
+        width=width,
+        height=height,
+        active_area=active_area,
+        white_level=white_level,
+    )
+    return estimated, estimated, estimated, estimated
+
+
 def _render_crop(decoded: NikonDecodedPixelData) -> tuple[int, int, int, int]:
     active = decoded.compression_setup.active_area
     if active is not None and len(active) >= 4:
@@ -550,6 +646,7 @@ def _bayer_blocks_to_rgb8(
     crop: tuple[int, int, int, int],
     cfa_pattern: tuple[int, ...] | None,
     black_level: int,
+    black_levels: tuple[int, int, int, int],
     white_level: int,
     exposure: float,
     contrast: float,
@@ -558,6 +655,8 @@ def _bayer_blocks_to_rgb8(
     warmth: float,
     tint: float,
     saturation: float,
+    camera_white_balance: NikonWhiteBalance | None,
+    camera_to_linear_srgb: Matrix3 | None,
 ) -> tuple[int, int, bytearray]:
     del source_height
     left, top, crop_width, crop_height = crop
@@ -567,8 +666,14 @@ def _bayer_blocks_to_rgb8(
         raise NikonCompressionError("Nikon 34713 render crop is empty")
 
     red_index, green0_index, green1_index, blue_index = _cfa_block_indexes(cfa_pattern)
-    red_lut, green_lut, blue_lut = _channel_luts(
-        black_level=black_level,
+    channel_black_levels = (
+        float(black_levels[red_index]),
+        (black_levels[green0_index] + black_levels[green1_index]) / 2.0,
+        float(black_levels[blue_index]),
+    )
+    red_matrix_luts, green_matrix_luts, blue_matrix_luts, output_lut = _linear_color_luts(
+        black_levels=channel_black_levels,
+        fallback_black_level=black_level,
         white_level=white_level,
         exposure=exposure,
         contrast=contrast,
@@ -576,7 +681,13 @@ def _bayer_blocks_to_rgb8(
         shadows=shadows,
         warmth=warmth,
         tint=tint,
+        camera_white_balance=camera_white_balance,
+        camera_to_linear_srgb=camera_to_linear_srgb,
     )
+    rr_lut, rg_lut, rb_lut = red_matrix_luts
+    gr_lut, gg_lut, gb_lut = green_matrix_luts
+    br_lut, bg_lut, bb_lut = blue_matrix_luts
+    output_limit = len(output_lut) - 1
     saturation_factor = 1.0 + _clamp_float(saturation, -1.0, 1.0) * 0.75
     output = bytearray(out_width * out_height * 3)
     out_index = 0
@@ -588,9 +699,12 @@ def _bayer_blocks_to_rgb8(
             row1 = (source_row + 1) * source_width + left
             for column in range(out_width):
                 source_column = column * 2
-                red = red_lut[samples[row0 + source_column]]
-                green = green_lut[(samples[row0 + source_column + 1] + samples[row1 + source_column]) >> 1]
-                blue = blue_lut[samples[row1 + source_column + 1]]
+                camera_red = samples[row0 + source_column]
+                camera_green = (samples[row0 + source_column + 1] + samples[row1 + source_column]) >> 1
+                camera_blue = samples[row1 + source_column + 1]
+                red = output_lut[_clamp_int(rr_lut[camera_red] + gr_lut[camera_green] + br_lut[camera_blue], 0, output_limit)]
+                green = output_lut[_clamp_int(rg_lut[camera_red] + gg_lut[camera_green] + bg_lut[camera_blue], 0, output_limit)]
+                blue = output_lut[_clamp_int(rb_lut[camera_red] + gb_lut[camera_green] + bb_lut[camera_blue], 0, output_limit)]
                 if saturation_factor != 1.0:
                     red, green, blue = _apply_saturation8(red, green, blue, factor=saturation_factor)
                 output[out_index] = red
@@ -611,9 +725,12 @@ def _bayer_blocks_to_rgb8(
                 samples[row1 + source_column],
                 samples[row1 + source_column + 1],
             )
-            red = red_lut[block_values[red_index]]
-            green = green_lut[(block_values[green0_index] + block_values[green1_index]) >> 1]
-            blue = blue_lut[block_values[blue_index]]
+            camera_red = block_values[red_index]
+            camera_green = (block_values[green0_index] + block_values[green1_index]) >> 1
+            camera_blue = block_values[blue_index]
+            red = output_lut[_clamp_int(rr_lut[camera_red] + gr_lut[camera_green] + br_lut[camera_blue], 0, output_limit)]
+            green = output_lut[_clamp_int(rg_lut[camera_red] + gg_lut[camera_green] + bg_lut[camera_blue], 0, output_limit)]
+            blue = output_lut[_clamp_int(rb_lut[camera_red] + gb_lut[camera_green] + bb_lut[camera_blue], 0, output_limit)]
             if saturation_factor != 1.0:
                 red, green, blue = _apply_saturation8(red, green, blue, factor=saturation_factor)
             output[out_index] = red
@@ -672,9 +789,29 @@ def _resize_pillow_image(image: Any, *, max_dimension: int) -> Any:
     return image.resize(size, resample=1)
 
 
-def _channel_luts(
+def _apply_exif_orientation(image: Any, orientation: int) -> Any:
+    try:
+        from PIL import Image
+    except ImportError as exc:
+        raise NikonCompressionError("Pillow is required for Nikon 34713 orientation") from exc
+
+    operations = {
+        2: Image.Transpose.FLIP_LEFT_RIGHT,
+        3: Image.Transpose.ROTATE_180,
+        4: Image.Transpose.FLIP_TOP_BOTTOM,
+        5: Image.Transpose.TRANSPOSE,
+        6: Image.Transpose.ROTATE_270,
+        7: Image.Transpose.TRANSVERSE,
+        8: Image.Transpose.ROTATE_90,
+    }
+    operation = operations.get(orientation)
+    return image.transpose(operation) if operation is not None else image
+
+
+def _linear_color_luts(
     *,
-    black_level: int,
+    black_levels: tuple[float, float, float],
+    fallback_black_level: int,
     white_level: int,
     exposure: float,
     contrast: float,
@@ -682,45 +819,74 @@ def _channel_luts(
     shadows: float,
     warmth: float,
     tint: float,
-) -> tuple[bytes, bytes, bytes]:
-    span = max(1, white_level - black_level)
+    camera_white_balance: NikonWhiteBalance | None,
+    camera_to_linear_srgb: Matrix3 | None,
+) -> tuple[
+    tuple[array, array, array],
+    tuple[array, array, array],
+    tuple[array, array, array],
+    bytes,
+]:
     exposure_scale = 2.0 ** _clamp_float(exposure, -4.0, 4.0)
     contrast_factor = 1.0 + _clamp_float(contrast, -1.0, 1.0) * 0.75
     highlights_value = _clamp_float(highlights, -1.0, 1.0)
     shadows_value = _clamp_float(shadows, -1.0, 1.0)
     warmth_value = _clamp_float(warmth, -1.0, 1.0)
     tint_value = _clamp_float(tint, -1.0, 1.0)
-    red_scale = (1.0 + warmth_value * 0.12) * (1.0 + tint_value * 0.08)
-    green_scale = (1.0 + warmth_value * 0.03) * (1.0 - tint_value * 0.12)
-    blue_scale = (1.0 - warmth_value * 0.12) * (1.0 + tint_value * 0.08)
-    red = bytearray(65536)
-    green = bytearray(65536)
-    blue = bytearray(65536)
-    for value in range(65536):
-        normalized = _clamp_float((value - black_level) / float(span), 0.0, 1.0)
-        exposed = normalized * exposure_scale
-        red[value] = _encode_channel(
+    camera_red, camera_green, camera_blue = (
+        camera_white_balance.gains
+        if camera_white_balance is not None
+        else (1.0, 1.0, 1.0)
+    )
+    red_scale = camera_red * (1.0 + warmth_value * 0.12) * (1.0 + tint_value * 0.08)
+    green_scale = camera_green * (1.0 + warmth_value * 0.03) * (1.0 - tint_value * 0.12)
+    blue_scale = camera_blue * (1.0 - warmth_value * 0.12) * (1.0 + tint_value * 0.08)
+    matrix = camera_to_linear_srgb or (
+        (1.0, 0.0, 0.0),
+        (0.0, 1.0, 0.0),
+        (0.0, 0.0, 1.0),
+    )
+    fixed_scale = 65535.0
+
+    camera_values: list[array] = []
+    for channel_black, channel_scale in zip(
+        black_levels,
+        (red_scale, green_scale, blue_scale),
+    ):
+        if not math.isfinite(channel_black) or channel_black < 0.0 or channel_black >= white_level:
+            channel_black = float(fallback_black_level)
+        span = max(1.0, white_level - channel_black)
+        values = array("f")
+        values.extend(
+            _clamp_float((value - channel_black) / span, 0.0, 1.0) * channel_scale * exposure_scale
+            for value in range(65536)
+        )
+        camera_values.append(values)
+
+    source_luts: list[tuple[array, array, array]] = []
+    for source_channel, values in enumerate(camera_values):
+        source_luts.append(
+            tuple(
+                array(
+                    "i",
+                    (round(value * matrix[output_channel][source_channel] * fixed_scale) for value in values),
+                )
+                for output_channel in range(3)
+            )  # type: ignore[arg-type]
+        )
+
+    output_limit = 4 * 65535
+    output = bytearray(output_limit + 1)
+    for index in range(output_limit + 1):
+        linear = index / fixed_scale
+        output[index] = _encode_channel(
             _apply_tonal_regions(
-                _apply_contrast(exposed * red_scale, contrast_factor),
+                _apply_contrast(linear, contrast_factor),
                 highlights=highlights_value,
                 shadows=shadows_value,
             )
         )
-        green[value] = _encode_channel(
-            _apply_tonal_regions(
-                _apply_contrast(exposed * green_scale, contrast_factor),
-                highlights=highlights_value,
-                shadows=shadows_value,
-            )
-        )
-        blue[value] = _encode_channel(
-            _apply_tonal_regions(
-                _apply_contrast(exposed * blue_scale, contrast_factor),
-                highlights=highlights_value,
-                shadows=shadows_value,
-            )
-        )
-    return bytes(red), bytes(green), bytes(blue)
+    return source_luts[0], source_luts[1], source_luts[2], bytes(output)
 
 
 def _apply_contrast(value: float, factor: float) -> float:
@@ -920,6 +1086,55 @@ def _tag_int_tuple(ifd: TiffIfd, tag_code: int) -> tuple[int, ...] | None:
         return tuple(int(item) for item in values)
     except (TypeError, ValueError):
         return None
+
+
+def _white_balance_from_makernote_ifd(ifd: TiffIfd) -> NikonWhiteBalance | None:
+    mode = _tag_ascii(ifd, 0x0005)
+    levels = _tag_float_tuple(ifd, 0x000C)
+    if levels is None or len(levels) != 4 or any(value <= 0.0 for value in levels):
+        return None
+    green_reference = (levels[2] + levels[3]) / 2.0
+    if not math.isfinite(green_reference) or green_reference <= 0.0:
+        return None
+    gains = (levels[0] / green_reference, 1.0, levels[1] / green_reference)
+    if all(abs(gain - 1.0) <= 1e-6 for gain in gains):
+        return None
+    if not all(math.isfinite(gain) and 0.125 <= gain <= 8.0 for gain in gains):
+        return None
+    return NikonWhiteBalance(
+        red_gain=gains[0],
+        green_gain=gains[1],
+        blue_gain=gains[2],
+        source_tag="0x000c",
+        mode=mode,
+    )
+
+
+def _tag_float_tuple(ifd: TiffIfd, tag_code: int) -> tuple[float, ...] | None:
+    tag = ifd.tags.get(tag_code)
+    if tag is None:
+        return None
+    values = tag.value if isinstance(tag.value, tuple) else (tag.value,)
+    try:
+        result = tuple(float(item) for item in values)
+    except (TypeError, ValueError):
+        return None
+    return result if all(math.isfinite(item) for item in result) else None
+
+
+def _optional_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _coerce_orientation(value: Any) -> int:
+    try:
+        orientation = int(value)
+    except (TypeError, ValueError):
+        return 1
+    return orientation if 1 <= orientation <= 8 else 1
 
 
 def _optional_int_tuple(ifd: TiffIfd, tag_code: int) -> tuple[int, ...] | None:

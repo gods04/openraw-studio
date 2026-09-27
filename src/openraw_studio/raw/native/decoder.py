@@ -78,6 +78,14 @@ class NativeRawDecoder:
                     "nikon_compression_version": pixel_data.compression_setup.version,
                     "nikon_compression_mode": pixel_data.compression_setup.compression_mode,
                     "nikon_active_area": pixel_data.compression_setup.active_area,
+                    "nikon_black_levels": pixel_data.black_levels,
+                    "nikon_white_balance": (
+                        pixel_data.white_balance.gains if pixel_data.white_balance is not None else None
+                    ),
+                    "nikon_camera_profile": (
+                        pixel_data.camera_profile.model if pixel_data.camera_profile is not None else None
+                    ),
+                    "orientation": pixel_data.orientation,
                     "as_shot_neutral": raw_summary.get("as_shot_neutral"),
                     "color_matrix_1": raw_summary.get("color_matrix_1"),
                     "color_matrix_2": raw_summary.get("color_matrix_2"),

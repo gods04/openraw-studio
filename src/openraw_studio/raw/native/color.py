@@ -7,18 +7,13 @@ import math
 from typing import Mapping, Sequence
 
 from openraw_studio.raw.native.demosaic import LinearRgbImage
+from openraw_studio.raw.native.profiles import Matrix3, camera_profile_to_linear_srgb_matrix
 from openraw_studio.raw.native.sensor import LinearSensorImage
 
 
 class ColorTransformError(ValueError):
     """Raised when DNG color metadata cannot be applied safely."""
 
-
-Matrix3 = tuple[
-    tuple[float, float, float],
-    tuple[float, float, float],
-    tuple[float, float, float],
-]
 
 _D50_WHITE = (0.96422, 1.0, 0.82521)
 _D65_WHITE = (0.95047, 1.0, 1.08883)

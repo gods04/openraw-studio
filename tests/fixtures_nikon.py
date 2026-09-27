@@ -14,6 +14,9 @@ def synthetic_nikon_nef_metadata_bytes(
     white_level: int = 4095,
     bits_per_sample: int | None = None,
     maker_note: bytes | None = None,
+    make: str = "NIKON CORPORATION",
+    model: str = "NIKON Z 6II",
+    orientation: int = 1,
 ) -> bytes:
     if sensor_samples is not None and len(sensor_samples) != width * height:
         raise ValueError("sensor_samples must match width * height")
@@ -23,14 +26,16 @@ def synthetic_nikon_nef_metadata_bytes(
     effective_bits_per_sample = bits_per_sample if bits_per_sample is not None else (16 if sensor_samples is not None else 14)
     compression_value = 34713 if compressed_sensor_payload is not None else 1 if sensor_samples is not None else 34713
     has_sensor_payload = sensor_samples is not None or compressed_sensor_payload is not None
+    make_payload = make.encode("ascii") + b"\x00"
+    model_payload = model.encode("ascii") + b"\x00"
     ifd0_defs = [
         (256, 4, 1, struct.pack("<I", width)),
         (257, 4, 1, struct.pack("<I", height)),
         (258, 3, 1, struct.pack("<H", effective_bits_per_sample)),
         (259, 3, 1, struct.pack("<H", compression_value)),
-        (271, 2, len(b"NIKON CORPORATION\x00"), b"NIKON CORPORATION\x00"),
-        (272, 2, len(b"NIKON Z 6II\x00"), b"NIKON Z 6II\x00"),
-        (274, 3, 1, struct.pack("<H", 1)),
+        (271, 2, len(make_payload), make_payload),
+        (272, 2, len(model_payload), model_payload),
+        (274, 3, 1, struct.pack("<H", orientation)),
         (277, 3, 1, struct.pack("<H", 1)),
     ]
     if sensor_samples is not None:
@@ -139,6 +144,12 @@ def synthetic_nikon_nef_compressed_bytes(
     bits_per_sample: int = 14,
     samples: tuple[int, ...] | None = None,
     active_area: tuple[int, int, int, int] = (16, 8, 5568, 3712),
+    white_balance_rb_levels: tuple[float, float, float, float] | None = None,
+    alternate_white_balance_rb_levels: tuple[float, float, float, float] | None = None,
+    maker_black_levels: tuple[int, int, int, int] | None = None,
+    make: str = "NIKON CORPORATION",
+    model: str = "NIKON Z 6II",
+    orientation: int = 1,
 ) -> bytes:
     if bits_per_sample not in {12, 14}:
         raise ValueError("compressed synthetic Nikon NEF supports only 12-bit or 14-bit samples")
@@ -153,7 +164,16 @@ def synthetic_nikon_nef_compressed_bytes(
         height=height,
         bits_per_sample=bits_per_sample,
         compressed_sensor_payload=payload,
-        maker_note=nikon_makernote_bytes(bits_per_sample=bits_per_sample, active_area=active_area),
+        maker_note=nikon_makernote_bytes(
+            bits_per_sample=bits_per_sample,
+            active_area=active_area,
+            white_balance_rb_levels=white_balance_rb_levels,
+            alternate_white_balance_rb_levels=alternate_white_balance_rb_levels,
+            black_levels=maker_black_levels,
+        ),
+        make=make,
+        model=model,
+        orientation=orientation,
     )
 
 
@@ -166,6 +186,10 @@ def embedded_jpeg_bytes(width: int = 3, height: int = 2) -> bytes:
 def nikon_makernote_bytes(
     bits_per_sample: int = 14,
     active_area: tuple[int, int, int, int] = (16, 8, 5568, 3712),
+    white_balance_rb_levels: tuple[float, float, float, float] | None = None,
+    alternate_white_balance_rb_levels: tuple[float, float, float, float] | None = None,
+    white_balance_mode: str = "AUTO1",
+    black_levels: tuple[int, int, int, int] | None = None,
 ) -> bytes:
     predictor = 2048 if bits_per_sample == 14 else 512
     compression_payload = (
@@ -184,11 +208,25 @@ def nikon_makernote_bytes(
         (0x0093, 3, 1, struct.pack("<H", 3)),
         (0x0096, 7, len(compression_payload), compression_payload),
     ]
+    if white_balance_rb_levels is not None or alternate_white_balance_rb_levels is not None:
+        mode_payload = white_balance_mode.encode("ascii") + b"\x00"
+        entries.append((0x0005, 2, len(mode_payload), mode_payload))
+    if white_balance_rb_levels is not None:
+        entries.append((0x000C, 5, 4, _pack_rational_values(white_balance_rb_levels)))
+    if alternate_white_balance_rb_levels is not None:
+        entries.append((0x003B, 5, 4, _pack_rational_values(alternate_white_balance_rb_levels)))
+    if black_levels is not None:
+        entries.append((0x003D, 3, 4, struct.pack("<4H", *black_levels)))
     return _tiff_makernote_bytes(entries)
 
 
 def _pack_rational(numerator: int, denominator: int) -> bytes:
     return struct.pack("<II", numerator, denominator)
+
+
+def _pack_rational_values(values: tuple[float, ...]) -> bytes:
+    denominator = 4096
+    return b"".join(_pack_rational(round(value * denominator), denominator) for value in values)
 
 
 def _tiff_makernote_bytes(entries: list[tuple[int, int, int, bytes]]) -> bytes:

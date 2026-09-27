@@ -15,6 +15,7 @@ from openraw_studio.raw.native.nikon import (
     can_decode_nikon_34713_lossless,
     summarize_nikon_makernote,
 )
+from openraw_studio.raw.native.profiles import find_camera_color_profile
 
 
 SUPPORTED_CFA_PATTERNS = {
@@ -166,6 +167,14 @@ def _inspect_nikon_raw(source_path: Path, *, dng_reader: DngMetadataReader | Non
     details = _nikon_import_details(source_path, summary, render_detail=None)
     details.extend(_render_detail_extras(render_details))
     details.extend(_nikon_makernote_details(maker_note))
+    camera_profile = find_camera_color_profile(
+        _optional_text(summary.get("make")),
+        _optional_text(summary.get("model")),
+    )
+    if camera_profile is not None:
+        details.append(f"Color: exact native profile for {camera_profile.model} to linear sRGB")
+    elif not render_issues:
+        details.append("Color: exact camera profile not available; generic camera RGB rendering")
     try:
         preview = reader.read_embedded_jpeg_preview(source_path)
     except (DngMetadataError, OSError):
@@ -294,6 +303,13 @@ def _nikon_makernote_details(maker_note: NikonMakerNoteSummary | None) -> list[s
         details.append(f"Nikon curve/table tag 0x008c: {maker_note.curve_byte_count} bytes{prefix}")
     if maker_note.active_area is not None:
         details.append(f"Nikon active area tag 0x0045: {_join_ints(maker_note.active_area)}")
+    if maker_note.as_shot_white_balance is not None:
+        red, green, blue = maker_note.as_shot_white_balance
+        source = f" from {maker_note.white_balance_source}" if maker_note.white_balance_source else ""
+        mode = f", mode {maker_note.white_balance_mode}" if maker_note.white_balance_mode else ""
+        details.append(f"Nikon as-shot white balance{source}: R {red:.3f}, G {green:.3f}, B {blue:.3f}{mode}")
+    if maker_note.black_levels is not None:
+        details.append(f"Nikon black levels from 0x003d: {_join_ints(maker_note.black_levels)}")
     return details
 
 
@@ -370,7 +386,7 @@ def _evaluate_nikon_summary(
         issues = [issue for issue in issues if issue != "Missing scalar black level."]
         issues = [issue for issue in issues if issue != "Missing scalar white level."]
         details.append("Compression: Nikon 34713 lossless Huffman")
-        details.append("Levels: Nikon 14-bit range with conservative render-time black estimate")
+        details.append("Levels: Nikon 14-bit range with MakerNote black level or inactive-border fallback")
         details.append("Render: native Nikon 34713 sensor decode")
     return issues, details
 
@@ -567,6 +583,13 @@ def _camera_label(summary: Mapping[str, Any]) -> str | None:
         if isinstance(value, str) and value.strip()
     ]
     return " ".join(parts) if parts else None
+
+
+def _optional_text(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    return text or None
 
 
 def _format_exposure_time(seconds: float) -> str:

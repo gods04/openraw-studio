@@ -1,7 +1,12 @@
 """OpenRAW Native RAW engine package."""
 
 from openraw_studio.raw.native.dng import DngMetadataReader, EmbeddedPreview
-from openraw_studio.raw.native.color import ColorTransformError, apply_as_shot_neutral, apply_camera_matrix
+from openraw_studio.raw.native.color import (
+    ColorTransformError,
+    apply_as_shot_neutral,
+    apply_camera_matrix,
+    camera_profile_to_linear_srgb_matrix,
+)
 from openraw_studio.raw.native.decoder import NativeRawDecoder
 from openraw_studio.raw.native.demosaic import LinearRgbImage, demosaic_simple
 from openraw_studio.raw.native.engine import NativeRawProcessor
@@ -12,8 +17,10 @@ from openraw_studio.raw.native.nikon import (
     NikonDecodedPixelData,
     NikonMakerNoteSummary,
     NikonRenderedRgbImage,
+    NikonWhiteBalance,
     can_decode_nikon_34713_lossless,
     decode_nikon_34713_lossless,
+    extract_nikon_as_shot_white_balance,
     render_decoded_nikon_34713_image,
     render_decoded_nikon_34713_to_file,
     render_nikon_34713_to_file,
@@ -21,6 +28,7 @@ from openraw_studio.raw.native.nikon import (
     summarize_nikon_makernote_payload,
 )
 from openraw_studio.raw.native.png import encode_png_rgb8, write_png
+from openraw_studio.raw.native.profiles import CameraColorProfile, find_camera_color_profile
 from openraw_studio.raw.native.preview import render_png_preview, render_ppm_preview, render_preview_image, resize_preview, write_ppm
 from openraw_studio.raw.native.sensor import LinearSensorImage, normalize_sensor_data
 from openraw_studio.raw.native.support import NativeSupportReport, inspect_native_support
@@ -36,6 +44,7 @@ __all__ = [
     "DngMetadataReader",
     "EmbeddedPreview",
     "ColorTransformError",
+    "CameraColorProfile",
     "LinearRgbImage",
     "LinearSensorImage",
     "NativeRawDecoder",
@@ -46,13 +55,17 @@ __all__ = [
     "NikonDecodedPixelData",
     "NikonMakerNoteSummary",
     "NikonRenderedRgbImage",
+    "NikonWhiteBalance",
     "PreviewRgbImage",
     "demosaic_simple",
     "apply_as_shot_neutral",
     "apply_camera_matrix",
+    "camera_profile_to_linear_srgb_matrix",
     "encode_png_rgb8",
     "can_decode_nikon_34713_lossless",
     "decode_nikon_34713_lossless",
+    "extract_nikon_as_shot_white_balance",
+    "find_camera_color_profile",
     "render_decoded_nikon_34713_image",
     "render_decoded_nikon_34713_to_file",
     "render_nikon_34713_to_file",

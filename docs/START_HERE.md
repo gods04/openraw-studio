@@ -160,7 +160,7 @@ Current status:
 - guarded Nikon `.NEF` / `.NRW` native sensor decode exists for TIFF-style uncompressed Bayer payloads
 - simple uncompressed DNG 12/14-bit packed strip and 16-bit strip/tile pixel extraction exists
 - first Nikon 34713 lossless compressed sensor decode and half-resolution RGB render exists
-- Nikon 34713 optimized Python bitstream/render loops and conservative inactive-border black-level estimation exist
+- Nikon 34713 optimized Python bitstream/render loops, MakerNote black levels, and conservative inactive-border fallback exist
 - black/white level sensor normalization exists for 12/14/16-bit data
 - simple Bayer demosaic exists
 - simple PNG preview encoding exists
@@ -173,7 +173,8 @@ Current status:
 - native Nikon 34713 results can be compared with the camera-authored embedded JPEG without a second sensor decode
 - Windows startup script creates `.venv`, installs the local package, and opens the app
 - Windows package script and GitHub Actions artifact build exist
-- Nikon 34713 camera-aware color, further speed work, full-resolution export, other compressed Nikon variants, and higher-quality JPEG/TIFF export are next
+- Nikon D500 camera-aware white balance/color and EXIF orientation are now applied
+- additional Nikon profiles, further speed work, full-resolution export, other compressed Nikon variants, and higher-quality JPEG/TIFF export are next
 
 ### Step 3 - Minimal Desktop Shell
 
@@ -234,8 +235,8 @@ supported photos from the imported folder, and open the output folder. When
 adjustments change, the UI marks the preview as needing an update until the
 next preview/export render. If the current output folder already has a matching
 recipe for the selected photo, the UI restores the saved basic adjustments.
-Compressed Nikon 34713 output is currently half-resolution RGB with basic color
-and basic tone.
+Compressed Nikon 34713 output is currently half-resolution RGB. Camera-aware
+color is exact for the Nikon D500 and remains generic for other models.
 
 ### Step 4 - Real RAW Backend
 

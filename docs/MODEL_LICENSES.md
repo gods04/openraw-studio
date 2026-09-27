@@ -13,6 +13,7 @@ model weights, datasets, LUTs, sample images, icons, and other assets.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Python standard library | library | python.org | project runtime | PSF | yes | yes | yes | allowed | Used for CLI, JSON, filesystem, hashing, and PNG preview encoding. |
 | Pillow | image encoding library | python-pillow.github.io / PyPI | >=10.0 | MIT-CMU / HPND-style permissive license | yes | yes | yes | allowed | Used for JPEG export encoding only; not a RAW engine. |
+| Nikon D500 camera calibration constants | profile data | Adobe DNG Converter data published in LibRaw `colordata.cpp` | 9-value D500 matrix | factual calibration data; provenance documented | review before closed-source commercial distribution | yes with source notice | yes | open-source-ok | OpenRAW's matrix math is project-authored; no LibRaw code or binary is bundled. |
 
 ## Candidate Components To Review
 
@@ -23,7 +24,7 @@ until the review fields above are completed with source evidence.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | darktable-cli | external RAW backend | darktable.org | 5.x user-installed | GPL-3.0-or-later | yes | review before bundling | GPL attribution/license required if distributed | external-ok | Used as a user-installed executable in V0.1; do not bundle until distribution obligations are reviewed. |
 | RawTherapee CLI | external RAW backend | TBD | TBD | TBD | TBD | TBD | TBD | needs review | Alternative RAW backend. |
-| LibRaw | RAW library | TBD | TBD | TBD | TBD | TBD | TBD | needs review | Future embedded RAW backend candidate. |
+| LibRaw | RAW library/reference implementation | github.com/LibRaw/LibRaw | current upstream reference only | LGPL-2.1 or CDDL-1.0 | yes under license terms | review before bundling | required if distributed | reference-only | Used only as a development oracle today; not a runtime dependency or bundled component. |
 | MediaPipe Face Landmarker | model/runtime | TBD | TBD | TBD | TBD | TBD | TBD | needs review | Candidate for landmarks; model weight terms must be checked separately from code. |
 | MediaPipe Image Segmenter | model/runtime | TBD | TBD | TBD | TBD | TBD | TBD | needs review | Candidate for person segmentation; model weight terms must be checked separately from code. |
 | SigLIP or SigLIP 2 | model | TBD | TBD | TBD | TBD | TBD | TBD | needs review | Candidate scene classifier; code, weights, and dataset terms require separate review. |
