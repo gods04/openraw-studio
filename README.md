@@ -83,6 +83,8 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - Native simple Bayer demosaic baseline
 - Native PNG preview encoding for narrow uncompressed DNG/Nikon test files
 - Local JPEG quality control and lossless 8-bit RGB TIFF export with recipe traceability
+- Safe derivative metadata for camera, lens, capture settings, date, orientation,
+  sRGB, and OpenRAW software identity; GPS is not copied
 - Beginner desktop shell launched with `openraw app` or `scripts/run_app.ps1`
 - App single-photo import, folder import, output-folder selection, conservative Auto Adjust,
   exposure/contrast/highlights/shadows/temperature/tint/saturation adjustments,
@@ -291,6 +293,9 @@ DNG profiles are still future work. Supported Nikon 34713 files use a fast
 half-resolution preview and a full-resolution bilinear final JPEG. The D500 has
 an exact native color profile while other Nikon models still use generic
 camera RGB.
+Final JPEG/TIFF files retain safe photographic metadata such as camera, ISO,
+shutter, aperture, focal length, and capture date. Exported pixels are already
+oriented, so Orientation is written as `1`; location/GPS metadata is not copied.
 
 Batch export currently renderable DNG/Nikon files from a folder:
 

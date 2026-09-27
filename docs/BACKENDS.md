@@ -25,6 +25,7 @@ exact Nikon D500 camera profile to linear sRGB
 EXIF orientation handling for native Nikon renders
 simple PNG preview support for narrow uncompressed DNG/Nikon files
 local JPEG quality and lossless 8-bit TIFF export support for renderable DNG/Nikon files
+safe camera/capture derivative metadata without GPS passthrough
 12/14-bit packed strip payloads supported for the current DNG/Nikon path
 16-bit strip and tile payloads supported for the current DNG/Nikon path
 guarded Nikon NEF/NRW native sensor decode for TIFF-style uncompressed Bayer payloads

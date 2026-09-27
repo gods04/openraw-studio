@@ -10,6 +10,7 @@ from openraw_studio.core.domain import EngineInfo, ImageRef
 from openraw_studio.export.errors import ExportError
 from openraw_studio.export.formats import normalize_export_format, validate_export_quality
 from openraw_studio.export.interfaces import ExportRequest, ExportResult
+from openraw_studio.export.metadata import build_jpeg_exif, build_tiff_info
 
 
 JPEG_SUFFIXES = {".jpg", ".jpeg"}
@@ -28,6 +29,7 @@ class LocalImageExportEngine:
                 "jpeg": True,
                 "tiff": "rgb8-deflate",
                 "jpeg_quality": True,
+                "photographic_metadata": "safe-capture-no-gps-v0.1",
                 "source_passthrough": True,
                 "recipe_sidecar": True,
             },
@@ -60,6 +62,7 @@ class LocalImageExportEngine:
                 output_path,
                 export_format=export_format,
                 quality=quality,
+                recipe=request.recipe,
             )
 
         recipe_path = _write_recipe_sidecar(output_path, request.recipe) if request.write_recipe_sidecar else None
@@ -78,6 +81,7 @@ class LocalImageExportEngine:
                 "quality": quality if export_format == "jpeg" else None,
                 "bit_depth": 8,
                 "compression": "jpeg" if export_format == "jpeg" else "tiff_deflate",
+                "metadata_policy": "safe-capture-no-gps-v0.1",
                 "source_path": str(request.image.path),
                 "source_role": request.image.role,
                 "engine": self.engine_info().name,
@@ -95,6 +99,7 @@ def _write_from_existing_image(
     *,
     export_format: str,
     quality: int,
+    recipe: Mapping[str, Any],
 ) -> None:
     if not source_path.exists():
         raise ExportError(f"Rendered image does not exist: {source_path}")
@@ -108,10 +113,22 @@ def _write_from_existing_image(
         with Image.open(source_path) as opened:
             encoded = opened.convert("RGB")
             if export_format == "jpeg":
-                encoded.save(output_path, format="JPEG", quality=quality, optimize=False, progressive=False)
+                encoded.save(
+                    output_path,
+                    format="JPEG",
+                    quality=quality,
+                    optimize=False,
+                    progressive=False,
+                    exif=build_jpeg_exif(recipe),
+                )
             else:
-                encoded.save(output_path, format="TIFF", compression="tiff_deflate")
-    except OSError as exc:
+                encoded.save(
+                    output_path,
+                    format="TIFF",
+                    compression="tiff_deflate",
+                    tiffinfo=build_tiff_info(recipe),
+                )
+    except (OSError, TypeError, ValueError) as exc:
         raise ExportError(f"Could not encode {export_format.upper()} export: {exc}") from exc
 
 

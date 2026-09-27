@@ -269,6 +269,8 @@ def render_nikon_34713_to_file(
     tint: float = 0.0,
     saturation: float = 0.0,
     jpeg_quality: int = 92,
+    jpeg_exif: Any | None = None,
+    tiffinfo: Any | None = None,
     quality: str = "fast",
 ) -> tuple[int, int]:
     """Render a supported Nikon 34713 RAW file directly to PNG, JPEG, or TIFF."""
@@ -286,6 +288,8 @@ def render_nikon_34713_to_file(
         tint=tint,
         saturation=saturation,
         jpeg_quality=jpeg_quality,
+        jpeg_exif=jpeg_exif,
+        tiffinfo=tiffinfo,
         quality=quality,
     )
 
@@ -303,6 +307,8 @@ def render_decoded_nikon_34713_to_file(
     tint: float = 0.0,
     saturation: float = 0.0,
     jpeg_quality: int = 92,
+    jpeg_exif: Any | None = None,
+    tiffinfo: Any | None = None,
     quality: str = "fast",
 ) -> tuple[int, int]:
     """Render an already decoded Nikon 34713 sensor payload to PNG, JPEG, or TIFF."""
@@ -330,11 +336,21 @@ def render_decoded_nikon_34713_to_file(
     destination.parent.mkdir(parents=True, exist_ok=True)
     suffix = destination.suffix.lower()
     if suffix in {".jpg", ".jpeg"}:
-        image.save(destination, format="JPEG", quality=jpeg_quality, optimize=False, progressive=False)
+        options: dict[str, Any] = {
+            "quality": jpeg_quality,
+            "optimize": False,
+            "progressive": False,
+        }
+        if jpeg_exif is not None:
+            options["exif"] = jpeg_exif
+        image.save(destination, format="JPEG", **options)
     elif suffix == ".png":
         image.save(destination, format="PNG")
     elif suffix in {".tif", ".tiff"}:
-        image.save(destination, format="TIFF", compression="tiff_deflate")
+        options = {"compression": "tiff_deflate"}
+        if tiffinfo is not None:
+            options["tiffinfo"] = tiffinfo
+        image.save(destination, format="TIFF", **options)
     else:
         raise NikonCompressionError("Nikon 34713 render output must be .png, .jpg, .jpeg, .tif, or .tiff")
     return image.size

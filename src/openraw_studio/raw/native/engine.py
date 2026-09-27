@@ -9,6 +9,7 @@ from typing import Any, Mapping
 from openraw_studio.core.domain import EngineInfo, ImageAsset, ImageMetadata, ImageRef, RawInspection
 from openraw_studio.core.files import sha256_file, source_file_metadata
 from openraw_studio.core.image_info import read_image_size
+from openraw_studio.export.metadata import build_jpeg_exif, build_tiff_info
 from openraw_studio.raw.errors import RawProcessingError
 from openraw_studio.raw.interfaces import RawRenderRequest
 from openraw_studio.raw.native.dng import DngMetadataError, DngMetadataReader
@@ -50,6 +51,7 @@ class NativeRawProcessor:
                 "base_render": "preview-derived-jpeg-dng-v0.1",
                 "jpeg_export": "pillow-jpeg-v0.1",
                 "tiff_export": "pillow-rgb8-deflate-v0.1",
+                "derivative_metadata": "safe-capture-no-gps-v0.1",
                 "white_balance": "dng-as-shot-neutral-v0.1",
                 "camera_color_matrix": "dng-color-matrix-1-to-linear-srgb-v0.2",
                 "tone_adjustments": "exposure-contrast-highlights-shadows-temperature-tint-saturation-v0.1",
@@ -183,6 +185,8 @@ class NativeRawProcessor:
             raise RawProcessingError("OpenRAW Native export path must end in .jpg, .jpeg, .tif, or .tiff")
         try:
             adjustments = _recipe_render_adjustments(request.recipe)
+            jpeg_exif = build_jpeg_exif(request.recipe) if output_suffix in {".jpg", ".jpeg"} else None
+            tiff_info = build_tiff_info(request.recipe) if output_suffix in {".tif", ".tiff"} else None
             if metadata := self._read_supported_nikon_34713(request.source.path):
                 decoded = self._decode_supported_nikon_34713(request.source.path, metadata)
                 width, height = render_decoded_nikon_34713_to_file(
@@ -197,6 +201,8 @@ class NativeRawProcessor:
                     saturation=adjustments.saturation,
                     max_dimension=request.max_dimension,
                     jpeg_quality=request.quality,
+                    jpeg_exif=jpeg_exif,
+                    tiffinfo=tiff_info,
                     quality="full",
                 )
                 return ImageRef(
@@ -217,9 +223,9 @@ class NativeRawProcessor:
                 saturation=adjustments.saturation,
             )
             if output_suffix in {".jpg", ".jpeg"}:
-                write_jpeg(rendered, plan.output_path, quality=request.quality)
+                write_jpeg(rendered, plan.output_path, quality=request.quality, exif=jpeg_exif)
             else:
-                write_tiff_rgb8(rendered, plan.output_path)
+                write_tiff_rgb8(rendered, plan.output_path, tiffinfo=tiff_info)
         except (DngMetadataError, NotImplementedError, RuntimeError, ValueError, OSError) as exc:
             prefix = (
                 "OpenRAW Native Nikon export failed"

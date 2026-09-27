@@ -821,6 +821,7 @@ class NativeDngMetadataTests(unittest.TestCase):
                 image_format = opened.format
                 image_mode = opened.mode
                 compression = opened.tag_v2.get(259)
+                tiff_tags = dict(opened.tag_v2)
             export_size = read_image_size(export_path)
 
         self.assertEqual(result.exports[0].path, export_path)
@@ -828,11 +829,21 @@ class NativeDngMetadataTests(unittest.TestCase):
         self.assertEqual(image_format, "TIFF")
         self.assertEqual(image_mode, "RGB")
         self.assertEqual(compression, 8)
+        self.assertEqual(tiff_tags[271], "NIKON CORPORATION")
+        self.assertEqual(tiff_tags[272], "NIKON Z 6II")
+        self.assertEqual(tiff_tags[274], 1)
+        self.assertEqual(tiff_tags[305], "OpenRAW Studio 0.1.0")
+        self.assertEqual(tiff_tags[34855], 400)
+        self.assertAlmostEqual(float(tiff_tags[33434]), 1 / 125, places=6)
+        self.assertAlmostEqual(float(tiff_tags[33437]), 2.8, places=5)
+        self.assertAlmostEqual(float(tiff_tags[37386]), 50.0, places=5)
+        self.assertEqual(tiff_tags[42036], "NIKKOR Z 50mm f/1.8 S")
         self.assertEqual(recipe["output"]["format"], "tiff")
         self.assertIsNone(recipe["output"]["quality"])
         self.assertEqual(recipe["exports"][0]["format"], "tiff")
         self.assertEqual(recipe["exports"][0]["bit_depth"], 8)
         self.assertEqual(recipe["exports"][0]["compression"], "tiff_deflate")
+        self.assertEqual(recipe["exports"][0]["metadata_policy"], "safe-capture-no-gps-v0.1")
         self.assertIn("TIFF export", recipe["pipeline"]["message"])
 
     def test_pipeline_jpeg_quality_reaches_native_encoder(self) -> None:
@@ -858,6 +869,38 @@ class NativeDngMetadataTests(unittest.TestCase):
         self.assertGreater(low_quantization[0], high_quantization[0])
         self.assertEqual(low.recipe["exports"][0]["quality"], 35)
         self.assertEqual(high.recipe["exports"][0]["quality"], 95)
+
+    def test_native_jpeg_preserves_safe_capture_exif_and_normalizes_orientation(self) -> None:
+        source_bytes = synthetic_nikon_nef_compressed_bytes(
+            width=4,
+            height=4,
+            active_area=(0, 0, 4, 4),
+            orientation=8,
+        )
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "metadata.NEF"
+            source.write_bytes(source_bytes)
+
+            result = LocalPhotoPipeline().process(PipelineRequest(source, root / "output"))
+            from PIL import Image
+
+            with Image.open(result.exports[0].path) as opened:
+                exif = opened.getexif()
+                photo = exif.get_ifd(34665)
+            source_after = source.read_bytes()
+
+        self.assertEqual(exif[271], "NIKON CORPORATION")
+        self.assertEqual(exif[272], "NIKON Z 6II")
+        self.assertEqual(exif[274], 1)
+        self.assertEqual(exif[305], "OpenRAW Studio 0.1.0")
+        self.assertEqual(photo[34855], 400)
+        self.assertAlmostEqual(float(photo[33434]), 1 / 125, places=6)
+        self.assertAlmostEqual(float(photo[33437]), 2.8, places=5)
+        self.assertAlmostEqual(float(photo[37386]), 50.0, places=5)
+        self.assertEqual(photo[42036], "NIKKOR Z 50mm f/1.8 S")
+        self.assertEqual(photo[40961], 1)
+        self.assertEqual(source_after, source_bytes)
 
 
 def _minimal_dng_bytes() -> bytes:

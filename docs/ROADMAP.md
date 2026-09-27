@@ -81,6 +81,7 @@ Suggested implementation order:
 36. [done] compare native Nikon 34713 results with their camera-authored embedded JPEG without a second sensor decode
 37. [done] add Nikon D500 MakerNote black level, standard as-shot white balance, exact camera profile, and EXIF orientation
 38. [partial] add edge-aware demosaic and lossless TIFF export (8-bit TIFF done; edge-aware and 16-bit linear output pending)
+39. [done] preserve safe camera/capture metadata in JPEG/TIFF derivatives without GPS passthrough
 
 Exit criteria:
 

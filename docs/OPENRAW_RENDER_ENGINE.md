@@ -96,6 +96,7 @@ Status:
 - simple tone mapping and PNG preview encoding exist
 - `openraw process --preview-only` can complete without final export
 - local export engine records JPEG quality or lossless 8-bit TIFF derivatives for supported DNG/Nikon files
+- safe camera/capture EXIF/TIFF metadata is written with normalized orientation and no GPS passthrough
 - DNG AsShotNeutral white balance and ColorMatrix1 transform are applied when available
 - recipe-driven exposure, contrast, highlights, shadows, normalized temperature, tint, and saturation controls are applied to DNG and native-renderable Nikon preview/final export
 - Nikon embedded previews are extracted as camera-authored JPEGs without applying recipe adjustments yet

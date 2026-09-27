@@ -147,6 +147,7 @@ class LocalPhotoPipeline:
             "quality": export_quality if export_format == "jpeg" else None,
             "bit_depth": 8,
             "compression": "jpeg" if export_format == "jpeg" else "tiff_deflate",
+            "metadata_policy": "safe-capture-no-gps-v0.1",
         }
         recipe["qc"] = {
             "status": "not_run",
@@ -257,6 +258,7 @@ class LocalPhotoPipeline:
                     "quality": export_result.metadata.get("quality"),
                     "bit_depth": export_result.metadata.get("bit_depth", 8),
                     "compression": export_result.metadata.get("compression"),
+                    "metadata_policy": export_result.metadata.get("metadata_policy"),
                     "engine": self.export_engine.engine_info().name,
                 }
             ]

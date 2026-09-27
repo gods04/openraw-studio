@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from openraw_studio.raw.native.tone import PreviewRgbImage
 
 
-def write_jpeg(image: PreviewRgbImage, output_path: Path, *, quality: int = 92) -> Path:
+def write_jpeg(
+    image: PreviewRgbImage,
+    output_path: Path,
+    *,
+    quality: int = 92,
+    exif: Any | None = None,
+) -> Path:
     """Write an 8-bit RGB image as a JPEG file."""
 
     if output_path.suffix.lower() not in {".jpg", ".jpeg"}:
@@ -27,5 +34,12 @@ def write_jpeg(image: PreviewRgbImage, output_path: Path, *, quality: int = 92) 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     payload = bytes(channel for pixel in image.pixels for channel in pixel)
     encoded = Image.frombytes("RGB", (image.width, image.height), payload)
-    encoded.save(output_path, format="JPEG", quality=quality, optimize=False, progressive=False)
+    options: dict[str, Any] = {
+        "quality": quality,
+        "optimize": False,
+        "progressive": False,
+    }
+    if exif is not None:
+        options["exif"] = exif
+    encoded.save(output_path, format="JPEG", **options)
     return output_path

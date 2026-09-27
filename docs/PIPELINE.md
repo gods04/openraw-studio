@@ -176,6 +176,9 @@ Write the finished derivative and optional sidecar recipe through
 `ExportEngine`. V0.1 uses the local JPEG/TIFF export engine, which records
 format, JPEG quality or TIFF compression, bit depth, source artifact, and
 engine metadata while preserving the original RAW.
+The derivative also carries a conservative camera/capture metadata subset. It
+does not copy GPS/location tags, and records Orientation as `1` after pixel
+rotation has been applied.
 Exports must include enough metadata to trace the source and engine versions.
 
 ## Failure Handling

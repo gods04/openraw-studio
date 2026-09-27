@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from openraw_studio.raw.native.tone import PreviewRgbImage
 
 
-def write_tiff_rgb8(image: PreviewRgbImage, output_path: Path) -> Path:
+def write_tiff_rgb8(
+    image: PreviewRgbImage,
+    output_path: Path,
+    *,
+    tiffinfo: Any | None = None,
+) -> Path:
     """Write an 8-bit sRGB image as a lossless Deflate-compressed TIFF."""
 
     if output_path.suffix.lower() not in {".tif", ".tiff"}:
@@ -25,5 +31,8 @@ def write_tiff_rgb8(image: PreviewRgbImage, output_path: Path) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     payload = bytes(channel for pixel in image.pixels for channel in pixel)
     encoded = Image.frombytes("RGB", (image.width, image.height), payload)
-    encoded.save(output_path, format="TIFF", compression="tiff_deflate")
+    options: dict[str, Any] = {"compression": "tiff_deflate"}
+    if tiffinfo is not None:
+        options["tiffinfo"] = tiffinfo
+    encoded.save(output_path, format="TIFF", **options)
     return output_path

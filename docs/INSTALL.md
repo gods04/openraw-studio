@@ -229,6 +229,9 @@ files, and supported Nikon 34713 lossless files, this writes a preview plus
 The TIFF is an 8-bit sRGB Deflate-compressed derivative, not a 16-bit linear
 working file. The image data is still an early V0.1 render and does
 not represent final camera-aware color science yet.
+JPEG/TIFF derivatives retain camera, lens, ISO, shutter, aperture, focal length,
+capture date, normalized orientation, sRGB, and OpenRAW software metadata. GPS
+metadata is intentionally not copied.
 
 Batch export the supported files in one folder:
 
