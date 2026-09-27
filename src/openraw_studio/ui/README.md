@@ -21,6 +21,8 @@ The UI should keep the image workspace first:
 - preview current/stale state
 - built-in synthetic sample DNG/NEF creation
 - before/after comparison
+- rendered-preview RGB/luminance histogram that follows Before/After view
+- rendered-preview shadow/highlight clipping percentages
 - AUTO action
 - conservative Auto Adjust action for native-renderable DNG/Nikon files
 - exposure adjustment

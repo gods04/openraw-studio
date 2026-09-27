@@ -82,7 +82,8 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - Local JPEG export engine for final derivative writing and recipe traceability
 - Beginner desktop shell launched with `openraw app` or `scripts/run_app.ps1`
 - App single-photo import, folder import, output-folder selection, conservative Auto Adjust,
-  exposure/contrast/highlights/shadows/temperature/tint/saturation adjustments, before/after comparison, built-in
+  exposure/contrast/highlights/shadows/temperature/tint/saturation adjustments,
+  rendered-preview RGB/luminance histogram with clipping feedback, before/after comparison, built-in
   sample DNG creation, photo/output information display, batch folder export,
   and direct output opening
 - Saved recipe detection that restores basic desktop adjustments for the same
@@ -201,6 +202,9 @@ preview-only Nikon files so you can open the camera-authored embedded preview
 directly without treating it as a finished RAW export.
 After preview or export, `Show Before` lets you compare the basic demosaiced
 image with the OpenRAW color-treated result.
+The compact histogram follows the displayed Before or After preview and reports
+near-black and near-white clipping percentages. It analyzes the rendered 8-bit
+preview, not untouched sensor values.
 The Exposure, Contrast, Highlights, Shadows, Temperature, Tint, and Saturation controls are
 recorded in the recipe and applied to DNG and native-renderable Nikon preview/JPEG export.
 Highlights and Shadows use a smooth tone-region adjustment; lowering Highlights

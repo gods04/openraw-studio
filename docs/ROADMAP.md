@@ -76,6 +76,7 @@ Suggested implementation order:
 31. add support for more compressed Nikon NEF sensor payload variants
 32. [done] add region-weighted highlights and shadows controls to preview/export recipes and Auto Adjust
 33. [done] add normalized temperature and green/magenta tint controls with legacy warmth compatibility
+34. [done] add rendered-preview RGB/luminance histogram and clipping feedback that follows Before/After view
 
 Exit criteria:
 

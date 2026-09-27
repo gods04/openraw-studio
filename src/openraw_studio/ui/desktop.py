@@ -19,6 +19,7 @@ from openraw_studio.pipeline.batch import BatchItemResult, BatchResult, run_batc
 from openraw_studio.pipeline.errors import BackendUnavailableError, PipelineError, SourceFileError
 from openraw_studio.pipeline.interfaces import PipelineRequest
 from openraw_studio.pipeline.local import LocalPhotoPipeline
+from openraw_studio.qc.histogram import HistogramAnalysis, analyze_rgb_bytes, analyze_rgb_pixels
 from openraw_studio.raw.native.preview import render_preview_image
 from openraw_studio.raw.native.support import NativeSupportReport, inspect_native_support
 from openraw_studio.raw.native.synthetic import write_synthetic_dng, write_synthetic_nikon_nef
@@ -42,6 +43,52 @@ def _format_adjustment_label(value: float) -> str:
     if amount == 0:
         return "0"
     return f"{amount:+d}"
+
+
+def _histogram_status_text(analysis: HistogramAnalysis | None, *, view: str) -> str:
+    if analysis is None:
+        return "No histogram yet"
+    if analysis.highlight_clipped_pixels == 0 and analysis.shadow_clipped_pixels == 0:
+        return f"{view}: no clipped pixels"
+    return (
+        f"{view}: Highlights {analysis.highlight_clip_fraction:.1%} | "
+        f"Shadows {analysis.shadow_clip_fraction:.1%}"
+    )
+
+
+def _histogram_coordinates(
+    counts: Sequence[int],
+    *,
+    width: int,
+    height: int,
+    peak: int | None = None,
+) -> tuple[float, ...]:
+    if not counts:
+        raise ValueError("histogram counts cannot be empty")
+    if width < 2 or height < 2:
+        raise ValueError("histogram dimensions must be at least two pixels")
+    if any(count < 0 for count in counts):
+        raise ValueError("histogram counts cannot be negative")
+    resolved_peak = max(counts) if peak is None else peak
+    if resolved_peak < max(counts):
+        raise ValueError("histogram peak cannot be below the largest count")
+
+    x_step = (width - 1) / max(1, len(counts) - 1)
+    baseline = float(height - 1)
+    log_peak = math.log1p(resolved_peak)
+    points: list[float] = []
+    for index, count in enumerate(counts):
+        height_ratio = math.log1p(count) / log_peak if log_peak else 0.0
+        points.extend((index * x_step, baseline - (height_ratio * baseline)))
+    return tuple(points)
+
+
+def _analyze_pillow_preview(image: Any, *, max_dimension: int = 512) -> HistogramAnalysis:
+    sample = image.copy()
+    sample.thumbnail((max_dimension, max_dimension))
+    if sample.mode != "RGB":
+        sample = sample.convert("RGB")
+    return analyze_rgb_bytes(sample.tobytes())
 
 
 def _format_bytes(size: int) -> str:
@@ -487,6 +534,9 @@ def launch_desktop_app() -> None:
             self.preview_photo: Any = None
             self.before_photo: Any = None
             self.after_photo: Any = None
+            self.before_histogram: HistogramAnalysis | None = None
+            self.after_histogram: HistogramAnalysis | None = None
+            self.current_histogram: HistogramAnalysis | None = None
             self.library_dir: Path | None = None
             self.library_items: list[tuple[Path, str, bool]] = []
             self.current_can_preview: bool | None = None
@@ -505,6 +555,7 @@ def launch_desktop_app() -> None:
             self.output_info_var = tk.StringVar(value="Output plan appears after import")
             self.status_var = tk.StringVar(value="Choose a RAW photo to begin")
             self.preview_state_var = tk.StringVar(value="No preview yet")
+            self.histogram_status_var = tk.StringVar(value="No histogram yet")
             self.exposure_var = tk.DoubleVar(value=0.0)
             self.contrast_var = tk.DoubleVar(value=0.0)
             self.highlights_var = tk.DoubleVar(value=0.0)
@@ -534,6 +585,7 @@ def launch_desktop_app() -> None:
             style.configure("Subtitle.TLabel", background="#f5f5f7", foreground="#6e6e73", font=("Segoe UI", 10))
             style.configure("Panel.TLabel", background="#ffffff", foreground="#1d1d1f", font=("Segoe UI", 10))
             style.configure("Muted.TLabel", background="#ffffff", foreground="#6e6e73", font=("Segoe UI", 9))
+            style.configure("Warning.TLabel", background="#ffffff", foreground="#9c3d10", font=("Segoe UI", 9))
             style.configure("Primary.TButton", font=("Segoe UI", 10, "bold"), padding=(18, 10))
             style.configure("Secondary.TButton", padding=(12, 8))
 
@@ -578,7 +630,7 @@ def launch_desktop_app() -> None:
             preview.rowconfigure(1, weight=1)
 
             ttk_module.Label(controls, text="PHOTO", style="Muted.TLabel").pack(anchor="w")
-            ttk_module.Label(controls, textvariable=self.source_var, style="Panel.TLabel", wraplength=260).pack(anchor="w", pady=(8, 14))
+            ttk_module.Label(controls, textvariable=self.source_var, style="Panel.TLabel", wraplength=236).pack(anchor="w", pady=(8, 14))
             ttk_module.Button(controls, text="Import RAW", style="Secondary.TButton", command=self._choose_source).pack(fill="x")
             ttk_module.Button(controls, text="Import Folder", style="Secondary.TButton", command=self._choose_library_folder).pack(
                 fill="x", pady=(8, 0)
@@ -613,11 +665,32 @@ def launch_desktop_app() -> None:
             self.library_listbox.pack(side="left", fill="both", expand=True)
             library_scroll.pack(side="right", fill="y")
             self.library_listbox.bind("<<ListboxSelect>>", self._select_library_item)
-            ttk_module.Label(controls, textvariable=self.library_status_var, style="Muted.TLabel", wraplength=260).pack(anchor="w")
+            ttk_module.Label(controls, textvariable=self.library_status_var, style="Muted.TLabel", wraplength=236).pack(anchor="w")
 
             ttk_module.Label(controls, text="OUTPUT", style="Muted.TLabel").pack(anchor="w", pady=(20, 0))
-            ttk_module.Label(controls, textvariable=self.output_var, style="Panel.TLabel", wraplength=260).pack(anchor="w", pady=(8, 14))
+            ttk_module.Label(controls, textvariable=self.output_var, style="Panel.TLabel", wraplength=236).pack(anchor="w", pady=(8, 14))
             ttk_module.Button(controls, text="Choose Folder", style="Secondary.TButton", command=self._choose_output).pack(fill="x")
+
+            ttk_module.Separator(controls).pack(fill="x", pady=20)
+            ttk_module.Label(controls, text="HISTOGRAM", style="Muted.TLabel").pack(anchor="w")
+            self.histogram_canvas = tk_module.Canvas(
+                controls,
+                width=244,
+                height=92,
+                background="#f5f5f7",
+                borderwidth=0,
+                highlightthickness=1,
+                highlightbackground="#e5e5ea",
+            )
+            self.histogram_canvas.pack(fill="x", pady=(8, 6))
+            self.histogram_canvas.bind("<Configure>", self._resize_histogram)
+            self.histogram_status_label = ttk_module.Label(
+                controls,
+                textvariable=self.histogram_status_var,
+                style="Muted.TLabel",
+                wraplength=244,
+            )
+            self.histogram_status_label.pack(anchor="w")
 
             ttk_module.Separator(controls).pack(fill="x", pady=20)
             ttk_module.Label(controls, text="ADJUSTMENTS", style="Muted.TLabel").pack(anchor="w")
@@ -826,6 +899,51 @@ def launch_desktop_app() -> None:
         def _scroll_controls(self, event: Any) -> None:
             delta = -1 if event.delta > 0 else 1
             self.controls_canvas.yview_scroll(delta, "units")
+
+        def _resize_histogram(self, event: Any) -> None:
+            self._draw_histogram(self.current_histogram, width=max(2, event.width), height=max(2, event.height))
+
+        def _draw_histogram(
+            self,
+            analysis: HistogramAnalysis | None,
+            *,
+            width: int | None = None,
+            height: int | None = None,
+        ) -> None:
+            canvas = self.histogram_canvas
+            canvas.delete("all")
+            width = width or max(2, canvas.winfo_width())
+            height = height or max(2, canvas.winfo_height())
+            baseline = height - 1
+            canvas.create_line(0, baseline, width - 1, baseline, fill="#d2d2d7")
+            if analysis is None:
+                return
+
+            luminance_points = _histogram_coordinates(analysis.luminance, width=width, height=height)
+            canvas.create_polygon(
+                0,
+                baseline,
+                *luminance_points,
+                width - 1,
+                baseline,
+                fill="#d2d2d7",
+                outline="",
+            )
+            channel_peak = max((*analysis.red, *analysis.green, *analysis.blue))
+            for counts, color in (
+                (analysis.red, "#d94f55"),
+                (analysis.green, "#3a9b65"),
+                (analysis.blue, "#4f7fd9"),
+            ):
+                points = _histogram_coordinates(counts, width=width, height=height, peak=channel_peak)
+                canvas.create_line(*points, fill=color, width=1.4, smooth=True)
+
+        def _show_histogram(self, analysis: HistogramAnalysis | None, *, view: str) -> None:
+            self.current_histogram = analysis
+            self.histogram_status_var.set(_histogram_status_text(analysis, view=view))
+            style = "Warning.TLabel" if analysis is not None and analysis.has_significant_clipping() else "Muted.TLabel"
+            self.histogram_status_label.configure(style=style)
+            self._draw_histogram(analysis)
 
         def _choose_source(self) -> None:
             selected = self.filedialog.askopenfilename(
@@ -1062,6 +1180,8 @@ def launch_desktop_app() -> None:
             self.preview_photo = None
             self.before_photo = None
             self.after_photo = None
+            self.before_histogram = None
+            self.after_histogram = None
             self.last_export_path = None
             self.last_preview_overrides = None
             self.showing_after = True
@@ -1071,6 +1191,7 @@ def launch_desktop_app() -> None:
             self.compare_button.configure(state="disabled", text="Show Before")
             self.open_folder_button.configure(state="disabled")
             self.open_export_button.configure(state="disabled", text="Open JPEG")
+            self._show_histogram(None, view="After")
 
         def _update_preview(self) -> None:
             self._start_pipeline(preview_only=True)
@@ -1227,21 +1348,28 @@ def launch_desktop_app() -> None:
 
                     with Image.open(result.preview.path) as opened:
                         image = opened.convert("RGB")
+                    self.after_histogram = _analyze_pillow_preview(image)
                     image.thumbnail((700, 520))
                     self.after_photo = ImageTk.PhotoImage(image)
                     self.preview_photo = self.after_photo
                     self.preview_label.configure(image=self.preview_photo, text="")
                     self.showing_after = True
+                    self._show_histogram(self.after_histogram, view="After")
                     if not _can_build_inline_before_preview(result):
                         self.before_photo = None
+                        self.before_histogram = None
                         self.compare_button.configure(state="disabled", text="Show Before")
                     else:
                         before = render_preview_image(source, apply_color=False, max_dimension=700)
+                        self.before_histogram = analyze_rgb_pixels(before.pixels)
                         before_image = Image.frombytes("RGB", (before.width, before.height), _flatten_rgb_pixels(before.pixels))
                         before_image.thumbnail((700, 520))
                         self.before_photo = ImageTk.PhotoImage(before_image)
                         self.compare_button.configure(state="normal", text="Show Before")
                 except (OSError, RuntimeError, ValueError, NotImplementedError):
+                    self.before_histogram = None
+                    self.after_histogram = None
+                    self._show_histogram(None, view="After")
                     self.preview_label.configure(text="Preview created. Open the output folder to view it.", image="")
             self._refresh_preview_state()
             self.export_label.configure(text=_format_result_summary(result))
@@ -1260,6 +1388,8 @@ def launch_desktop_app() -> None:
             self.preview_photo = self.after_photo if self.showing_after else self.before_photo
             self.preview_label.configure(image=self.preview_photo)
             self.compare_button.configure(text="Show Before" if self.showing_after else "Show After")
+            histogram = self.after_histogram if self.showing_after else self.before_histogram
+            self._show_histogram(histogram, view="After" if self.showing_after else "Before")
 
         def _open_output_folder(self) -> None:
             if self.output_dir is None or not self.output_dir.exists():

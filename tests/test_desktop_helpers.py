@@ -23,6 +23,8 @@ from openraw_studio.ui.desktop import (
     _format_adjustment_label,
     _format_bytes,
     _format_exposure_label,
+    _histogram_coordinates,
+    _histogram_status_text,
     _format_native_support_summary,
     _format_batch_result_summary,
     _format_photo_info,
@@ -44,6 +46,7 @@ from openraw_studio.ui.desktop import (
 )
 from openraw_studio.raw.native.synthetic import write_synthetic_dng, write_synthetic_nikon_nef
 from openraw_studio.raw.native.support import NativeSupportReport
+from openraw_studio.qc.histogram import analyze_rgb_pixels
 
 
 class DesktopHelperTests(unittest.TestCase):
@@ -57,6 +60,33 @@ class DesktopHelperTests(unittest.TestCase):
         self.assertEqual(_format_adjustment_label(0.0), "0")
         self.assertEqual(_format_adjustment_label(0.253), "+25")
         self.assertEqual(_format_adjustment_label(-0.727), "-73")
+
+    def test_histogram_status_names_view_and_clipping(self) -> None:
+        clean = analyze_rgb_pixels(((80, 90, 100), (120, 130, 140)))
+        clipped = analyze_rgb_pixels(((0, 0, 0), (255, 200, 180), (100, 100, 100), (80, 80, 80)))
+
+        self.assertEqual(_histogram_status_text(None, view="After"), "No histogram yet")
+        self.assertEqual(_histogram_status_text(clean, view="Before"), "Before: no clipped pixels")
+        self.assertEqual(_histogram_status_text(clipped, view="After"), "After: Highlights 25.0% | Shadows 25.0%")
+
+    def test_histogram_coordinates_fit_canvas_and_share_peak(self) -> None:
+        points = _histogram_coordinates((0, 1, 3, 0), width=101, height=51, peak=3)
+
+        self.assertEqual(len(points), 8)
+        self.assertEqual(points[0], 0.0)
+        self.assertEqual(points[-2], 100.0)
+        self.assertTrue(all(0.0 <= value <= 50.0 for value in points[1::2]))
+        self.assertEqual(points[5], 0.0)
+
+    def test_histogram_coordinates_reject_invalid_geometry_or_counts(self) -> None:
+        with self.assertRaises(ValueError):
+            _histogram_coordinates((), width=100, height=50)
+        with self.assertRaises(ValueError):
+            _histogram_coordinates((1, -1), width=100, height=50)
+        with self.assertRaises(ValueError):
+            _histogram_coordinates((1, 2), width=1, height=50)
+        with self.assertRaises(ValueError):
+            _histogram_coordinates((1, 2), width=100, height=50, peak=1)
 
     def test_format_bytes_uses_photo_friendly_units(self) -> None:
         self.assertEqual(_format_bytes(0), "0 B")
