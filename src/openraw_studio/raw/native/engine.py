@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import threading
 from typing import Any, Mapping
 
 from openraw_studio.core.domain import EngineInfo, ImageAsset, ImageMetadata, ImageRef, RawInspection
@@ -39,6 +40,7 @@ class NativeRawProcessor:
     def __init__(self, *, dng_reader: DngMetadataReader | None = None) -> None:
         self._dng_reader = dng_reader or DngMetadataReader()
         self._nikon_34713_cache: tuple[Path, int, int, NikonDecodedPixelData] | None = None
+        self._decode_lock = threading.Lock()
 
     def engine_info(self) -> EngineInfo:
         return EngineInfo(
@@ -59,6 +61,9 @@ class NativeRawProcessor:
                 "nikon_full_resolution_export": "chunked-bilinear-v0.1",
                 "nikon_fast_preview": "numpy-block-vectorized-v0.2",
                 "nikon_in_memory_decode_cache": "single-source-stat-validated-v0.1",
+                "nikon_decode_acceleration": "optional-numba-native-v0.1",
+                "render_acceleration": "auto-opencl-cpu-fallback-v0.1",
+                "interactive_preview": "scene-linear-proxy-v0.1",
                 "dng_metadata": True,
                 "nikon_nef_metadata": True,
                 "nikon_nrw_metadata": True,
@@ -261,6 +266,10 @@ class NativeRawProcessor:
         return metadata
 
     def _decode_supported_nikon_34713(self, source_path: Path, metadata: Any) -> NikonDecodedPixelData:
+        with self._decode_lock:
+            return self._decode_supported_nikon_34713_locked(source_path, metadata)
+
+    def _decode_supported_nikon_34713_locked(self, source_path: Path, metadata: Any) -> NikonDecodedPixelData:
         resolved = source_path.expanduser().resolve()
         stat = resolved.stat()
         cache = self._nikon_34713_cache

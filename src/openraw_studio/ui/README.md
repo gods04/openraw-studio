@@ -28,7 +28,7 @@ The UI should keep the image workspace first:
 - conservative Auto Adjust action for native-renderable DNG/Nikon files
 - exposure adjustment
 - contrast, highlights, shadows, temperature, tint, and saturation adjustment
-- preview-only refresh
+- automatic live preview while dragging, with no manual refresh action
 - expandable advanced panels
 - export controls
 - batch export for currently supported folder files
@@ -41,15 +41,20 @@ The UI should keep the image workspace first:
 - open output folder action
 - saved recipe detection for restoring basic adjustments
 
-The UI consumes the pipeline and recipe contracts rather than directly calling
-RAW, vision, portrait, color, film, QC, or export implementations. The current
+The UI uses the pipeline and recipe contracts for saved artifacts and export.
+`LivePreviewWorker` separately requests an in-memory, scene-linear display proxy
+from the native RAW layer. It owns one background worker and a replaceable pending
+request. Slider events are throttled (not debounced); an in-flight frame can be
+displayed while a newer edit is pending, but switching photos invalidates old work.
+Tk display changes happen only on the main thread. GPU failures fall back to CPU.
+The current
 shell can preview/export supported DNG files, guarded TIFF-style Nikon sensor
 files, and supported Nikon 34713 lossless compressed files through a fast
 half-resolution preview and full-resolution final renderer. Auto Adjust can analyze native-renderable files
 through the current preview path. The shell can also extract embedded JPEG
 previews from preview-only Nikon RAW files and import Nikon RAW metadata while
 keeping advanced controls for later stages. Preview-only Nikon files can expose
-an `Open Preview JPEG` action after `Update Preview`, while final export
+an `Open Preview JPEG` action after automatic preview loading, while final export
 controls stay disabled until native sensor rendering supports that file. Inline
 before/after comparison remains on lightweight preview paths. Native Nikon
 34713 results use the camera-authored embedded JPEG as an instant reference, so

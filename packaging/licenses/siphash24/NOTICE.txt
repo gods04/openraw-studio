@@ -1,0 +1,15 @@
+siphash24 1.9
+============
+
+Copyright: Daniele Nicolodi
+Source: https://github.com/dnicolodi/python-siphash24/tree/v1.9
+
+This package offers Apache-2.0 OR LGPL-2.1-or-later. OpenRAW Studio selects the
+Apache-2.0 option. The unmodified license text is obtained from:
+https://github.com/dnicolodi/python-siphash24/blob/v1.9/LICENSES/Apache-2.0.txt
+
+The wrapper uses c-siphash by David Rheinsberg and co-authors, based on the
+public-domain SipHash reference by Jean-Philippe Aumasson and Daniel J. Bernstein.
+
+The installed 1.9 Windows wheel omits license files. This copy supplements that
+wheel; dependency upgrades should re-check upstream notices before distribution.

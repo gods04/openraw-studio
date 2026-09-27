@@ -71,7 +71,13 @@ try {
     New-Item -ItemType Directory -Path $ThirdPartyRoot -Force | Out-Null
     foreach ($Package in @(
         @{ Name = "NumPy"; Pattern = "numpy-*.dist-info" },
-        @{ Name = "Pillow"; Pattern = "pillow-*.dist-info" }
+        @{ Name = "Pillow"; Pattern = "pillow-*.dist-info" },
+        @{ Name = "Numba"; Pattern = "numba-*.dist-info" },
+        @{ Name = "llvmlite"; Pattern = "llvmlite-*.dist-info" },
+        @{ Name = "PyOpenCL"; Pattern = "pyopencl-*.dist-info" },
+        @{ Name = "pytools"; Pattern = "pytools-*.dist-info" },
+        @{ Name = "platformdirs"; Pattern = "platformdirs-*.dist-info" },
+        @{ Name = "typing_extensions"; Pattern = "typing_extensions-*.dist-info" }
     )) {
         $DistInfo = Get-ChildItem -Path (Join-Path $BuildVenvDir "Lib\site-packages") -Directory -Filter $Package.Pattern |
             Sort-Object Name -Descending |
@@ -80,11 +86,22 @@ try {
             throw "Could not locate installed license metadata for $($Package.Name)."
         }
         $LicenseSource = Join-Path $DistInfo.FullName "licenses"
-        if (-not (Test-Path $LicenseSource)) {
-            throw "Installed $($Package.Name) package does not include a licenses folder."
+        $LicenseDestination = Join-Path $ThirdPartyRoot $Package.Name
+        if (Test-Path $LicenseSource) {
+            Copy-Item -LiteralPath $LicenseSource -Destination $LicenseDestination -Recurse -Force
         }
-        Copy-Item -LiteralPath $LicenseSource -Destination (Join-Path $ThirdPartyRoot $Package.Name) -Recurse -Force
+        else {
+            $LicenseFiles = @(Get-ChildItem -LiteralPath $DistInfo.FullName -File -Filter "LICENSE*")
+            if ($LicenseFiles.Count -eq 0) {
+                throw "Installed $($Package.Name) package does not include license notices."
+            }
+            New-Item -ItemType Directory -Path $LicenseDestination -Force | Out-Null
+            foreach ($LicenseFile in $LicenseFiles) {
+                Copy-Item -LiteralPath $LicenseFile.FullName -Destination $LicenseDestination -Force
+            }
+        }
     }
+    Copy-Item -LiteralPath (Join-Path $RepoRoot "packaging\licenses\siphash24") -Destination $ThirdPartyRoot -Recurse -Force
 
     if (Test-Path $ZipPath) {
         Remove-Item -LiteralPath $ZipPath -Force

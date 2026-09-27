@@ -28,13 +28,13 @@ The startup script will:
 Current app flow:
 
 ```text
-Import DNG/NEF or folder -> choose output folder and JPEG/TIFF -> Auto Adjust -> Update Preview -> check histogram/clipping -> refine adjustments -> Export JPEG/TIFF or Export Folder
+Import DNG/NEF or folder -> automatic preview -> Auto Adjust or drag adjustments -> choose JPEG/TIFF -> Export JPEG/TIFF or Export Folder
 ```
 
 The app also shows whether the selected file is supported by the current
 OpenRAW Native path before rendering. Nikon `.NEF` / `.NRW` files can be
-imported for metadata today; files with embedded JPEG previews can use
-`Update Preview`, and files with supported TIFF-style uncompressed Bayer payloads
+imported for metadata today; files with embedded JPEG previews show them
+automatically, and files with supported TIFF-style uncompressed Bayer payloads
 can use the native preview/export path, including row-aligned 12/14-bit packed
 strip payloads and 16-bit strip/tile payloads. Supported Nikon 34713 lossless
 compressed files can also use the native preview/export path through the first
@@ -54,10 +54,39 @@ For Nikon preview-only files, the app writes:
 - embedded-preview JPEG
 - recipe JSON sidecar
 
-After `Update Preview`, the app enables `Open Preview JPEG` for these
+Once the camera preview loads, the app enables `Open Preview JPEG` for these
 preview-only Nikon files. Final export remains disabled until that file can be
 rendered through the native sensor path, so the UI does not present an embedded
 camera preview as a finished RAW export.
+
+### Automatic Acceleration And Live Preview
+
+For renderable photos, moving a slider updates the image automatically, including
+during continuous dragging. Detailed photo information can be expanded with
+`Photo details`. Adjustments remain in memory until export; the screen-size
+preview is never used as the full-resolution export source.
+
+The app probes installed OpenCL GPU devices and validates a small render before
+using one. A working discrete GPU is preferred; integrated GPUs are also eligible.
+If no usable GPU/driver is present, or GPU rendering fails, processing falls back
+to the CPU. No driver installation or GPU selection is required inside the app.
+The preview status identifies the active backend.
+
+Nikon lossless decoding can compile OpenRAW's own decoder using Numba. The first
+launch may take longer while machine code and GPU kernels are initialized/cached.
+This is separate from subsequent slider response; it does not replace our RAW
+engine with another photo application's decoder.
+
+For troubleshooting, force CPU rendering for the current PowerShell session:
+
+```powershell
+$env:OPENRAW_GPU = "off"
+.\scripts\run_app.ps1
+```
+
+Remove that environment variable or start a new terminal to restore automatic
+selection. GPU acceleration currently covers the interactive tone renderer and
+the supported full-resolution Nikon lossless path, not every RAW stage/format.
 
 `Export Folder` processes currently renderable files from the imported folder
 using the current basic adjustments and reports skipped/preview-only/import-only/failed files.

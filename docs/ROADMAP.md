@@ -85,6 +85,7 @@ Suggested implementation order:
 40. [done] publish previews/exports/recipes atomically and show desktop processing progress
 41. [done] record advisory rendered-preview clipping QC and surface desktop warnings
 42. [done] vectorize Nikon previews and reuse decoded sensor/current preview state in the desktop workflow
+43. [done] compile the native Nikon decoder, auto-select OpenCL GPUs with CPU fallback, and update in-memory previews continuously while dragging
 
 Exit criteria:
 

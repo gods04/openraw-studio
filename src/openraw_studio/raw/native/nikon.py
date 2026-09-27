@@ -519,6 +519,32 @@ def _decode_nikon_lossless_samples(
     setup: NikonCompressionSetup,
     maximum: int,
 ) -> array:
+    from openraw_studio.raw.native.compiled_decode import decode_samples
+
+    if width <= 0 or height <= 0:
+        raise NikonCompressionError("Nikon sensor dimensions must be positive")
+    if width * height > len(payload) * 8:
+        raise NikonCompressionError("Nikon compressed bitstream ended early")
+    try:
+        accelerated = decode_samples(
+            payload, width, height, _build_huffman_lookup(setup.huffman_select),
+            setup.initial_predictors, maximum,
+        )
+    except ValueError as exc:
+        raise NikonCompressionError(str(exc)) from exc
+    if accelerated is not None:
+        output = array("H")
+        output.frombytes(accelerated.tobytes())
+        return output
+    return _decode_nikon_lossless_samples_python(
+        payload, width=width, height=height, setup=setup, maximum=maximum,
+    )
+
+
+def _decode_nikon_lossless_samples_python(
+    payload: bytes, *, width: int, height: int,
+    setup: NikonCompressionSetup, maximum: int,
+) -> array:
     table = _build_huffman_lookup(setup.huffman_select)
     try:
         output = array("H", [0]) * (width * height)

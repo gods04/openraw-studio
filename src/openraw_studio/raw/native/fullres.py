@@ -34,6 +34,7 @@ def render_bayer_full_resolution_rgb8(
     shadows: float = 0.0,
     saturation: float = 0.0,
     chunk_rows: int = 256,
+    use_gpu: bool = True,
 ) -> FullResolutionRgbImage:
     """Demosaic a little-endian Bayer buffer with chunked bilinear interpolation."""
 
@@ -70,6 +71,22 @@ def render_bayer_full_resolution_rgb8(
         for row in matrix
     ):
         raise ValueError("camera_to_linear_srgb must be a finite 3 x 3 matrix")
+    if any(level < 0 or level >= white_level for level in black_levels):
+        raise ValueError("Bayer black levels must be between zero and white_level")
+    if use_gpu:
+        from openraw_studio.raw.native.acceleration import color_parameters, disable_gpu, get_gpu
+
+        gpu = get_gpu()
+        if gpu is not None:
+            try:
+                params = color_parameters(
+                    matrix, channel_gains, contrast=contrast, highlights=highlights,
+                    shadows=shadows, saturation=saturation,
+                )
+                rendered = gpu.bayer(raw_bytes, source_width, crop, pattern, black_levels, white_level, params)
+                return FullResolutionRgbImage(width, height, rendered.tobytes())
+            except Exception:
+                disable_gpu()
     source = np.frombuffer(raw_bytes, dtype="<u2").reshape(source_height, source_width)
     cropped = source[top : top + height, left : left + width]
     output = np.empty((height, width, 3), dtype=np.uint8)

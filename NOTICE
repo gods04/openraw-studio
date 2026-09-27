@@ -58,3 +58,16 @@ Pillow
 OpenRAW Studio uses Pillow for desktop image display and JPEG/TIFF encoding.
 Windows bundles include Pillow's complete license and bundled-component notices
 under THIRD_PARTY_LICENSES/Pillow.
+
+Native Acceleration Runtime
+---------------------------
+
+OpenRAW's Nikon decoder and OpenCL render kernels are project-authored.
+Numba/llvmlite compile the decoder, and PyOpenCL runs the kernels on available
+devices. These are general-purpose runtimes, not third-party RAW decoders.
+Windows bundles must retain their complete installed license/third-party notices
+under THIRD_PARTY_LICENSES, together with those for pytools, platformdirs, and
+typing_extensions.
+
+The PyOpenCL dependency siphash24 is used under its Apache-2.0 option. Its
+license and upstream attribution are retained under THIRD_PARTY_LICENSES/siphash24.

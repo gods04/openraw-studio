@@ -66,3 +66,38 @@ Phase 0 tests are contract smoke tests. As implementations arrive:
 - test recipe migration separately from processing
 - keep private RAW files outside Git
 - add regression image support only after licensing is clear
+
+## Live Preview Performance
+
+Run an actual Tk slider/export benchmark with a local supported RAW:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\benchmark_live_preview.py "E:\Photos\sample.NEF" --output output\live-benchmark --screenshot
+```
+
+Use `--cpu` to verify fallback, or `--geometry 800x600` for the small-window case.
+The script drives real slider callbacks, checks displayed pixels, sends 50 edits
+during a continuous drag, exports at full resolution, and checks the source hash.
+It records JSON and optional screenshots under the ignored output directory.
+Screenshots contain private photographs and must not be committed.
+
+Local Windows measurements (RTX 5070, Nikon D500, 3712 x 5568 portrait export):
+
+| Measurement | GPU automatic | CPU forced |
+| --- | --- | --- |
+| Slider-to-display median | 46-51 ms | 110 ms |
+| Frames displayed during 50 continuous edits | 48-49 | 12 |
+| GUI JPEG export after preview | 2.6-3.1 s | 6.2 s |
+| Import-to-editable RAW preview, compiled cache warm | 1.7-1.8 s | 1.4 s |
+
+These are local measurements, not performance guarantees for all hardware or
+RAW formats. GPU/Numba first-use compilation can increase initial loading time.
+A second D500 NEF tested with an empty Numba cache took 2.5 s to display its first
+editable RAW preview and 2.7 s to export after editing.
+Status-bar render timings exclude some GUI scheduling/display work; use the
+benchmark's end-to-end measurements when comparing responsiveness.
+
+The compiled Nikon decoder is tested against the reference implementation.
+OpenCL rendering is compared with CPU output within one 8-bit code value, across
+Bayer layouts/crop offsets. Hardware checks skip when no GPU is available; the
+CPU fallback and pending-request/source-change behavior are tested independently.

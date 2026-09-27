@@ -49,6 +49,7 @@ class FullResolutionBayerTests(unittest.TestCase):
             for column in range(8)
         )
         kwargs = {
+            "use_gpu": False,
             "source_width": 8,
             "source_height": 8,
             "crop": (1, 1, 6, 6),

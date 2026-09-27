@@ -69,10 +69,11 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - Nikon `.NEF` / `.NRW` metadata import and embedded JPEG preview extraction
 - Nikon MakerNote summary for compressed NEF render blockers, including
   0x0096 compression-table and 0x008c curve/table detection
-- Native Nikon 34713 lossless Huffman sensor decoding with optimized Python
-  bitstream decode, MakerNote black levels with inactive-border fallback,
-  a NumPy-vectorized half-resolution preview, and chunked full-resolution bilinear RGB
-  export for supported files
+- Native Nikon 34713 lossless Huffman sensor decoding with optional Numba
+  compilation of OpenRAW's own decoder, MakerNote black levels with inactive-border
+  fallback, and full-resolution bilinear RGB export for supported files
+- Automatic OpenCL GPU selection for live adjustments and full-resolution Nikon
+  rendering, with CPU fallback when a GPU/driver is unavailable
 - Camera-aware Nikon D500 rendering with standard as-shot white balance, an
   exact camera-to-linear-sRGB profile, and EXIF orientation handling
 - Native extraction for simple uncompressed DNG 12/14-bit packed strip payloads
@@ -98,6 +99,8 @@ Then import `sample-data\openraw-synthetic.DNG` or
   and direct output opening
 - Desktop single-source decode caching plus current-preview reuse, so adjustment
   refreshes and export do not repeatedly decode or regenerate unchanged work
+- Automatic, in-memory live preview during slider dragging, with one replaceable
+  pending edit instead of a growing render queue; no refresh button is required
 - Saved recipe detection that restores basic desktop adjustments for the same
   photo
 - Synthetic DNG/Nikon NEF generators for safe local smoke tests
@@ -113,8 +116,8 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - OpenRAW Native has a first optimized Nikon 34713 lossless decode/render path,
   with a half-resolution preview and full-resolution bilinear final export.
   Camera-aware color is exact for the D500 and generic for other models;
-  the first compressed-NEF decode is still the largest latency cost, while
-  edge-aware demosaic quality, further speed work, and more profiles remain
+  first-use compiler/GPU initialization still adds latency, while edge-aware
+  demosaic quality, further speed work, and more profiles remain
 - Other compressed/proprietary Nikon `.NEF` / `.NRW` sensor payload variants
   are not decoded yet
 - Broad proprietary RAW rendering support is not implemented yet
@@ -204,7 +207,8 @@ render through the guarded native Nikon sensor path when the file exposes a
 supported uncompressed Bayer payload. Import a folder to browse RAW-like files,
 or click `Create Sample DNG` / `Create Sample NEF`, then click `Auto Adjust`
 for a conservative starter look.
-Use `Update Preview` to refresh the preview with the current adjustments. Choose
+The preview appears automatically after import and follows adjustment sliders
+while you drag. The preview status shows the active GPU or CPU. Choose
 JPEG or TIFF in the Output section, then click the matching Export button. After importing a folder, click
 `Export Folder` to export every currently supported file using the current basic
 adjustments; unsupported files are skipped and reported.
@@ -213,7 +217,7 @@ progress for a folder export. Completed previews and exports report their pixel
 dimensions and file size.
 The app shows basic photo information, current Native support status, and the
 planned preview, JPEG, and recipe paths before rendering. Nikon RAW files with
-only embedded JPEG previews can use `Update Preview`, while Auto Adjust and
+only embedded JPEG previews display that reference automatically, while Auto Adjust and
 final export stays disabled and the app shows the next missing engine step.
 Nikon RAW files that match the guarded native sensor path can use preview, Auto
 Adjust, JPEG/TIFF export, and JPEG quality selection. Supported DNG and
