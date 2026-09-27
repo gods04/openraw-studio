@@ -57,6 +57,8 @@ class NativeRawProcessor:
                 "tone_adjustments": "exposure-contrast-highlights-shadows-temperature-tint-saturation-v0.1",
                 "packed_bayer_strips": "12-14-bit-row-aligned-v0.1",
                 "nikon_full_resolution_export": "chunked-bilinear-v0.1",
+                "nikon_fast_preview": "numpy-block-vectorized-v0.2",
+                "nikon_in_memory_decode_cache": "single-source-stat-validated-v0.1",
                 "dng_metadata": True,
                 "nikon_nef_metadata": True,
                 "nikon_nrw_metadata": True,

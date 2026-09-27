@@ -84,6 +84,7 @@ Suggested implementation order:
 39. [done] preserve safe camera/capture metadata in JPEG/TIFF derivatives without GPS passthrough
 40. [done] publish previews/exports/recipes atomically and show desktop processing progress
 41. [done] record advisory rendered-preview clipping QC and surface desktop warnings
+42. [done] vectorize Nikon previews and reuse decoded sensor/current preview state in the desktop workflow
 
 Exit criteria:
 

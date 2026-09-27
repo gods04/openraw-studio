@@ -70,8 +70,8 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - Nikon MakerNote summary for compressed NEF render blockers, including
   0x0096 compression-table and 0x008c curve/table detection
 - Native Nikon 34713 lossless Huffman sensor decoding with optimized Python
-  bitstream/render loops, MakerNote black levels with inactive-border fallback,
-  a fast half-resolution preview, and chunked full-resolution bilinear RGB
+  bitstream decode, MakerNote black levels with inactive-border fallback,
+  a NumPy-vectorized half-resolution preview, and chunked full-resolution bilinear RGB
   export for supported files
 - Camera-aware Nikon D500 rendering with standard as-shot white balance, an
   exact camera-to-linear-sRGB profile, and EXIF orientation handling
@@ -96,6 +96,8 @@ Then import `sample-data\openraw-synthetic.DNG` or
   sample DNG creation, photo/output information display, batch folder export,
   visible single-photo/batch processing progress, final dimensions/file size,
   and direct output opening
+- Desktop single-source decode caching plus current-preview reuse, so adjustment
+  refreshes and export do not repeatedly decode or regenerate unchanged work
 - Saved recipe detection that restores basic desktop adjustments for the same
   photo
 - Synthetic DNG/Nikon NEF generators for safe local smoke tests
@@ -111,6 +113,7 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - OpenRAW Native has a first optimized Nikon 34713 lossless decode/render path,
   with a half-resolution preview and full-resolution bilinear final export.
   Camera-aware color is exact for the D500 and generic for other models;
+  the first compressed-NEF decode is still the largest latency cost, while
   edge-aware demosaic quality, further speed work, and more profiles remain
 - Other compressed/proprietary Nikon `.NEF` / `.NRW` sensor payload variants
   are not decoded yet

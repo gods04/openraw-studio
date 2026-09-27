@@ -691,6 +691,108 @@ def _render_crop(decoded: NikonDecodedPixelData) -> tuple[int, int, int, int]:
 
 def _bayer_blocks_to_rgb8(
     samples: array,
+    **options: Any,
+) -> tuple[int, int, bytes | bytearray]:
+    try:
+        import numpy as np
+    except ImportError:
+        return _bayer_blocks_to_rgb8_python(samples, **options)
+    return _bayer_blocks_to_rgb8_numpy(np, samples, **options)
+
+
+def _bayer_blocks_to_rgb8_numpy(
+    np: Any,
+    samples: array,
+    *,
+    source_width: int,
+    source_height: int,
+    crop: tuple[int, int, int, int],
+    cfa_pattern: tuple[int, ...] | None,
+    black_level: int,
+    black_levels: tuple[int, int, int, int],
+    white_level: int,
+    exposure: float,
+    contrast: float,
+    highlights: float,
+    shadows: float,
+    warmth: float,
+    tint: float,
+    saturation: float,
+    camera_white_balance: NikonWhiteBalance | None,
+    camera_to_linear_srgb: Matrix3 | None,
+    chunk_rows: int = 256,
+) -> tuple[int, int, bytes]:
+    left, top, crop_width, crop_height = crop
+    out_width = crop_width // 2
+    out_height = crop_height // 2
+    if out_width <= 0 or out_height <= 0:
+        raise NikonCompressionError("Nikon 34713 render crop is empty")
+
+    source = np.frombuffer(samples, dtype=np.uint16).reshape(source_height, source_width)
+    cropped = source[top : top + crop_height, left : left + crop_width]
+    planes = tuple(
+        cropped[row::2, column::2][:out_height, :out_width]
+        for row in range(2)
+        for column in range(2)
+    )
+    red_index, green0_index, green1_index, blue_index = _cfa_block_indexes(cfa_pattern)
+    channel_black_levels = (
+        float(black_levels[red_index]),
+        (black_levels[green0_index] + black_levels[green1_index]) / 2.0,
+        float(black_levels[blue_index]),
+    )
+    red_matrix_luts, green_matrix_luts, blue_matrix_luts, output_lut = _linear_color_luts(
+        black_levels=channel_black_levels,
+        fallback_black_level=black_level,
+        white_level=white_level,
+        exposure=exposure,
+        contrast=contrast,
+        highlights=highlights,
+        shadows=shadows,
+        warmth=warmth,
+        tint=tint,
+        camera_white_balance=camera_white_balance,
+        camera_to_linear_srgb=camera_to_linear_srgb,
+    )
+    matrix_luts = tuple(
+        tuple(np.frombuffer(lut, dtype=np.int32) for lut in channel_luts)
+        for channel_luts in (red_matrix_luts, green_matrix_luts, blue_matrix_luts)
+    )
+    encoded_lut = np.frombuffer(output_lut, dtype=np.uint8)
+    output_limit = len(output_lut) - 1
+    saturation_factor = 1.0 + _clamp_float(saturation, -1.0, 1.0) * 0.75
+    output = np.empty((out_height, out_width, 3), dtype=np.uint8)
+
+    for row_start in range(0, out_height, chunk_rows):
+        row_end = min(out_height, row_start + chunk_rows)
+        camera_red = planes[red_index][row_start:row_end]
+        green0 = planes[green0_index][row_start:row_end].astype(np.uint32)
+        green1 = planes[green1_index][row_start:row_end].astype(np.uint32)
+        camera_green = ((green0 + green1) >> 1).astype(np.uint16)
+        camera_blue = planes[blue_index][row_start:row_end]
+        channels = []
+        for output_channel in range(3):
+            values = (
+                matrix_luts[0][output_channel][camera_red]
+                + matrix_luts[1][output_channel][camera_green]
+                + matrix_luts[2][output_channel][camera_blue]
+            )
+            np.clip(values, 0, output_limit, out=values)
+            channels.append(encoded_lut[values])
+
+        if saturation_factor != 1.0:
+            red, green, blue = (channel.astype(np.float32) for channel in channels)
+            luma = ((54.0 * red) + (183.0 * green) + (19.0 * blue)) / 256.0
+            channels = [
+                np.clip(np.rint(luma + ((channel - luma) * saturation_factor)), 0, 255).astype(np.uint8)
+                for channel in (red, green, blue)
+            ]
+        output[row_start:row_end] = np.stack(channels, axis=2)
+    return out_width, out_height, output.tobytes()
+
+
+def _bayer_blocks_to_rgb8_python(
+    samples: array,
     *,
     source_width: int,
     source_height: int,

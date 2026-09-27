@@ -9,6 +9,7 @@ from typing import Any, Mapping
 from openraw_studio.core.artifacts import ArtifactPlan
 from openraw_studio.core.domain import ImageAsset, ImageMetadata, ImageRef
 from openraw_studio.core.files import is_supported_raw_path, sha256_file
+from openraw_studio.core.image_info import read_image_size
 from openraw_studio.core.recipe import new_recipe, write_recipe
 from openraw_studio.decision.interfaces import DecisionRequest
 from openraw_studio.decision.rules import RuleBasedDecisionEngine
@@ -167,12 +168,16 @@ class LocalPhotoPipeline:
 
         if not request.dry_run:
             try:
-                preview_ref = _create_preview_with_recipe(
-                    self.raw_processor,
-                    source_asset,
-                    preview_path,
-                    recipe,
-                )
+                preview_reused = request.reuse_existing_preview and _preview_is_fresh(source, preview_path)
+                if preview_reused:
+                    preview_ref = _existing_preview_ref(source, preview_path, self.raw_processor)
+                else:
+                    preview_ref = _create_preview_with_recipe(
+                        self.raw_processor,
+                        source_asset,
+                        preview_path,
+                        recipe,
+                    )
                 _record_rendered_preview_qc(recipe, preview_ref)
                 if request.preview_only:
                     recipe["pipeline"] = {
@@ -249,7 +254,12 @@ class LocalPhotoPipeline:
             recipe["pipeline"] = {
                 "mode": "render",
                 "rendered": True,
-                "message": f"Preview and {export_display_name(export_format)} export were rendered.",
+                "preview_reused": preview_reused,
+                "message": (
+                    f"Existing preview was reused and {export_display_name(export_format)} export was rendered."
+                    if preview_reused
+                    else f"Preview and {export_display_name(export_format)} export were rendered."
+                ),
             }
             recipe["exports"] = [
                 {
@@ -279,6 +289,7 @@ class LocalPhotoPipeline:
                     "recipe_path": str(recipe_path),
                     "planned_artifacts": planned_artifacts,
                     "export_format": export_format,
+                    "preview_reused": preview_reused,
                 },
             )
 
@@ -334,6 +345,32 @@ def _create_preview_with_recipe(raw_processor: RawProcessor, source: ImageAsset,
     if "recipe" in parameters:
         return raw_processor.create_preview(source, output_path, max_dimension=2048, recipe=recipe)
     return raw_processor.create_preview(source, output_path, max_dimension=2048)
+
+
+def _existing_preview_ref(source: Path, preview_path: Path, raw_processor: RawProcessor) -> ImageRef:
+    width, height = read_image_size(preview_path)
+    if width <= 0 or height <= 0:
+        raise OSError(f"Existing preview is not a readable image: {preview_path}")
+    if preview_path.suffix.lower() in {".jpg", ".jpeg"}:
+        color_space = "embedded-jpeg"
+    elif isinstance(raw_processor, NativeRawProcessor) and source.suffix.lower() in NIKON_RAW_EXTENSIONS:
+        color_space = "openraw-nikon-34713-rgb"
+    else:
+        color_space = "preview-rgb"
+    return ImageRef(
+        path=preview_path,
+        width=width,
+        height=height,
+        color_space=color_space,
+        role="preview",
+    )
+
+
+def _preview_is_fresh(source: Path, preview_path: Path) -> bool:
+    try:
+        return preview_path.is_file() and preview_path.stat().st_mtime_ns >= source.stat().st_mtime_ns
+    except OSError:
+        return False
 
 
 def _record_rendered_preview_qc(recipe: dict[str, Any], preview: ImageRef) -> None:

@@ -657,6 +657,7 @@ def launch_desktop_app() -> None:
             self.last_preview_overrides: dict[str, float] | None = None
             self.run_counter = 0
             self.is_busy = False
+            self.pipeline = LocalPhotoPipeline()
 
             self.source_var = tk.StringVar(value="No RAW photo selected")
             self.output_var = tk.StringVar(value="Output folder will be chosen automatically")
@@ -1486,14 +1487,23 @@ def launch_desktop_app() -> None:
             export_quality = self._selected_export_quality()
             self._set_busy(True)
             export_name = export_display_name(export_format)
-            self.status_var.set("Updating preview..." if preview_only else f"Exporting {export_name}...")
-            self.preview_state_var.set(
-                "Updating preview..." if preview_only else f"Exporting preview and {export_name}..."
+            overrides = self._current_overrides()
+            reuse_existing_preview = (
+                not preview_only
+                and self.last_preview_overrides is not None
+                and self.last_preview_overrides == overrides
             )
+            self.status_var.set("Updating preview..." if preview_only else f"Exporting {export_name}...")
+            if preview_only:
+                preview_status = "Updating preview..."
+            elif reuse_existing_preview:
+                preview_status = f"Exporting {export_name} from current preview settings..."
+            else:
+                preview_status = f"Exporting preview and {export_name}..."
+            self.preview_state_var.set(preview_status)
             self.export_label.configure(text="")
             self.last_export_path = None
             self.open_export_button.configure(state="disabled", text="Open Export")
-            overrides = self._current_overrides()
             threading.Thread(
                 target=self._process_worker,
                 args=(
@@ -1504,6 +1514,7 @@ def launch_desktop_app() -> None:
                     preview_only,
                     export_format,
                     export_quality,
+                    reuse_existing_preview,
                 ),
                 daemon=True,
             ).start()
@@ -1517,9 +1528,10 @@ def launch_desktop_app() -> None:
             preview_only: bool,
             export_format: str,
             export_quality: int,
+            reuse_existing_preview: bool,
         ) -> None:
             try:
-                result = LocalPhotoPipeline().process(
+                result = self.pipeline.process(
                     PipelineRequest(
                         source,
                         output_dir,
@@ -1527,6 +1539,7 @@ def launch_desktop_app() -> None:
                         preview_only=preview_only,
                         export_format=export_format,
                         export_quality=export_quality,
+                        reuse_existing_preview=reuse_existing_preview,
                     )
                 )
             except (PipelineError, OSError, ValueError) as exc:

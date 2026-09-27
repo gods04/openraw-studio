@@ -1,6 +1,10 @@
+from array import array
+import random
 import tempfile
 import unittest
 from pathlib import Path
+
+import numpy as np
 
 from fixtures_nikon import (
     nikon_makernote_bytes,
@@ -10,6 +14,8 @@ from fixtures_nikon import (
 from openraw_studio.raw.native.dng import DngMetadataReader
 from openraw_studio.raw.native.nikon import (
     NikonCompressionError,
+    _bayer_blocks_to_rgb8_numpy,
+    _bayer_blocks_to_rgb8_python,
     decode_nikon_34713_lossless,
     extract_nikon_as_shot_white_balance,
     render_decoded_nikon_34713_image,
@@ -18,6 +24,34 @@ from openraw_studio.raw.native.nikon import (
 
 
 class NikonMakerNoteTests(unittest.TestCase):
+    def test_vectorized_preview_matches_reference_python_renderer(self) -> None:
+        randomizer = random.Random(7)
+        samples = array("H", (randomizer.randrange(400, 15000) for _ in range(12 * 10)))
+        options = {
+            "source_width": 12,
+            "source_height": 10,
+            "crop": (0, 0, 12, 10),
+            "cfa_pattern": (1, 2, 0, 1),
+            "black_level": 400,
+            "black_levels": (400, 410, 420, 430),
+            "white_level": 16383,
+            "exposure": 0.2,
+            "contrast": 0.1,
+            "highlights": -0.2,
+            "shadows": 0.15,
+            "warmth": 0.1,
+            "tint": -0.1,
+            "saturation": 0.35,
+            "camera_white_balance": None,
+            "camera_to_linear_srgb": None,
+        }
+
+        vectorized = _bayer_blocks_to_rgb8_numpy(np, samples, **options)
+        reference = _bayer_blocks_to_rgb8_python(samples, **options)
+
+        self.assertEqual(vectorized[:2], reference[:2])
+        self.assertEqual(vectorized[2], bytes(reference[2]))
+
     def test_summarize_nikon_makernote_payload_extracts_compression_fields(self) -> None:
         summary = summarize_nikon_makernote_payload(nikon_makernote_bytes())
 

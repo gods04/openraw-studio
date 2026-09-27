@@ -23,6 +23,7 @@ class PipelineRequest:
     overrides: Mapping[str, Any] = field(default_factory=dict)
     export_format: str = "jpeg"
     export_quality: int = 92
+    reuse_existing_preview: bool = False
 
 
 @dataclass(frozen=True)

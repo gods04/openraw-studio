@@ -34,6 +34,8 @@ The UI should keep the image workspace first:
 - batch export for currently supported folder files
 - animated single-photo progress and determinate folder-export progress
 - completed image dimensions and file-size feedback
+- retained single-photo decode cache and unchanged-preview reuse for faster
+  adjustment refresh and final export
 - open generated JPEG action
 - open embedded preview JPEG action for preview-only Nikon files
 - open output folder action
