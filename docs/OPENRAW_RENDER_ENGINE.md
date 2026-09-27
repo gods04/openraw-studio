@@ -100,10 +100,11 @@ Status:
 - recipe-driven exposure, contrast, highlights, shadows, normalized temperature, tint, and saturation controls are applied to DNG and native-renderable Nikon preview/JPEG export
 - Nikon embedded previews are extracted as camera-authored JPEGs without applying recipe adjustments yet
 - `openraw inspect` reports current Native support status before preview/export
-- first Nikon 34713 lossless compressed sensor decode and half-resolution RGB render exists
+- first Nikon 34713 lossless compressed sensor decode and fast half-resolution RGB preview exists
+- chunked NumPy full-resolution bilinear Bayer render is used for supported Nikon 34713 final export
 - Nikon 34713 optimized Python bitstream/render loops, MakerNote black levels, and conservative inactive-border fallback exist
 - Nikon D500 standard as-shot white balance, exact camera-to-linear-sRGB profile conversion, and EXIF orientation are applied
-- additional Nikon camera profiles, further speed work, full-resolution output, other compressed Nikon variants, and high-quality JPEG/TIFF export are next
+- additional Nikon camera profiles, further speed work, edge-aware demosaic, other compressed Nikon variants, and TIFF export are next
 
 Current native metadata scope:
 
@@ -145,8 +146,8 @@ Not supported yet:
 - packed 12/14-bit tiled payloads
 - multi-sample RGB DNG
 - SubIFD selection beyond the simplest payload
-- per-channel black level arrays
-- high-quality demosaic
+- per-channel DNG black level arrays
+- edge-aware/high-quality demosaic (the Nikon final path currently uses bilinear interpolation)
 - full camera-aware color conversion, chromatic adaptation, and gamut mapping
 - final tone mapping
 - JPEG/TIFF native export

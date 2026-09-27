@@ -13,6 +13,7 @@ authors = [
   { name = "gods04" }
 ]
 dependencies = [
+  "numpy>=1.26",
   "Pillow>=10.0",
 ]
 

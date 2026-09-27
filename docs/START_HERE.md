@@ -159,7 +159,8 @@ Current status:
 - Nikon `.NEF` / `.NRW` embedded JPEG preview extraction exists
 - guarded Nikon `.NEF` / `.NRW` native sensor decode exists for TIFF-style uncompressed Bayer payloads
 - simple uncompressed DNG 12/14-bit packed strip and 16-bit strip/tile pixel extraction exists
-- first Nikon 34713 lossless compressed sensor decode and half-resolution RGB render exists
+- first Nikon 34713 lossless compressed sensor decode and fast half-resolution RGB preview exists
+- chunked full-resolution bilinear RGB export exists for supported Nikon 34713 files
 - Nikon 34713 optimized Python bitstream/render loops, MakerNote black levels, and conservative inactive-border fallback exist
 - black/white level sensor normalization exists for 12/14/16-bit data
 - simple Bayer demosaic exists
@@ -174,7 +175,7 @@ Current status:
 - Windows startup script creates `.venv`, installs the local package, and opens the app
 - Windows package script and GitHub Actions artifact build exist
 - Nikon D500 camera-aware white balance/color and EXIF orientation are now applied
-- additional Nikon profiles, further speed work, full-resolution export, other compressed Nikon variants, and higher-quality JPEG/TIFF export are next
+- additional Nikon profiles, further speed work, edge-aware demosaic, other compressed Nikon variants, and TIFF export are next
 
 ### Step 3 - Minimal Desktop Shell
 
@@ -235,8 +236,9 @@ supported photos from the imported folder, and open the output folder. When
 adjustments change, the UI marks the preview as needing an update until the
 next preview/export render. If the current output folder already has a matching
 recipe for the selected photo, the UI restores the saved basic adjustments.
-Compressed Nikon 34713 output is currently half-resolution RGB. Camera-aware
-color is exact for the Nikon D500 and remains generic for other models.
+Supported compressed Nikon 34713 files use a fast half-resolution preview and
+a full-resolution bilinear final JPEG. Camera-aware color is exact for the
+Nikon D500 and remains generic for other models.
 
 ### Step 4 - Real RAW Backend
 

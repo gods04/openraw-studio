@@ -758,11 +758,13 @@ class NativeDngMetadataTests(unittest.TestCase):
             export_path = output / "exports" / "compressed.auto.jpg"
             preview_exists = preview_path.exists()
             export_exists = export_path.exists()
+            preview_size = read_image_size(preview_path)
             export_size = read_image_size(export_path)
 
         self.assertTrue(preview_exists)
         self.assertTrue(export_exists)
-        self.assertEqual(export_size, (2, 2))
+        self.assertEqual(preview_size, (2, 2))
+        self.assertEqual(export_size, (4, 4))
         self.assertEqual(result.preview.path, preview_path)
         self.assertEqual(result.exports[0].path, export_path)
         self.assertEqual(result.recipe["source"]["metadata"]["raw_format"], "nikon-nef")

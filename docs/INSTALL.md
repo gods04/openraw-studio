@@ -38,7 +38,7 @@ imported for metadata today; files with embedded JPEG previews can use
 can use the native preview/export path, including row-aligned 12/14-bit packed
 strip payloads and 16-bit strip/tile payloads. Supported Nikon 34713 lossless
 compressed files can also use the native preview/export path through the first
-half-resolution RGB renderer. Folder import scans RAW-like files in the
+half-resolution preview and full-resolution bilinear export renderer. Folder import scans RAW-like files in the
 selected folder and marks each one as renderable, preview-only, import-only, or
 not supported yet.
 
@@ -182,7 +182,7 @@ Nikon NEF/NRW metadata import is available.
 Nikon NEF/NRW embedded JPEG preview is available when the file contains one.
 Guarded Nikon NEF/NRW native sensor rendering is available for TIFF-style uncompressed Bayer payloads.
 Narrow uncompressed 12/14/16-bit DNG/Nikon preview and local JPEG export are available.
-Supported Nikon 34713 lossless files can render through the optimized Python half-resolution RGB path.
+Supported Nikon 34713 lossless files use an optimized half-resolution preview and full-resolution bilinear export path.
 Supported Nikon 34713 lossless files use conservative inactive-border black-level estimation.
 ```
 

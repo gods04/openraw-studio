@@ -72,7 +72,7 @@ Suggested implementation order:
 27. [done] parse Nikon MakerNote compression metadata for 34713 render blockers
 28. [done] add first Nikon 34713 lossless Huffman sensor decode and half-resolution render path
 29. [done] improve Nikon 34713 black-level handling and Python render speed
-30. [partial] add Nikon 34713 camera-aware color and full-resolution export (D500 color done; full-resolution pending)
+30. [done] add Nikon 34713 camera-aware color and full-resolution bilinear export (D500 color complete)
 31. add support for more compressed Nikon NEF sensor payload variants
 32. [done] add region-weighted highlights and shadows controls to preview/export recipes and Auto Adjust
 33. [done] add normalized temperature and green/magenta tint controls with legacy warmth compatibility
@@ -80,6 +80,7 @@ Suggested implementation order:
 35. [done] replace direct DNG ColorMatrix1 multiplication with inverse camera-to-XYZ, Bradford adaptation, and linear-sRGB conversion
 36. [done] compare native Nikon 34713 results with their camera-authored embedded JPEG without a second sensor decode
 37. [done] add Nikon D500 MakerNote black level, standard as-shot white balance, exact camera profile, and EXIF orientation
+38. add edge-aware demosaic and lossless TIFF export after the bilinear full-resolution baseline
 
 Exit criteria:
 

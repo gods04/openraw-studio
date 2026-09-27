@@ -94,7 +94,7 @@ Deeper custom demosaicing and camera-format parsing can come later.
 11. Parse Nikon MakerNote compression metadata for 34713 render blockers.
 12. Decode Nikon 34713 lossless Huffman sensor payloads into a first half-resolution RGB render.
 13. Improve Nikon 34713 black-level inference and Python render speed.
-14. Add Nikon 34713 camera-aware color and full-resolution export (D500 color complete; full-resolution pending).
+14. Add Nikon 34713 camera-aware color and full-resolution export (D500 color and full-resolution bilinear export complete).
 15. Add support for more compressed Nikon NEF sensor payload variants.
 16. Research LibRaw/rawpy as optional decoder references or fallback inputs.
 17. Move more processing into OpenRAW-owned rendering over time.

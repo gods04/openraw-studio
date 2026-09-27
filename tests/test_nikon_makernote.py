@@ -9,6 +9,7 @@ from fixtures_nikon import (
 )
 from openraw_studio.raw.native.dng import DngMetadataReader
 from openraw_studio.raw.native.nikon import (
+    NikonCompressionError,
     decode_nikon_34713_lossless,
     extract_nikon_as_shot_white_balance,
     render_decoded_nikon_34713_image,
@@ -162,6 +163,26 @@ class NikonMakerNoteTests(unittest.TestCase):
             rendered = render_decoded_nikon_34713_image(decoded)
 
         self.assertEqual((rendered.width, rendered.height), (1, 2))
+
+    def test_nikon_render_keeps_preview_fast_and_final_output_full_size(self) -> None:
+        source_bytes = synthetic_nikon_nef_compressed_bytes(
+            width=4,
+            height=4,
+            active_area=(0, 0, 4, 4),
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "quality.NEF"
+            source.write_bytes(source_bytes)
+            decoded = decode_nikon_34713_lossless(source)
+
+            fast = render_decoded_nikon_34713_image(decoded, quality="fast")
+            full = render_decoded_nikon_34713_image(decoded, quality="full")
+
+            with self.assertRaises(NikonCompressionError):
+                render_decoded_nikon_34713_image(decoded, quality="unknown")
+
+        self.assertEqual((fast.width, fast.height), (2, 2))
+        self.assertEqual((full.width, full.height), (4, 4))
 
     @staticmethod
     def _metadata_with_makernote(maker_note: bytes):

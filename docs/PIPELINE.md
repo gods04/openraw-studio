@@ -58,8 +58,8 @@ This path writes a `.preview.png` preview, a preview-derived `.auto.jpg` export,
 and a recipe sidecar for supported simple uncompressed DNG files and guarded
 TIFF-style Nikon sensor files, including row-aligned 12/14-bit packed strip
 payloads and 16-bit strip/tile payloads. Supported Nikon 34713 lossless
-compressed `.NEF` / `.NRW` files can now render through a first half-resolution
-RGB path. Nikon `.NEF` / `.NRW` files can also be inspected for metadata and
+compressed `.NEF` / `.NRW` files now use a fast half-resolution preview and a
+full-resolution bilinear RGB final export. Nikon `.NEF` / `.NRW` files can also be inspected for metadata and
 previewed when an embedded JPEG preview is present, but other
 compressed/proprietary Nikon payload variants are not decoded yet. It is an
 honest early render proof, not the final camera-aware color pipeline.

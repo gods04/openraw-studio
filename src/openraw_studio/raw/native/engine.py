@@ -52,6 +52,7 @@ class NativeRawProcessor:
                 "camera_color_matrix": "dng-color-matrix-1-to-linear-srgb-v0.2",
                 "tone_adjustments": "exposure-contrast-highlights-shadows-temperature-tint-saturation-v0.1",
                 "packed_bayer_strips": "12-14-bit-row-aligned-v0.1",
+                "nikon_full_resolution_export": "chunked-bilinear-v0.1",
                 "dng_metadata": True,
                 "nikon_nef_metadata": True,
                 "nikon_nrw_metadata": True,
@@ -192,6 +193,7 @@ class NativeRawProcessor:
                     tint=adjustments.tint,
                     saturation=adjustments.saturation,
                     max_dimension=request.max_dimension,
+                    quality="full",
                 )
                 return ImageRef(
                     path=plan.output_path,

@@ -10,6 +10,7 @@ import struct
 from typing import Any
 
 from openraw_studio.raw.native.dng import DngMetadata, DngMetadataError, DngMetadataReader, TiffIfd
+from openraw_studio.raw.native.fullres import render_bayer_full_resolution_rgb8
 from openraw_studio.raw.native.profiles import CameraColorProfile, Matrix3, find_camera_color_profile
 
 
@@ -268,6 +269,7 @@ def render_nikon_34713_to_file(
     tint: float = 0.0,
     saturation: float = 0.0,
     jpeg_quality: int = 92,
+    quality: str = "fast",
 ) -> tuple[int, int]:
     """Render a supported Nikon 34713 RAW file directly to PNG or JPEG."""
 
@@ -284,6 +286,7 @@ def render_nikon_34713_to_file(
         tint=tint,
         saturation=saturation,
         jpeg_quality=jpeg_quality,
+        quality=quality,
     )
 
 
@@ -300,6 +303,7 @@ def render_decoded_nikon_34713_to_file(
     tint: float = 0.0,
     saturation: float = 0.0,
     jpeg_quality: int = 92,
+    quality: str = "fast",
 ) -> tuple[int, int]:
     """Render an already decoded Nikon 34713 sensor payload to PNG or JPEG."""
 
@@ -314,6 +318,7 @@ def render_decoded_nikon_34713_to_file(
         warmth=warmth,
         tint=tint,
         saturation=saturation,
+        quality=quality,
     )
     try:
         from PIL import Image
@@ -344,38 +349,65 @@ def render_decoded_nikon_34713_image(
     warmth: float = 0.0,
     tint: float = 0.0,
     saturation: float = 0.0,
+    quality: str = "fast",
 ) -> NikonRenderedRgbImage:
     """Render an already decoded Nikon 34713 sensor payload into packed RGB bytes."""
 
-    samples = array("H")
-    samples.frombytes(decoded.raw_bytes)
-    if struct.pack("=H", 1) != b"\x01\x00":
-        samples.byteswap()
-
     crop = _render_crop(decoded)
-    width, height, rgb = _bayer_blocks_to_rgb8(
-        samples,
-        source_width=decoded.width,
-        source_height=decoded.height,
-        crop=crop,
-        cfa_pattern=decoded.cfa_pattern,
-        black_level=decoded.black_level,
-        black_levels=decoded.black_levels,
-        white_level=decoded.white_level,
-        exposure=exposure,
-        contrast=contrast,
-        highlights=highlights,
-        shadows=shadows,
-        warmth=warmth,
-        tint=tint,
-        saturation=saturation,
-        camera_white_balance=decoded.white_balance,
-        camera_to_linear_srgb=(
-            decoded.camera_profile.camera_to_linear_srgb
-            if decoded.camera_profile is not None
-            else None
-        ),
+    camera_matrix = (
+        decoded.camera_profile.camera_to_linear_srgb
+        if decoded.camera_profile is not None
+        else None
     )
+    if quality == "full":
+        base_gains = _camera_channel_scales(
+            decoded.white_balance,
+            warmth=warmth,
+            tint=tint,
+        )
+        exposure_scale = 2.0 ** _clamp_float(exposure, -4.0, 4.0)
+        full = render_bayer_full_resolution_rgb8(
+            decoded.raw_bytes,
+            source_width=decoded.width,
+            source_height=decoded.height,
+            crop=crop,
+            cfa_pattern=decoded.cfa_pattern,
+            black_levels=decoded.black_levels,
+            white_level=decoded.white_level,
+            channel_gains=tuple(gain * exposure_scale for gain in base_gains),  # type: ignore[arg-type]
+            camera_to_linear_srgb=camera_matrix,
+            contrast=contrast,
+            highlights=highlights,
+            shadows=shadows,
+            saturation=saturation,
+        )
+        width, height, rgb = full.width, full.height, full.rgb_bytes
+    elif quality == "fast":
+        samples = array("H")
+        samples.frombytes(decoded.raw_bytes)
+        if struct.pack("=H", 1) != b"\x01\x00":
+            samples.byteswap()
+        width, height, rgb = _bayer_blocks_to_rgb8(
+            samples,
+            source_width=decoded.width,
+            source_height=decoded.height,
+            crop=crop,
+            cfa_pattern=decoded.cfa_pattern,
+            black_level=decoded.black_level,
+            black_levels=decoded.black_levels,
+            white_level=decoded.white_level,
+            exposure=exposure,
+            contrast=contrast,
+            highlights=highlights,
+            shadows=shadows,
+            warmth=warmth,
+            tint=tint,
+            saturation=saturation,
+            camera_white_balance=decoded.white_balance,
+            camera_to_linear_srgb=camera_matrix,
+        )
+    else:
+        raise NikonCompressionError("Nikon render quality must be 'fast' or 'full'")
     try:
         from PIL import Image
     except ImportError as exc:
@@ -831,16 +863,11 @@ def _linear_color_luts(
     contrast_factor = 1.0 + _clamp_float(contrast, -1.0, 1.0) * 0.75
     highlights_value = _clamp_float(highlights, -1.0, 1.0)
     shadows_value = _clamp_float(shadows, -1.0, 1.0)
-    warmth_value = _clamp_float(warmth, -1.0, 1.0)
-    tint_value = _clamp_float(tint, -1.0, 1.0)
-    camera_red, camera_green, camera_blue = (
-        camera_white_balance.gains
-        if camera_white_balance is not None
-        else (1.0, 1.0, 1.0)
+    red_scale, green_scale, blue_scale = _camera_channel_scales(
+        camera_white_balance,
+        warmth=warmth,
+        tint=tint,
     )
-    red_scale = camera_red * (1.0 + warmth_value * 0.12) * (1.0 + tint_value * 0.08)
-    green_scale = camera_green * (1.0 + warmth_value * 0.03) * (1.0 - tint_value * 0.12)
-    blue_scale = camera_blue * (1.0 - warmth_value * 0.12) * (1.0 + tint_value * 0.08)
     matrix = camera_to_linear_srgb or (
         (1.0, 0.0, 0.0),
         (0.0, 1.0, 0.0),
@@ -887,6 +914,24 @@ def _linear_color_luts(
             )
         )
     return source_luts[0], source_luts[1], source_luts[2], bytes(output)
+
+
+def _camera_channel_scales(
+    white_balance: NikonWhiteBalance | None,
+    *,
+    warmth: float,
+    tint: float,
+) -> tuple[float, float, float]:
+    warmth_value = _clamp_float(warmth, -1.0, 1.0)
+    tint_value = _clamp_float(tint, -1.0, 1.0)
+    camera_red, camera_green, camera_blue = (
+        white_balance.gains if white_balance is not None else (1.0, 1.0, 1.0)
+    )
+    return (
+        camera_red * (1.0 + warmth_value * 0.12) * (1.0 + tint_value * 0.08),
+        camera_green * (1.0 + warmth_value * 0.03) * (1.0 - tint_value * 0.12),
+        camera_blue * (1.0 - warmth_value * 0.12) * (1.0 + tint_value * 0.08),
+    )
 
 
 def _apply_contrast(value: float, factor: float) -> float:
