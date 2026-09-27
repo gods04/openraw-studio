@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import hashlib
+import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
+from uuid import uuid4
 
 RAW_EXTENSIONS = {
     ".3fr",
@@ -30,6 +33,24 @@ RAW_EXTENSIONS = {
     ".srw",
     ".x3f",
 }
+
+
+@contextmanager
+def atomic_output_path(destination: str | Path) -> Iterator[Path]:
+    """Yield a sibling temporary path and atomically publish it on success."""
+
+    output_path = Path(destination)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = output_path.with_name(
+        f".{output_path.stem}.{uuid4().hex}.tmp{output_path.suffix}"
+    )
+    try:
+        yield temporary_path
+        if not temporary_path.is_file():
+            raise FileNotFoundError(f"Atomic writer did not create temporary output: {temporary_path}")
+        os.replace(temporary_path, output_path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
 
 def is_supported_raw_path(path: str | Path) -> bool:

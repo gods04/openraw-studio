@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from openraw_studio.core.files import atomic_output_path
 from openraw_studio.raw.native.tone import PreviewRgbImage
 
 
@@ -28,11 +29,11 @@ def write_tiff_rgb8(
     except ImportError as exc:
         raise RuntimeError("Pillow is required for TIFF export") from exc
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
     payload = bytes(channel for pixel in image.pixels for channel in pixel)
     encoded = Image.frombytes("RGB", (image.width, image.height), payload)
     options: dict[str, Any] = {"compression": "tiff_deflate"}
     if tiffinfo is not None:
         options["tiffinfo"] = tiffinfo
-    encoded.save(output_path, format="TIFF", **options)
+    with atomic_output_path(output_path) as temporary_path:
+        encoded.save(temporary_path, format="TIFF", **options)
     return output_path

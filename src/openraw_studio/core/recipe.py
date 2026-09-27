@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Any, Mapping
 from uuid import uuid4
 
+from openraw_studio.core.files import atomic_output_path
+
 RECIPE_SCHEMA_VERSION = "recipe.v1"
 PROCESSING_PRESET_SCHEMA_VERSION = "processing-preset.v1"
 CREATIVE_LOOK_SCHEMA_VERSION = "creative-look.v1"
@@ -79,8 +81,8 @@ def write_recipe(recipe: Mapping[str, Any], output_path: str | Path) -> Path:
 
     validate_recipe_shape(recipe)
     path = Path(output_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(recipe, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    with atomic_output_path(path) as temporary_path:
+        temporary_path.write_text(json.dumps(recipe, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return path
 
 

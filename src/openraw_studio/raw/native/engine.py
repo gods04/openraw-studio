@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from openraw_studio.core.domain import EngineInfo, ImageAsset, ImageMetadata, ImageRef, RawInspection
-from openraw_studio.core.files import sha256_file, source_file_metadata
+from openraw_studio.core.files import atomic_output_path, sha256_file, source_file_metadata
 from openraw_studio.core.image_info import read_image_size
 from openraw_studio.export.metadata import build_jpeg_exif, build_tiff_info
 from openraw_studio.raw.errors import RawProcessingError
@@ -278,8 +278,8 @@ class NativeRawProcessor:
             )
         try:
             preview = self._dng_reader.read_embedded_jpeg_preview(source.path)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            output_path.write_bytes(preview.data)
+            with atomic_output_path(output_path) as temporary_path:
+                temporary_path.write_bytes(preview.data)
             width, height = read_image_size(output_path)
         except (DngMetadataError, OSError, ValueError) as exc:
             raise RawProcessingError(f"OpenRAW Native Nikon preview failed: {exc}") from exc

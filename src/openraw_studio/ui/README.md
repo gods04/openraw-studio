@@ -32,6 +32,8 @@ The UI should keep the image workspace first:
 - expandable advanced panels
 - export controls
 - batch export for currently supported folder files
+- animated single-photo progress and determinate folder-export progress
+- completed image dimensions and file-size feedback
 - open generated JPEG action
 - open embedded preview JPEG action for preview-only Nikon files
 - open output folder action
@@ -40,8 +42,8 @@ The UI should keep the image workspace first:
 The UI consumes the pipeline and recipe contracts rather than directly calling
 RAW, vision, portrait, color, film, QC, or export implementations. The current
 shell can preview/export supported DNG files, guarded TIFF-style Nikon sensor
-files, and supported Nikon 34713 lossless compressed files through the first
-half-resolution RGB renderer. Auto Adjust can analyze native-renderable files
+files, and supported Nikon 34713 lossless compressed files through a fast
+half-resolution preview and full-resolution final renderer. Auto Adjust can analyze native-renderable files
 through the current preview path. The shell can also extract embedded JPEG
 previews from preview-only Nikon RAW files and import Nikon RAW metadata while
 keeping advanced controls for later stages. Preview-only Nikon files can expose

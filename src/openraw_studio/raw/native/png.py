@@ -6,6 +6,7 @@ from pathlib import Path
 import struct
 import zlib
 
+from openraw_studio.core.files import atomic_output_path
 from openraw_studio.raw.native.tone import PreviewRgbImage
 
 
@@ -51,8 +52,8 @@ def encode_png_rgb8(image: PreviewRgbImage) -> bytes:
 def write_png(image: PreviewRgbImage, output_path: Path) -> Path:
     """Write an 8-bit RGB PNG preview image."""
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_bytes(encode_png_rgb8(image))
+    with atomic_output_path(output_path) as temporary_path:
+        temporary_path.write_bytes(encode_png_rgb8(image))
     return output_path
 
 

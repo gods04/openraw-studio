@@ -28,6 +28,7 @@ from openraw_studio.ui.desktop import (
     _format_adjustment_label,
     _format_bytes,
     _format_exposure_label,
+    _format_image_artifact,
     _histogram_coordinates,
     _histogram_status_text,
     _format_native_support_summary,
@@ -429,6 +430,16 @@ class DesktopHelperTests(unittest.TestCase):
 
     def test_flatten_rgb_pixels_returns_pillow_ready_bytes(self) -> None:
         self.assertEqual(_flatten_rgb_pixels(((1, 2, 3), (4, 5, 6))), b"\x01\x02\x03\x04\x05\x06")
+
+    def test_format_image_artifact_includes_dimensions_and_file_size(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "export.jpg"
+            path.write_bytes(b"123456")
+
+            text = _format_image_artifact(ImageRef(path, width=3712, height=5568, color_space="sRGB", role="export"))
+
+        self.assertIn("3712 x 5568", text)
+        self.assertIn("6 B", text)
 
     def test_format_result_summary_lists_user_facing_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

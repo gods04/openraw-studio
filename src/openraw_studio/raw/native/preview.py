@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from openraw_studio.core.files import atomic_output_path
 from openraw_studio.raw.native.decoder import NativeRawDecoder
 from openraw_studio.raw.native.color import apply_as_shot_neutral, apply_camera_matrix
 from openraw_studio.raw.native.dng import DngMetadataError, DngMetadataReader
@@ -200,8 +201,8 @@ def resize_preview(image: PreviewRgbImage, *, max_dimension: int | None) -> Prev
 def write_ppm(image: PreviewRgbImage, output_path: Path) -> Path:
     """Write a binary PPM file."""
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
     header = f"P6\n{image.width} {image.height}\n255\n".encode("ascii")
     payload = bytes(channel for pixel in image.pixels for channel in pixel)
-    output_path.write_bytes(header + payload)
+    with atomic_output_path(output_path) as temporary_path:
+        temporary_path.write_bytes(header + payload)
     return output_path

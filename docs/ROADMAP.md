@@ -82,6 +82,7 @@ Suggested implementation order:
 37. [done] add Nikon D500 MakerNote black level, standard as-shot white balance, exact camera profile, and EXIF orientation
 38. [partial] add edge-aware demosaic and lossless TIFF export (8-bit TIFF done; edge-aware and 16-bit linear output pending)
 39. [done] preserve safe camera/capture metadata in JPEG/TIFF derivatives without GPS passthrough
+40. [done] publish previews/exports/recipes atomically and show desktop processing progress
 
 Exit criteria:
 

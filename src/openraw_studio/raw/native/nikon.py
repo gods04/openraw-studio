@@ -9,6 +9,7 @@ from pathlib import Path
 import struct
 from typing import Any
 
+from openraw_studio.core.files import atomic_output_path
 from openraw_studio.raw.native.dng import DngMetadata, DngMetadataError, DngMetadataReader, TiffIfd
 from openraw_studio.raw.native.fullres import render_bayer_full_resolution_rgb8
 from openraw_studio.raw.native.profiles import CameraColorProfile, Matrix3, find_camera_color_profile
@@ -333,26 +334,26 @@ def render_decoded_nikon_34713_to_file(
 
     image = Image.frombytes("RGB", (rendered.width, rendered.height), rendered.rgb_bytes)
 
-    destination.parent.mkdir(parents=True, exist_ok=True)
     suffix = destination.suffix.lower()
-    if suffix in {".jpg", ".jpeg"}:
-        options: dict[str, Any] = {
-            "quality": jpeg_quality,
-            "optimize": False,
-            "progressive": False,
-        }
-        if jpeg_exif is not None:
-            options["exif"] = jpeg_exif
-        image.save(destination, format="JPEG", **options)
-    elif suffix == ".png":
-        image.save(destination, format="PNG")
-    elif suffix in {".tif", ".tiff"}:
-        options = {"compression": "tiff_deflate"}
-        if tiffinfo is not None:
-            options["tiffinfo"] = tiffinfo
-        image.save(destination, format="TIFF", **options)
-    else:
+    if suffix not in {".jpg", ".jpeg", ".png", ".tif", ".tiff"}:
         raise NikonCompressionError("Nikon 34713 render output must be .png, .jpg, .jpeg, .tif, or .tiff")
+    with atomic_output_path(destination) as temporary_path:
+        if suffix in {".jpg", ".jpeg"}:
+            options: dict[str, Any] = {
+                "quality": jpeg_quality,
+                "optimize": False,
+                "progressive": False,
+            }
+            if jpeg_exif is not None:
+                options["exif"] = jpeg_exif
+            image.save(temporary_path, format="JPEG", **options)
+        elif suffix == ".png":
+            image.save(temporary_path, format="PNG")
+        else:
+            options = {"compression": "tiff_deflate"}
+            if tiffinfo is not None:
+                options["tiffinfo"] = tiffinfo
+            image.save(temporary_path, format="TIFF", **options)
     return image.size
 
 

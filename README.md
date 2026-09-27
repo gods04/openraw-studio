@@ -83,6 +83,8 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - Native simple Bayer demosaic baseline
 - Native PNG preview encoding for narrow uncompressed DNG/Nikon test files
 - Local JPEG quality control and lossless 8-bit RGB TIFF export with recipe traceability
+- Atomic preview, derivative, and recipe publication so interrupted writes do not
+  replace an existing complete result with a partial file
 - Safe derivative metadata for camera, lens, capture settings, date, orientation,
   sRGB, and OpenRAW software identity; GPS is not copied
 - Beginner desktop shell launched with `openraw app` or `scripts/run_app.ps1`
@@ -90,6 +92,7 @@ Then import `sample-data\openraw-synthetic.DNG` or
   exposure/contrast/highlights/shadows/temperature/tint/saturation adjustments,
   rendered-preview RGB/luminance histogram with clipping feedback, before/after comparison, built-in
   sample DNG creation, photo/output information display, batch folder export,
+  visible single-photo/batch processing progress, final dimensions/file size,
   and direct output opening
 - Saved recipe detection that restores basic desktop adjustments for the same
   photo
@@ -198,6 +201,9 @@ Use `Update Preview` to refresh the preview with the current adjustments. Choose
 JPEG or TIFF in the Output section, then click the matching Export button. After importing a folder, click
 `Export Folder` to export every currently supported file using the current basic
 adjustments; unsupported files are skipped and reported.
+The status area shows animated progress for a single photo and exact item
+progress for a folder export. Completed previews and exports report their pixel
+dimensions and file size.
 The app shows basic photo information, current Native support status, and the
 planned preview, JPEG, and recipe paths before rendering. Nikon RAW files with
 only embedded JPEG previews can use `Update Preview`, while Auto Adjust and
@@ -235,6 +241,8 @@ the desktop app restores the saved Exposure, Contrast, Highlights, Shadows,
 Temperature, Tint, and Saturation values.
 The on-screen preview is capped at 2048 pixels on its longest side; export keeps
 the source dimensions supported by the current Native path.
+Generated previews, exports, and recipes are published atomically: an interrupted
+encode cleans up its temporary file and leaves any existing complete output in place.
 
 Plan a processing run without rendering pixels:
 

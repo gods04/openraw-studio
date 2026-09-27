@@ -424,13 +424,27 @@ def _flatten_rgb_pixels(pixels: tuple[tuple[int, int, int], ...]) -> bytes:
     return bytes(channel for pixel in pixels for channel in pixel)
 
 
+def _format_image_artifact(image: Any) -> str:
+    details: list[str] = []
+    if image.width > 0 and image.height > 0:
+        details.append(f"{image.width} x {image.height}")
+    try:
+        size_bytes = image.path.stat().st_size
+    except OSError:
+        pass
+    else:
+        details.append(_format_bytes(size_bytes))
+    suffix = f" ({', '.join(details)})" if details else ""
+    return f"{image.path}{suffix}"
+
+
 def _format_result_summary(result: Any) -> str:
     lines: list[str] = []
     if result.preview is not None:
         preview_label = "Preview JPEG" if result.preview.color_space == "embedded-jpeg" else "Preview"
-        lines.append(f"{preview_label}: {result.preview.path}")
+        lines.append(f"{preview_label}: {_format_image_artifact(result.preview)}")
     if result.exports:
-        lines.append(f"{export_display_name(_result_export_format(result))}: {result.exports[0].path}")
+        lines.append(f"{export_display_name(_result_export_format(result))}: {_format_image_artifact(result.exports[0])}")
     if recipe_path := result.diagnostics.get("recipe_path"):
         lines.append(f"Recipe: {recipe_path}")
     return "\n".join(lines)
@@ -664,6 +678,14 @@ def launch_desktop_app() -> None:
             style.configure("Warning.TLabel", background="#ffffff", foreground="#9c3d10", font=("Segoe UI", 9))
             style.configure("Primary.TButton", font=("Segoe UI", 10, "bold"), padding=(18, 10))
             style.configure("Secondary.TButton", padding=(12, 8))
+            style.configure(
+                "Processing.Horizontal.TProgressbar",
+                troughcolor="#e5e5ea",
+                background="#0071e3",
+                lightcolor="#0071e3",
+                darkcolor="#0071e3",
+                thickness=4,
+            )
 
         def _build_layout(self, tk_module: Any, ttk_module: Any, filedialog: Any, messagebox: Any) -> None:
             self.root.configure(background="#f5f5f7")
@@ -927,6 +949,7 @@ def launch_desktop_app() -> None:
             status_bar.grid(row=2, column=0, sticky="ew", pady=(14, 0))
             status_bar.columnconfigure(0, weight=1)
             status_bar.columnconfigure(1, weight=1)
+            status_bar.rowconfigure(1, minsize=12)
             ttk_module.Label(
                 status_bar,
                 textvariable=self.status_var,
@@ -934,6 +957,15 @@ def launch_desktop_app() -> None:
                 wraplength=360,
             ).grid(row=0, column=0, sticky="w")
             ttk_module.Label(status_bar, textvariable=self.preview_state_var, style="Muted.TLabel").grid(row=0, column=1, sticky="e")
+            self.progress_bar = ttk_module.Progressbar(
+                status_bar,
+                mode="determinate",
+                maximum=100,
+                value=0,
+                style="Processing.Horizontal.TProgressbar",
+            )
+            self.progress_bar.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+            self.progress_bar.grid_remove()
             workflow_actions = ttk_module.Frame(preview, style="Panel.TFrame")
             workflow_actions.grid(row=3, column=0, sticky="ew", pady=(12, 0))
             for column in range(4):
@@ -1360,6 +1392,7 @@ def launch_desktop_app() -> None:
             export_format = self._selected_export_format()
             export_quality = self._selected_export_quality()
             self._set_busy(True)
+            self._set_batch_progress(0, len(sources))
             self.status_var.set(
                 f"Exporting {len(supported_sources)} supported photos as {export_display_name(export_format)}..."
             )
@@ -1382,7 +1415,12 @@ def launch_desktop_app() -> None:
         ) -> None:
             def on_progress(done: int, total: int, item: BatchItemResult) -> None:
                 text = _batch_progress_text(done, total, item)
-                self.root.after(0, lambda run_id=run_id, text=text: self._show_batch_progress(run_id, text))
+                self.root.after(
+                    0,
+                    lambda run_id=run_id, text=text, done=done, total=total: self._show_batch_progress(
+                        run_id, text, done, total
+                    ),
+                )
 
             result = run_batch_export(
                 sources,
@@ -1394,10 +1432,11 @@ def launch_desktop_app() -> None:
             )
             self.root.after(0, lambda run_id=run_id, result=result: self._show_batch_result(run_id, result))
 
-        def _show_batch_progress(self, run_id: int, text: str) -> None:
+        def _show_batch_progress(self, run_id: int, text: str, done: int, total: int) -> None:
             if run_id != self.run_counter:
                 return
             self.status_var.set(text)
+            self._set_batch_progress(done, total)
 
         def _show_batch_result(self, run_id: int, result: BatchResult) -> None:
             if run_id != self.run_counter:
@@ -1475,6 +1514,15 @@ def launch_desktop_app() -> None:
 
         def _set_busy(self, busy: bool) -> None:
             self.is_busy = busy
+            if busy:
+                self.progress_bar.grid()
+                self.progress_bar.stop()
+                self.progress_bar.configure(mode="indeterminate", maximum=100, value=0)
+                self.progress_bar.start(12)
+            else:
+                self.progress_bar.stop()
+                self.progress_bar.configure(mode="determinate", maximum=100, value=0)
+                self.progress_bar.grid_remove()
             can_preview = self.current_can_preview is True or self.current_can_render is True
             can_render = self.current_can_render is True
             preview_state = "normal" if not busy and self.source_path is not None and can_preview else "disabled"
@@ -1484,6 +1532,14 @@ def launch_desktop_app() -> None:
             self.process_button.configure(state=render_state)
             batch_state = "disabled" if busy or not _supported_library_sources(self.library_items) else "normal"
             self.batch_button.configure(state=batch_state)
+
+        def _set_batch_progress(self, done: int, total: int) -> None:
+            self.progress_bar.stop()
+            self.progress_bar.configure(
+                mode="determinate",
+                maximum=max(1, total),
+                value=min(max(0, done), max(1, total)),
+            )
 
         def _current_overrides(self) -> dict[str, float]:
             return _manual_overrides(

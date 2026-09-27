@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from openraw_studio.core.files import atomic_output_path
 from openraw_studio.raw.native.tone import PreviewRgbImage
 
 
@@ -31,7 +32,6 @@ def write_jpeg(
     except ImportError as exc:
         raise RuntimeError("Pillow is required for JPEG export") from exc
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
     payload = bytes(channel for pixel in image.pixels for channel in pixel)
     encoded = Image.frombytes("RGB", (image.width, image.height), payload)
     options: dict[str, Any] = {
@@ -41,5 +41,6 @@ def write_jpeg(
     }
     if exif is not None:
         options["exif"] = exif
-    encoded.save(output_path, format="JPEG", **options)
+    with atomic_output_path(output_path) as temporary_path:
+        encoded.save(temporary_path, format="JPEG", **options)
     return output_path

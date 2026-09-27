@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from openraw_studio.core.domain import EngineInfo, ImageRef
+from openraw_studio.core.files import atomic_output_path
 from openraw_studio.export.errors import ExportError
 from openraw_studio.export.formats import normalize_export_format, validate_export_quality
 from openraw_studio.export.interfaces import ExportRequest, ExportResult
@@ -108,33 +109,34 @@ def _write_from_existing_image(
     except ImportError as exc:
         raise ExportError("Pillow is required for local image export") from exc
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         with Image.open(source_path) as opened:
             encoded = opened.convert("RGB")
-            if export_format == "jpeg":
-                encoded.save(
-                    output_path,
-                    format="JPEG",
-                    quality=quality,
-                    optimize=False,
-                    progressive=False,
-                    exif=build_jpeg_exif(recipe),
-                )
-            else:
-                encoded.save(
-                    output_path,
-                    format="TIFF",
-                    compression="tiff_deflate",
-                    tiffinfo=build_tiff_info(recipe),
-                )
+            with atomic_output_path(output_path) as temporary_path:
+                if export_format == "jpeg":
+                    encoded.save(
+                        temporary_path,
+                        format="JPEG",
+                        quality=quality,
+                        optimize=False,
+                        progressive=False,
+                        exif=build_jpeg_exif(recipe),
+                    )
+                else:
+                    encoded.save(
+                        temporary_path,
+                        format="TIFF",
+                        compression="tiff_deflate",
+                        tiffinfo=build_tiff_info(recipe),
+                    )
     except (OSError, TypeError, ValueError) as exc:
         raise ExportError(f"Could not encode {export_format.upper()} export: {exc}") from exc
 
 
 def _write_recipe_sidecar(output_path: Path, recipe: Mapping[str, Any]) -> Path:
     recipe_path = output_path.with_name(f"{output_path.name}.recipe.json")
-    recipe_path.write_text(json.dumps(recipe, indent=2, sort_keys=True), encoding="utf-8")
+    with atomic_output_path(recipe_path) as temporary_path:
+        temporary_path.write_text(json.dumps(recipe, indent=2, sort_keys=True), encoding="utf-8")
     return recipe_path
 
 
