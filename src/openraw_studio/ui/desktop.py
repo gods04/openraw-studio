@@ -447,7 +447,25 @@ def _format_result_summary(result: Any) -> str:
         lines.append(f"{export_display_name(_result_export_format(result))}: {_format_image_artifact(result.exports[0])}")
     if recipe_path := result.diagnostics.get("recipe_path"):
         lines.append(f"Recipe: {recipe_path}")
+    if quality_summary := _format_quality_summary(result.recipe):
+        lines.append(quality_summary)
     return "\n".join(lines)
+
+
+def _format_quality_summary(recipe: Mapping[str, Any]) -> str | None:
+    analysis = recipe.get("analysis")
+    if not isinstance(analysis, Mapping):
+        return None
+    quality = analysis.get("quality")
+    if not isinstance(quality, Mapping) or quality.get("status") not in {"pass", "warning"}:
+        return None
+    try:
+        highlights = float(quality.get("highlight_clip_fraction", 0.0))
+        shadows = float(quality.get("shadow_clip_fraction", 0.0))
+    except (TypeError, ValueError):
+        return None
+    warning = " - check clipping" if quality.get("status") == "warning" else " - passed"
+    return f"Quality: Highlights {highlights:.1%} | Shadows {shadows:.1%}{warning}"
 
 
 def _result_export_format(result: Any) -> str:
@@ -497,10 +515,15 @@ def _result_status(result: Any) -> str:
     if result.diagnostics.get("preview_only"):
         if result.preview is not None and result.preview.color_space == "embedded-jpeg":
             return "Preview JPEG ready"
-        return "Preview updated"
-    if result.exports:
-        return f"{export_display_name(_result_export_format(result))} exported"
-    return "Finished"
+        status = "Preview updated"
+    elif result.exports:
+        status = f"{export_display_name(_result_export_format(result))} exported"
+    else:
+        status = "Finished"
+    qc = result.recipe.get("qc") if isinstance(result.recipe, Mapping) else None
+    if isinstance(qc, Mapping) and qc.get("status") == "warning":
+        return f"{status} - check clipping"
+    return status
 
 
 def _auto_adjust_status(suggestion: AutoAdjustSuggestion) -> str:

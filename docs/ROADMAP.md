@@ -83,6 +83,7 @@ Suggested implementation order:
 38. [partial] add edge-aware demosaic and lossless TIFF export (8-bit TIFF done; edge-aware and 16-bit linear output pending)
 39. [done] preserve safe camera/capture metadata in JPEG/TIFF derivatives without GPS passthrough
 40. [done] publish previews/exports/recipes atomically and show desktop processing progress
+41. [done] record advisory rendered-preview clipping QC and surface desktop warnings
 
 Exit criteria:
 

@@ -29,6 +29,7 @@ from openraw_studio.ui.desktop import (
     _format_bytes,
     _format_exposure_label,
     _format_image_artifact,
+    _format_quality_summary,
     _histogram_coordinates,
     _histogram_status_text,
     _format_native_support_summary,
@@ -466,6 +467,30 @@ class DesktopHelperTests(unittest.TestCase):
         summary = _format_result_summary(result)
 
         self.assertIn("Preview JPEG: preview.jpg", summary)
+
+    def test_quality_summary_and_status_surface_advisory_clipping_warning(self) -> None:
+        recipe = {
+            "analysis": {
+                "quality": {
+                    "status": "warning",
+                    "highlight_clip_fraction": 0.125,
+                    "shadow_clip_fraction": 0.025,
+                }
+            },
+            "qc": {"status": "warning"},
+            "exports": [{"format": "jpeg"}],
+        }
+        result = PipelineResult(
+            recipe=recipe,
+            exports=(ImageRef(Path("export.jpg"), width=1, height=1, color_space="sRGB", role="export"),),
+        )
+
+        self.assertEqual(
+            _format_quality_summary(recipe),
+            "Quality: Highlights 12.5% | Shadows 2.5% - check clipping",
+        )
+        self.assertIn("Quality: Highlights 12.5%", _format_result_summary(result))
+        self.assertEqual(_result_status(result), "JPEG exported - check clipping")
 
     def test_open_jpeg_target_prefers_final_export(self) -> None:
         result = PipelineResult(

@@ -87,6 +87,8 @@ Then import `sample-data\openraw-synthetic.DNG` or
   replace an existing complete result with a partial file
 - Safe derivative metadata for camera, lens, capture settings, date, orientation,
   sRGB, and OpenRAW software identity; GPS is not copied
+- Advisory rendered-preview QC records sampled highlight/shadow clipping in the
+  recipe and surfaces non-blocking desktop warnings
 - Beginner desktop shell launched with `openraw app` or `scripts/run_app.ps1`
 - App single-photo import, folder import, output-folder selection, conservative Auto Adjust,
   exposure/contrast/highlights/shadows/temperature/tint/saturation adjustments,
@@ -114,6 +116,8 @@ Then import `sample-data\openraw-synthetic.DNG` or
   are not decoded yet
 - Broad proprietary RAW rendering support is not implemented yet
 - TIFF export is currently 8-bit sRGB; 16-bit linear/working-space TIFF is not implemented yet
+- QC currently checks rendered 8-bit preview clipping only; sensor-domain
+  headroom, sharpness, noise, and color-accuracy checks are not implemented yet
 - No AI model weights included
 - No portrait retouching algorithms yet
 - No film engine implementation yet
@@ -225,6 +229,9 @@ exports from native sensor data.
 The compact histogram follows the displayed Before, Camera Preview, or After
 image and reports near-black and near-white clipping percentages. It analyzes
 the displayed rendered 8-bit image, not untouched sensor values.
+The same bounded rendered-preview clipping check is saved under `analysis.quality`
+and `qc` in the recipe. A warning is advisory and does not block export. Camera-authored
+embedded previews are excluded because they are not OpenRAW renders.
 The Exposure, Contrast, Highlights, Shadows, Temperature, Tint, and Saturation controls are
 recorded in the recipe and applied to DNG and native-renderable Nikon preview/final export.
 Highlights and Shadows use a smooth tone-region adjustment; lowering Highlights

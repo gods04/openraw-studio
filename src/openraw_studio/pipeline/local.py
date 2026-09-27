@@ -18,6 +18,7 @@ from openraw_studio.export.interfaces import ExportEngine, ExportRequest
 from openraw_studio.export.local import LocalImageExportEngine
 from openraw_studio.pipeline.errors import BackendUnavailableError, PipelineError, SourceFileError
 from openraw_studio.pipeline.interfaces import PipelineRequest, PipelineResult
+from openraw_studio.qc.rendered import analyze_rendered_image
 from openraw_studio.raw.errors import RawProcessingError
 from openraw_studio.raw.interfaces import RawProcessor, RawRenderRequest
 from openraw_studio.raw.native import NativeRawProcessor
@@ -151,7 +152,7 @@ class LocalPhotoPipeline:
         }
         recipe["qc"] = {
             "status": "not_run",
-            "reason": "V0.1 QC is not implemented yet.",
+            "reason": "Rendered-preview QC runs after preview creation.",
         }
         recipe["planned_artifacts"] = planned_artifacts
 
@@ -172,6 +173,7 @@ class LocalPhotoPipeline:
                     preview_path,
                     recipe,
                 )
+                _record_rendered_preview_qc(recipe, preview_ref)
                 if request.preview_only:
                     recipe["pipeline"] = {
                         "mode": "preview_only",
@@ -332,6 +334,51 @@ def _create_preview_with_recipe(raw_processor: RawProcessor, source: ImageAsset,
     if "recipe" in parameters:
         return raw_processor.create_preview(source, output_path, max_dimension=2048, recipe=recipe)
     return raw_processor.create_preview(source, output_path, max_dimension=2048)
+
+
+def _record_rendered_preview_qc(recipe: dict[str, Any], preview: ImageRef) -> None:
+    if preview.color_space == "embedded-jpeg":
+        recipe["analysis"]["quality"] = {
+            "scope": "camera-embedded-preview",
+            "status": "not_run",
+        }
+        recipe["qc"] = {
+            "status": "not_run",
+            "reason": "The camera-authored embedded JPEG is not an OpenRAW render.",
+        }
+        return
+
+    try:
+        report = analyze_rendered_image(preview.path)
+    except (OSError, RuntimeError, ValueError) as exc:
+        recipe["analysis"]["quality"] = {
+            "scope": "rendered-preview-rgb8",
+            "status": "not_run",
+        }
+        recipe["qc"] = {
+            "status": "not_run",
+            "reason": f"Rendered-preview QC could not run: {exc}",
+        }
+        return
+
+    quality = report.as_recipe_dict()
+    recipe["analysis"]["quality"] = quality
+    recipe["qc"] = {
+        "status": report.status,
+        "scope": quality["scope"],
+        "warnings": list(report.warnings),
+        "message": _quality_message(report.warnings),
+    }
+
+
+def _quality_message(warnings: tuple[str, ...]) -> str:
+    if not warnings:
+        return "Rendered preview passed the clipping check."
+    labels = {
+        "highlight_clipping": "highlight clipping",
+        "shadow_clipping": "shadow clipping",
+    }
+    return "Check " + " and ".join(labels[warning] for warning in warnings) + "."
 
 
 def _raw_adjustments_with_overrides(
