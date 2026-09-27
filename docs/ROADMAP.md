@@ -78,6 +78,7 @@ Suggested implementation order:
 33. [done] add normalized temperature and green/magenta tint controls with legacy warmth compatibility
 34. [done] add rendered-preview RGB/luminance histogram and clipping feedback that follows Before/After view
 35. [done] replace direct DNG ColorMatrix1 multiplication with inverse camera-to-XYZ, Bradford adaptation, and linear-sRGB conversion
+36. [done] compare native Nikon 34713 results with their camera-authored embedded JPEG without a second sensor decode
 
 Exit criteria:
 

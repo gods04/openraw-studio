@@ -202,11 +202,15 @@ folder. Nikon preview-only runs write a `.preview.jpg` file and recipe JSON.
 After `Update Preview`, the desktop app enables `Open Preview JPEG` for those
 preview-only Nikon files so you can open the camera-authored embedded preview
 directly without treating it as a finished RAW export.
-After preview or export, `Show Before` lets you compare the basic demosaiced
-image with the OpenRAW color-treated result.
-The compact histogram follows the displayed Before or After preview and reports
-near-black and near-white clipping percentages. It analyzes the rendered 8-bit
-preview, not untouched sensor values.
+After preview or export, `Show Before` lets supported lightweight RAW paths
+compare the basic demosaiced image with the OpenRAW color-treated result. Native
+Nikon 34713 renders instead offer `Show Camera Preview`, which compares the
+OpenRAW result with the camera-authored embedded JPEG without decoding the large
+sensor payload twice. The camera preview is a reference only; OpenRAW still
+exports from native sensor data.
+The compact histogram follows the displayed Before, Camera Preview, or After
+image and reports near-black and near-white clipping percentages. It analyzes
+the displayed rendered 8-bit image, not untouched sensor values.
 The Exposure, Contrast, Highlights, Shadows, Temperature, Tint, and Saturation controls are
 recorded in the recipe and applied to DNG and native-renderable Nikon preview/JPEG export.
 Highlights and Shadows use a smooth tone-region adjustment; lowering Highlights

@@ -170,6 +170,7 @@ Current status:
 - single-illuminant DNG white balance and standards-directed ColorMatrix1-to-linear-sRGB conversion are now applied
 - exposure, contrast, highlights, shadows, temperature, tint, and saturation adjustments are available from the CLI and desktop shell and are saved in the recipe
 - rendered-preview RGB/luminance histogram and shadow/highlight clipping feedback are available in the desktop shell
+- native Nikon 34713 results can be compared with the camera-authored embedded JPEG without a second sensor decode
 - Windows startup script creates `.venv`, installs the local package, and opens the app
 - Windows package script and GitHub Actions artifact build exist
 - Nikon 34713 camera-aware color, further speed work, full-resolution export, other compressed Nikon variants, and higher-quality JPEG/TIFF export are next
@@ -202,8 +203,8 @@ The first desktop UI should have:
 - processing status
 - preview area
 - preview current/stale state
-- rendered-preview RGB/luminance histogram that follows Before/After view, with clipping percentages
-- before/after comparison placeholder
+- rendered-preview RGB/luminance histogram that follows Before/Camera Preview/After view, with clipping percentages
+- before/after comparison for lightweight native paths and camera-preview/result comparison for Nikon 34713
 - Auto Adjust button
 - Update Preview button
 - Export JPEG button
@@ -227,7 +228,7 @@ native sensor preview/export when the file exposes TIFF-style uncompressed Bayer
 data, and the first Nikon 34713 lossless compressed preview/export path. It can
 import a folder of RAW-like files, choose an output folder, run AUTO for
 renderable files, view the generated preview and histogram, check clipping and selected-photo information,
-and planned output paths, compare before/after, adjust exposure, create safe
+and planned output paths, compare before/after or Nikon result/camera preview, adjust exposure, create safe
 sample DNG/NEF files, adjust contrast/highlights/shadows/temperature/tint/saturation, open the exported JPEG, export
 supported photos from the imported folder, and open the output folder. When
 adjustments change, the UI marks the preview as needing an update until the

@@ -2,7 +2,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from fixtures_nikon import synthetic_nikon_nef_metadata_bytes, synthetic_nikon_nef_sensor_bytes
+from fixtures_nikon import (
+    embedded_jpeg_bytes,
+    synthetic_nikon_nef_metadata_bytes,
+    synthetic_nikon_nef_sensor_bytes,
+)
 from openraw_studio.core.domain import ImageRef
 from openraw_studio.decision.auto_adjust import AutoAdjustSuggestion
 from openraw_studio.pipeline.batch import BatchItemResult, BatchResult
@@ -16,6 +20,7 @@ from openraw_studio.ui.desktop import (
     _batch_result_status,
     _candidate_raw_files,
     _can_build_inline_before_preview,
+    _can_use_embedded_camera_preview,
     _default_sample_path,
     _default_sample_nikon_nef_path,
     _flatten_rgb_pixels,
@@ -32,6 +37,7 @@ from openraw_studio.ui.desktop import (
     _friendly_error_message,
     _library_sources,
     _library_item_label,
+    _load_embedded_camera_preview,
     _load_recipe_adjustments,
     _manual_overrides,
     _open_jpeg_target,
@@ -473,6 +479,29 @@ class DesktopHelperTests(unittest.TestCase):
         self.assertTrue(_can_build_inline_before_preview(dng_result))
         self.assertFalse(_can_build_inline_before_preview(nikon_result))
         self.assertFalse(_can_build_inline_before_preview(embedded_result))
+        self.assertFalse(_can_use_embedded_camera_preview(dng_result))
+        self.assertTrue(_can_use_embedded_camera_preview(nikon_result))
+        self.assertFalse(_can_use_embedded_camera_preview(embedded_result))
+
+    def test_load_embedded_camera_preview_is_bounded_and_read_only(self) -> None:
+        from PIL import Image
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "camera.NEF"
+            source_bytes = synthetic_nikon_nef_metadata_bytes(
+                width=900,
+                height=600,
+                embedded_jpeg=embedded_jpeg_bytes(width=900, height=600),
+            )
+            source.write_bytes(source_bytes)
+
+            image, histogram = _load_embedded_camera_preview(source, Image)
+
+            self.assertEqual(image.mode, "RGB")
+            self.assertLessEqual(image.width, 700)
+            self.assertLessEqual(image.height, 520)
+            self.assertGreater(histogram.pixel_count, 0)
+            self.assertEqual(source.read_bytes(), source_bytes)
 
     def test_result_status_distinguishes_preview_from_export(self) -> None:
         preview_result = PipelineResult(recipe={}, diagnostics={"preview_only": True})

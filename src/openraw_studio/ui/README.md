@@ -21,7 +21,8 @@ The UI should keep the image workspace first:
 - preview current/stale state
 - built-in synthetic sample DNG/NEF creation
 - before/after comparison
-- rendered-preview RGB/luminance histogram that follows Before/After view
+- native Nikon result/camera-preview comparison
+- rendered-preview RGB/luminance histogram that follows Before/Camera Preview/After view
 - rendered-preview shadow/highlight clipping percentages
 - AUTO action
 - conservative Auto Adjust action for native-renderable DNG/Nikon files
@@ -46,5 +47,7 @@ previews from preview-only Nikon RAW files and import Nikon RAW metadata while
 keeping advanced controls for later stages. Preview-only Nikon files can expose
 an `Open Preview JPEG` action after `Update Preview`, while final export
 controls stay disabled until native sensor rendering supports that file. Inline
-before/after comparison is kept on the lightweight preview paths for now so
-large Nikon 34713 files do not freeze the desktop window after export.
+before/after comparison remains on lightweight preview paths. Native Nikon
+34713 results use the camera-authored embedded JPEG as an instant reference, so
+the desktop does not decode the large sensor payload a second time. This JPEG is
+comparison-only and is never treated as the source for OpenRAW export.

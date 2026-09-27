@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from io import BytesIO
 import math
 import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -20,6 +21,7 @@ from openraw_studio.pipeline.errors import BackendUnavailableError, PipelineErro
 from openraw_studio.pipeline.interfaces import PipelineRequest
 from openraw_studio.pipeline.local import LocalPhotoPipeline
 from openraw_studio.qc.histogram import HistogramAnalysis, analyze_rgb_bytes, analyze_rgb_pixels
+from openraw_studio.raw.native.dng import DngMetadataReader
 from openraw_studio.raw.native.preview import render_preview_image
 from openraw_studio.raw.native.support import NativeSupportReport, inspect_native_support
 from openraw_studio.raw.native.synthetic import write_synthetic_dng, write_synthetic_nikon_nef
@@ -89,6 +91,20 @@ def _analyze_pillow_preview(image: Any, *, max_dimension: int = 512) -> Histogra
     if sample.mode != "RGB":
         sample = sample.convert("RGB")
     return analyze_rgb_bytes(sample.tobytes())
+
+
+def _load_embedded_camera_preview(
+    source: Path,
+    image_module: Any,
+    *,
+    max_size: tuple[int, int] = (700, 520),
+) -> tuple[Any, HistogramAnalysis]:
+    embedded = DngMetadataReader().read_embedded_jpeg_preview(source)
+    with image_module.open(BytesIO(embedded.data)) as opened:
+        image = opened.convert("RGB")
+    histogram = _analyze_pillow_preview(image)
+    image.thumbnail(max_size)
+    return image, histogram
 
 
 def _format_bytes(size: int) -> str:
@@ -407,6 +423,13 @@ def _can_build_inline_before_preview(result: Any) -> bool:
     return result.preview.color_space not in {"embedded-jpeg", "openraw-nikon-34713-rgb"}
 
 
+def _can_use_embedded_camera_preview(result: Any) -> bool:
+    return (
+        result.preview is not None
+        and result.preview.color_space == "openraw-nikon-34713-rgb"
+    )
+
+
 def _result_status(result: Any) -> str:
     if result.diagnostics.get("preview_only"):
         if result.preview is not None and result.preview.color_space == "embedded-jpeg":
@@ -537,6 +560,7 @@ def launch_desktop_app() -> None:
             self.before_histogram: HistogramAnalysis | None = None
             self.after_histogram: HistogramAnalysis | None = None
             self.current_histogram: HistogramAnalysis | None = None
+            self.before_view_name = "Before"
             self.library_dir: Path | None = None
             self.library_items: list[tuple[Path, str, bool]] = []
             self.current_can_preview: bool | None = None
@@ -1182,6 +1206,7 @@ def launch_desktop_app() -> None:
             self.after_photo = None
             self.before_histogram = None
             self.after_histogram = None
+            self.before_view_name = "Before"
             self.last_export_path = None
             self.last_preview_overrides = None
             self.showing_after = True
@@ -1355,22 +1380,42 @@ def launch_desktop_app() -> None:
                     self.preview_label.configure(image=self.preview_photo, text="")
                     self.showing_after = True
                     self._show_histogram(self.after_histogram, view="After")
-                    if not _can_build_inline_before_preview(result):
-                        self.before_photo = None
-                        self.before_histogram = None
-                        self.compare_button.configure(state="disabled", text="Show Before")
-                    else:
-                        before = render_preview_image(source, apply_color=False, max_dimension=700)
-                        self.before_histogram = analyze_rgb_pixels(before.pixels)
-                        before_image = Image.frombytes("RGB", (before.width, before.height), _flatten_rgb_pixels(before.pixels))
-                        before_image.thumbnail((700, 520))
-                        self.before_photo = ImageTk.PhotoImage(before_image)
-                        self.compare_button.configure(state="normal", text="Show Before")
                 except (OSError, RuntimeError, ValueError, NotImplementedError):
+                    self.before_photo = None
+                    self.after_photo = None
+                    self.preview_photo = None
                     self.before_histogram = None
                     self.after_histogram = None
+                    self.before_view_name = "Before"
+                    self.compare_button.configure(state="disabled", text="Show Before")
                     self._show_histogram(None, view="After")
                     self.preview_label.configure(text="Preview created. Open the output folder to view it.", image="")
+                else:
+                    self.before_photo = None
+                    self.before_histogram = None
+                    self.before_view_name = "Before"
+                    self.compare_button.configure(state="disabled", text="Show Before")
+                    try:
+                        if _can_build_inline_before_preview(result):
+                            before = render_preview_image(source, apply_color=False, max_dimension=700)
+                            self.before_histogram = analyze_rgb_pixels(before.pixels)
+                            before_image = Image.frombytes(
+                                "RGB",
+                                (before.width, before.height),
+                                _flatten_rgb_pixels(before.pixels),
+                            )
+                            before_image.thumbnail((700, 520))
+                            self.before_photo = ImageTk.PhotoImage(before_image)
+                        elif _can_use_embedded_camera_preview(result):
+                            before_image, self.before_histogram = _load_embedded_camera_preview(source, Image)
+                            self.before_photo = ImageTk.PhotoImage(before_image)
+                            self.before_view_name = "Camera Preview"
+                    except (OSError, RuntimeError, ValueError, NotImplementedError):
+                        self.before_photo = None
+                        self.before_histogram = None
+                        self.before_view_name = "Before"
+                    if self.before_photo is not None:
+                        self.compare_button.configure(state="normal", text=f"Show {self.before_view_name}")
             self._refresh_preview_state()
             self.export_label.configure(text=_format_result_summary(result))
             if result.preview is not None or result.exports:
@@ -1387,9 +1432,10 @@ def launch_desktop_app() -> None:
             self.showing_after = not self.showing_after
             self.preview_photo = self.after_photo if self.showing_after else self.before_photo
             self.preview_label.configure(image=self.preview_photo)
-            self.compare_button.configure(text="Show Before" if self.showing_after else "Show After")
+            button_text = f"Show {self.before_view_name}" if self.showing_after else "Show After"
+            self.compare_button.configure(text=button_text)
             histogram = self.after_histogram if self.showing_after else self.before_histogram
-            self._show_histogram(histogram, view="After" if self.showing_after else "Before")
+            self._show_histogram(histogram, view="After" if self.showing_after else self.before_view_name)
 
         def _open_output_folder(self) -> None:
             if self.output_dir is None or not self.output_dir.exists():
