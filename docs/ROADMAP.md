@@ -10,12 +10,26 @@ Nikon paths include F-series lossless, 12-bit D20 non-split (verified on 1 J5),
 and the verified Z f HE* 14-bit profile with approximate nonlinear mapping.
 Local Windows EXE builds are available; this is not a public installer release.
 
-Next quality work: reduced preview/QC overhead in export and first HE* import, broader verified HE profiles,
+Next quality work: reduced metadata overhead and first HE* import, broader verified HE profiles,
 broader camera calibration and gamut handling,
 edge-aware demosaic, actual sensor highlight reconstruction, and denoise.
 Semantic portrait/scene AI and mobile remain later phases.
 
-Latest verified increment: compiled, bounded-memory CPU Bayer interpolation reuses
+Latest verified increment: vectorized Nikon preview tables and bounded RGB
+histogram/QC reduce the same D500 desktop export from 3.11 to 2.65 s on CPU and
+1.95 to 1.64 s on GPU. All 69 previews and histograms across 23 private D500/Z f
+photos match the retained scalar references exactly, with unchanged originals.
+All 353 tests pass with GPU and CPU-only (two GPU-only skips), plus desktop
+editing/JPEG/TIFF, native-detail, and batch workflows. Live dragging measures
+73 ms median on CPU and 53 ms on GPU; this increment targets export overhead,
+not a new Auto algorithm or camera profile. Timings are local sample results.
+First HE* import and repeated MakerNote conversion remain optimization targets.
+The refreshed EXE passes D500 CPU and Z f CPU/GPU export/detail checks, including
+restart cache reuse. D500 CPU export is 2.52 s warm; Z f GPU export is 1.56-1.62 s.
+
+### Earlier Verification
+
+Compiled, bounded-memory CPU Bayer interpolation reuses
 the fused tone kernel for full-size exports and native detail. On the same D500
 desktop benchmark, CPU export improves from 5.09 to 3.11 seconds without changing
 dimensions or export quality. All 69 full-resolution comparisons across 23 private

@@ -640,3 +640,43 @@ native inspection, and 4032x6048 orientation. All source hashes remain unchanged
 HE* first-build CPU preparation still takes 5.79 s; a subsequent GPU process
 prepares in 2.50 s. Those are different backends, not an import speedup comparison.
 No public ZIP was generated or released.
+
+### Vectorized Preview Tables and RGB QC
+
+`raw/native/lookup.py` builds the existing Nikon fixed-point preview tables with
+NumPy, preserving the float32 storage boundary before double-precision matrix
+evaluation and ties-to-even rounding. The table shapes, mutable `array('i')`
+return types, tone curve, overflow path, and resulting preview dimensions remain
+unchanged. `_linear_color_luts` retains the original scalar implementation when
+NumPy is unavailable. This adds no JIT startup or new runtime dependency.
+
+`qc/histogram.py` processes RGB byte buffers in bounded 262,144-pixel chunks.
+Integer luminance and bin calculations preserve the existing shadow/any-channel
+highlight thresholds, counts, and recipe reports. The streaming pixel API stays
+strict about channel types and remains the no-NumPy fallback. No image pixels
+or clipping policies are changed.
+
+All 353 tests pass with GPU selection and CPU-only (two GPU-only skips). Tests
+compare every supported bin count, chunk boundaries, mutable/read-only buffers,
+invalid input handling, fallback, full lookup entries under control extremes,
+and resized rendered-QC reports. All 69 real previews and histogram analyses
+(neutral, Auto 70%, and stress settings across 23 private D500/Z f photos) are
+identical to the retained references; all source hashes remain unchanged.
+
+On the same D500 desktop benchmark, CPU export improves from 3.11 to 2.65 s and
+GPU export from 1.95 to 1.64 s, including preview/QC and JPEG writing. Live edits
+measure 73 ms median/47 frames on CPU and 53 ms/49 frames on GPU during 50 edits.
+The CPU portrait Z f desktop workflow passes all 16 checks (Auto: 0.81 s),
+native-detail inspection passes 22 checks with exact full-render equality, and
+batch export/cancellation passes seven checks. These are local measurements,
+not universal performance guarantees. The remaining CPU profile shows repeated
+MakerNote byte conversion as avoidable overhead; first HE* import also needs work.
+
+The refreshed Windows EXE passes D500 CPU and Z f CPU/GPU Auto/export/detail
+smoke checks and independent-process cache reuse without fallback. D500 sea
+export takes 3.16 s including first-use Bayer compilation, then 2.52 s warm
+(previous bundle: 3.05 s warm). The Z f portrait exports in 3.04 s on CPU and
+1.56-1.62 s on GPU, retaining orientation and the same Auto settings. GPU HE*
+preparation still takes 6.47 s on first compilation and 2.26 s after restart;
+these timings exclude executable startup. All source hashes remain unchanged.
+No public ZIP was generated or released.

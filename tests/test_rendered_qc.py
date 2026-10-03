@@ -1,12 +1,18 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+import numpy as np
 from PIL import Image
 
 from openraw_studio.core.domain import ImageRef
 from openraw_studio.pipeline.interfaces import PipelineRequest
-from openraw_studio.pipeline.local import LocalPhotoPipeline, _record_rendered_preview_qc
+from openraw_studio.pipeline.local import (
+    LocalPhotoPipeline,
+    _record_rendered_preview_qc,
+)
+from openraw_studio.qc.histogram import analyze_rgb_bytes
 from openraw_studio.qc.rendered import analyze_rendered_image
 from openraw_studio.raw.native.synthetic import write_synthetic_dng
 
@@ -58,6 +64,27 @@ class RenderedQualityTests(unittest.TestCase):
             analyze_rendered_image(Path("unused.png"), max_dimension=0)
         with self.assertRaises(ValueError):
             analyze_rendered_image(Path("unused.png"), warning_threshold=1.1)
+
+    def test_vectorized_report_matches_reference_after_resizing_and_thresholds(self):
+        values = np.random.default_rng(31).integers(0, 256, (80, 120, 3), dtype=np.uint8)
+        values[:20, :30] = 0
+        values[40:, 60:, 0] = 255
+
+        def reference(payload, **options):
+            with patch.dict("sys.modules", {"numpy": None}):
+                return analyze_rgb_bytes(payload, **options)
+
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "sample.png"
+            Image.fromarray(values).save(path)
+            before = path.read_bytes()
+            for threshold in (0, .01, .2, 1):
+                actual = analyze_rendered_image(path, max_dimension=59, warning_threshold=threshold)
+                with patch("openraw_studio.qc.rendered.analyze_rgb_bytes", side_effect=reference):
+                    expected = analyze_rendered_image(path, max_dimension=59, warning_threshold=threshold)
+                self.assertEqual(actual, expected)
+                self.assertEqual(actual.as_recipe_dict(), expected.as_recipe_dict())
+            self.assertEqual(path.read_bytes(), before)
 
     def test_local_pipeline_records_rendered_preview_qc_in_recipe(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

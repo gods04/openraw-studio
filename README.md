@@ -88,6 +88,8 @@ Then import `sample-data\openraw-synthetic.DNG` or
   the NumPy renderer remains available if compilation fails
 - Chunked CPU compilation of full-resolution Bayer interpolation and color for
   supported compressed Nikon exports and native-pixel inspection
+- Vectorized Nikon preview lookup construction and bounded-memory RGB histogram/QC,
+  retaining the scalar fallback and existing preview/clipping behavior
 - Camera-aware Nikon D500, 1 J5, and Z f rendering with standard as-shot white balance, an
   exact camera-to-linear-sRGB profile, and EXIF orientation handling
 - Native extraction for simple uncompressed DNG 12/14-bit packed strip payloads

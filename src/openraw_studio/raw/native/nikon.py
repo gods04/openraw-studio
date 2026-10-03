@@ -1169,6 +1169,20 @@ def _linear_color_luts(
     )
     fixed_scale = 65535.0
 
+    try:
+        import numpy as np
+    except ImportError:
+        np = None
+    if np is not None:
+        from openraw_studio.raw.native.lookup import build_color_luts
+
+        return build_color_luts(
+            np, black_levels=black_levels, fallback_black_level=fallback_black_level,
+            white_level=white_level, channel_scales=(red_scale, green_scale, blue_scale),
+            exposure_scale=exposure_scale, contrast_factor=contrast_factor,
+            highlights=highlights_value, shadows=shadows_value, matrix=matrix,
+        )
+
     camera_values: list[array] = []
     for channel_black, channel_scale in zip(
         black_levels,

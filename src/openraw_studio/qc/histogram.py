@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
+from operator import index
 
 
 @dataclass(frozen=True)
@@ -37,9 +38,43 @@ def analyze_rgb_bytes(payload: bytes | bytearray | memoryview, *, bins: int = 64
     view = memoryview(payload).cast("B")
     if len(view) % 3:
         raise ValueError("RGB payload length must be divisible by three")
+    if not 8 <= bins <= 256:
+        raise ValueError("bins must be between 8 and 256")
+    bins = index(bins)
+    if not view:
+        raise ValueError("RGB pixel collection is empty")
+    try:
+        import numpy as np
+    except ImportError:
+        np = None
+    if np is not None:
+        return _analyze_rgb_buffer_numpy(np, view, bins)
     return analyze_rgb_pixels(
         ((view[index], view[index + 1], view[index + 2]) for index in range(0, len(view), 3)),
         bins=bins,
+    )
+
+
+def _analyze_rgb_buffer_numpy(np, view, bins):
+    rgb = np.frombuffer(view, dtype=np.uint8).reshape(-1, 3)
+    counts = np.zeros((4, bins), dtype=np.int64)
+    shadow_clipped = highlight_clipped = 0
+    # Bound temporary memory even when a caller supplies a full-resolution frame.
+    for start in range(0, len(rgb), 262144):
+        # Weighted RGB8 sums reach at most 65280, so uint16 retains every bit.
+        block = rgb[start : start + 262144].astype(np.uint16)
+        red, green, blue = block.T
+        luminance = (54 * red + 183 * green + 19 * blue) >> 8
+        for channel, values in enumerate((luminance, red, green, blue)):
+            counts[channel] += np.bincount((values * bins) >> 8, minlength=bins)
+        peak = block.max(axis=1)
+        shadow_clipped += int(np.count_nonzero(peak <= 2))
+        highlight_clipped += int(np.count_nonzero(peak >= 253))
+    return HistogramAnalysis(
+        bins=bins, pixel_count=len(rgb),
+        luminance=tuple(map(int, counts[0])), red=tuple(map(int, counts[1])),
+        green=tuple(map(int, counts[2])), blue=tuple(map(int, counts[3])),
+        shadow_clipped_pixels=shadow_clipped, highlight_clipped_pixels=highlight_clipped,
     )
 
 
