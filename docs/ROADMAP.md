@@ -18,6 +18,19 @@ and sensor-domain denoise with calibrated luminance-noise advice. Further first-
 also remain open.
 Semantic portrait/scene AI and mobile remain later phases.
 
+Latest Auto performance increment removes redundant RGB8 normalization and
+three-channel reductions, retaining the same candidate/strength checks. Across
+33 real photos, parameters and all metrics/render counts remain exact on both
+CPU and GPU, with unchanged originals. Paired warm Auto medians improve from
+0.96 to 0.46 s GPU and 1.87 to 1.36 s CPU; import and first-use compilation
+remain separate costs. See `DEVELOPMENT.md` for boundaries and verification.
+All 573 source/packaging tests, 66 paired noise-advice checks, and two 46-check
+desktop workflows pass. The checked D500 CPU / Z f GPU desktop Auto improves from
+2.48/1.80 s to 1.79/0.99 s; originals and saved edit behavior remain unchanged.
+Eight rebuilt-EXE checks retain exact source Auto/metrics, native detail, and
+byte-identical JPEG/TIFF16 exports versus the preceding EXE. The local Windows
+app is refreshed; first-use and CPU full-size rendering remain open targets.
+
 Latest Auto exposure increment combines stronger highlight compression with
 bounded midtone recovery. Tonal and white-balance validation now also checks
 10/15/20/35% strengths to catch clipping peaks below the usual 25% sample.

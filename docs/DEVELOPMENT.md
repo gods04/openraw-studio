@@ -1592,3 +1592,43 @@ these examples. A separate Z5 CPU TIFF16 restart check takes 5.72 s versus
 9.30 s initially, producing byte-identical output. First-use and CPU high-bit
 depth performance remain open. The local EXE is refreshed without a public ZIP,
 installer, or private-photo bundle.
+
+### Faster Auto Measurements
+
+Rendered RGB8 normalization now allocates only the float32 result, without
+redundant finite/range scans of inherently bounded bytes. Other numeric inputs
+retain finite validation and float32 clamping. Clipping measurements reuse
+the existing channel mask and combine its three RGB lanes directly instead of
+repeating small-axis maximum/any reductions. The same guard is used by sampled
+color-noise advice. No sampling domains, thresholds, candidate order, strength
+checks, white-balance logic, or renderer math change.
+
+Nine focused tests cover all byte values, boundary floats, all channel-mask
+combinations, strided/read-only/Pillow/legacy inputs, fallback numeric types,
+invalid inputs, reference metrics, neutral measurements, and cache reuse.
+Across 33 D500/Z f/1 J5/Z5 captures, both CPU and GPU retain the preceding Auto
+parameters, rationale, every metric, and validation-render count exactly.
+Original hashes are unchanged. Paired prepared-photo measurements reduce Auto
+median from 0.96 to 0.46 s on RTX 5070, and 1.87 to 1.36 s on i5-12500H CPU.
+The slowest checked example improves from 2.16 to 1.05 s GPU and 4.95 to 3.78 s
+CPU. These local timings exclude import, startup, and noise advice; they do not
+remove first-use compilation or accelerate full-resolution rendering/export.
+
+All 573 tests pass in source and packaging environments, including GPU-disabled
+execution with six expected GPU-only skips. Sixty-six paired color-noise advice
+checks at original and Auto tones across all 33 photos retain strengths,
+statuses, and metrics exactly.
+Two actual 46-check desktop workflows retain pointer preview, history, noise
+advice, original comparison, JPEG/TIFF16, and saved edit/bit-depth restoration.
+For the same prepared photos, measured desktop Auto changes from 2.48 to 1.79 s
+on D500 CPU and 1.80 to 0.99 s on Z f GPU. Compact-window screenshots retain
+the preview and visible 16-bit export controls without overlap.
+
+Eight rebuilt-EXE checks reproduce source Auto and all metrics, noise advice,
+native-detail pixels, and full TIFF16 pixels. All eight JPEG/TIFF16 exports are
+byte-identical to the preceding EXE, with unchanged originals and no compiler
+or cache fallback. Two older saved recipes also retain exact native detail.
+The checked frozen D500 CPU Auto takes 2.72 s initially and 1.54 s after restart;
+Z f GPU Auto takes 0.75 s. These timings are separate from preparation/export
+and remain machine/run-dependent; first-use compilation still exists. The
+Windows EXE is refreshed locally without a public ZIP, installer, or photos.

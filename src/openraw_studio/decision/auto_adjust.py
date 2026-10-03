@@ -74,22 +74,24 @@ class _RenderedMetrics:
 
 
 def _pixels(preview):
-    if isinstance(preview, PreviewRgbImage):
-        pixels = np.asarray(preview.pixels, dtype=np.float32)
-    else:
-        pixels = np.asarray(preview, dtype=np.float32)
-    if (
-        pixels.size == 0
-        or pixels.ndim < 2
-        or pixels.shape[-1] != 3
-        or not np.isfinite(pixels).all()
-    ):
+    pixels = np.asarray(preview.pixels if isinstance(preview, PreviewRgbImage) else preview)
+    if pixels.size == 0 or pixels.ndim < 2 or pixels.shape[-1] != 3:
+        raise ValueError("Preview must contain finite RGB pixels")
+    if pixels.dtype == np.uint8:
+        # Rendered RGB8 is finite and bounded already; allocate only the result.
+        return np.divide(pixels.reshape(-1, 3), np.float32(255), dtype=np.float32)
+    pixels = np.asarray(pixels, dtype=np.float32)
+    if not np.isfinite(pixels).all():
         raise ValueError("Preview must contain finite RGB pixels")
     return np.clip(pixels.reshape(-1, 3) / 255, 0, 1)
 
 
+def _any_rgb(channels):
+    return channels[:, 0] | channels[:, 1] | channels[:, 2]
+
+
 def _clipping(pixels):
-    return float(np.mean(np.max(pixels, axis=1) >= 254 / 255))
+    return float(np.mean(_any_rgb(pixels >= 254 / 255)))
 
 
 class _RenderGuard:
@@ -129,9 +131,9 @@ class _RenderGuard:
             candidate_luma = candidate @ self.weights
             clipped_channels = candidate >= 254 / 255
             self.cache[key] = _RenderedMetrics(
-                _clipping(candidate), float(np.median(candidate_luma)),
+                float(np.mean(_any_rgb(clipped_channels))), float(np.median(candidate_luma)),
                 float(np.mean(self.usable_shadows & (candidate_luma <= 2 / 255))),
-                float(np.mean(np.any(self.headroom & clipped_channels, axis=1))),
+                float(np.mean(_any_rgb(self.headroom & clipped_channels))),
                 int(np.count_nonzero(self.highlight_detail & clipped_channels)),
                 self._shadow_mean(candidate_luma),
                 self.neutral.measure(candidate) if self.neutral is not None else None,
