@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from openraw_studio.raw.native.demosaic import LinearRgbImage
+from openraw_studio.raw.native.tonal import apply_tonal_regions as _apply_tonal_regions
 
 
 @dataclass(frozen=True)
@@ -114,15 +115,6 @@ def _apply_white_balance(
 def _apply_contrast(value: float, factor: float) -> float:
     pivot = 0.18
     return ((value - pivot) * factor) + pivot
-
-
-def _apply_tonal_regions(value: float, *, highlights: float, shadows: float) -> float:
-    if highlights == 0.0 and shadows == 0.0:
-        return value
-    position = _clamp01(value)
-    shadow_weight = 4.0 * position * (1.0 - position) ** 2
-    highlight_weight = position**2
-    return value + (shadows * 0.3 * shadow_weight) + (highlights * 0.3 * highlight_weight)
 
 
 def _apply_saturation(red: float, green: float, blue: float, *, factor: float) -> tuple[float, float, float]:

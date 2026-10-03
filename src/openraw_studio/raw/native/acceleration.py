@@ -7,11 +7,19 @@ import threading
 
 import numpy as np
 
+from openraw_studio.raw.native.tonal import apply_tonal_regions_array
+
 _KERNELS = r"""
 float3 finish_color(float3 c, __global const float *p) {
     c = (c - 0.18f) * p[12] + 0.18f;
     float3 pos = clamp(c, 0.0f, 1.0f);
+    float3 excess = fmax(c - 1.0f, 0.0f);
     c += p[13] * 0.3f * pos * pos + p[14] * 1.2f * pos * (1-pos) * (1-pos);
+    if (p[13] < 0) {
+        float amount = -p[13] * 0.3f;
+        float3 shoulder = 1.0f - amount*amount / (amount + (1.0f-2.0f*amount)*excess);
+        c = select(c, shoulder, excess > 0);
+    }
     if (p[16] > 0) {
         float l = dot(c, (float3)(0.2126f,0.7152f,0.0722f));
         c = l + (c-l) * p[15];
@@ -91,8 +99,7 @@ def tone_cpu(pixels, params):
         np.minimum(camera, params[17], out=camera)
     rgb = camera @ params[:9].reshape(3, 3).T
     rgb = (rgb - 0.18) * params[12] + 0.18
-    pos = np.clip(rgb, 0, 1)
-    rgb += params[13] * 0.3 * pos**2 + params[14] * 1.2 * pos * (1 - pos) ** 2
+    apply_tonal_regions_array(rgb, highlights=params[13], shadows=params[14])
     if params[16]:
         luma = (rgb * np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)).sum(
             axis=-1, keepdims=True
@@ -174,6 +181,16 @@ class OpenClRenderer:
 _local = threading.local()
 
 
+def _validate_tone_renderer(renderer):
+    sample = np.array([[[0.1, 0.5, 0.9], [0, 1, 0.3], [1.4, 2, 4]]], dtype=np.float32)
+    for options in ({}, {"highlights": -1}, {"highlights": -.3, "linear_saturation": True}):
+        params = color_parameters(np.eye(3), (1, 1, 1), **options)
+        actual = renderer.tone(sample, params)
+        if np.max(np.abs(actual.astype(int) - tone_cpu(sample, params).astype(int))) > 1:
+            return False
+    return True
+
+
 def get_gpu():
     """Choose a working GPU per worker; never prompt or require GPU drivers."""
     if os.environ.get("OPENRAW_GPU", "auto").lower() in {"0", "off", "cpu"}:
@@ -196,17 +213,7 @@ def get_gpu():
         for device in devices:
             try:
                 renderer = OpenClRenderer(cl, device)
-                sample = np.array([[[0.1, 0.5, 0.9], [0, 1, 0.3]]], dtype=np.float32)
-                params = color_parameters(np.eye(3), (1, 1, 1))
-                actual = renderer.tone(sample, params)
-                if (
-                    np.max(
-                        np.abs(
-                            actual.astype(int) - tone_cpu(sample, params).astype(int)
-                        )
-                    )
-                    <= 1
-                ):
+                if _validate_tone_renderer(renderer):
                     _local.gpu = renderer
                     break
             except Exception:

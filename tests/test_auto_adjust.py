@@ -16,6 +16,42 @@ from openraw_studio.raw.native.tone import PreviewRgbImage
 
 
 class AutoAdjustTests(unittest.TestCase):
+    def test_intermediate_strength_cannot_escape_highlight_validation(self):
+        pixels = np.full((100, 100, 3), 60, dtype=np.uint8)
+        pixels[40:60, 45:55] = 220
+        renders = []
+
+        def render(values):
+            renders.append(tuple(sorted(values.items())))
+            candidate = pixels.copy()
+            # Strong compression hides clipping that occurs at mid-strength.
+            if values["exposure"] > .1 and values["highlights"] > -.25:
+                candidate[40:60, 45:55] = 255
+            return candidate
+
+        endpoint_only = suggest_auto_adjustments_from_preview(pixels, render=render)
+        self.assertGreater(endpoint_only.exposure, .2)
+        middle = {key: value * .5 for key, value in endpoint_only.as_overrides().items()}
+        self.assertEqual(render(middle)[40, 45, 0], 255)
+        renders.clear()
+        result = suggest_auto_adjustments_from_preview(
+            pixels, render=render, detail_preview=pixels, render_detail=render,
+            validation_strengths=(.7, .5, .25),
+        )
+        self.assertGreater(result.exposure, 0)
+        for amount in (.25, .5, .7, 1):
+            edits = {key: value * amount for key, value in result.as_overrides().items()}
+            self.assertLess(render(edits)[40, 45, 0], 254)
+        self.assertIn("validated_strength_samples", result.metrics)
+
+    def test_strength_validation_rejects_invalid_inputs(self):
+        pixels = np.full((4, 4, 3), 100, dtype=np.uint8)
+        for strengths in ((0,), (-.5,), (1.1,), (float("nan"),), (float("inf"),)):
+            with self.assertRaisesRegex(ValueError, "Validation strengths"):
+                suggest_auto_adjustments_from_preview(pixels, render=lambda _: pixels, validation_strengths=strengths)
+        with self.assertRaisesRegex(ValueError, "requires a renderer"):
+            suggest_auto_adjustments_from_preview(pixels, validation_strengths=(.5,))
+
     def test_detail_guard_protects_highlights_missing_from_analysis(self):
         small = np.full((4, 4, 3), 60, dtype=np.uint8)
         detail = np.full((100, 100, 3), 60, dtype=np.uint8)

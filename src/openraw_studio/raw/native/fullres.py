@@ -7,6 +7,7 @@ import math
 from typing import Any
 
 from openraw_studio.raw.native.profiles import Matrix3
+from openraw_studio.raw.native.tonal import apply_tonal_regions_array
 
 
 @dataclass(frozen=True)
@@ -230,12 +231,7 @@ def _tone_encode_planes(
         channel -= 0.18
         channel *= contrast_factor
         channel += 0.18
-        if shadow_value != 0.0 or highlight_value != 0.0:
-            position = np.clip(channel, 0.0, 1.0)
-            if shadow_value != 0.0:
-                channel += shadow_value * 1.2 * position * ((1.0 - position) ** 2)
-            if highlight_value != 0.0:
-                channel += highlight_value * 0.3 * (position**2)
+        apply_tonal_regions_array(channel, highlights=highlight_value, shadows=shadow_value)
         np.clip(channel, 0.0, 1.0, out=channel)
         np.power(channel, 1.0 / 2.2, out=channel)
 

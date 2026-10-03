@@ -14,6 +14,8 @@ from openraw_studio.raw.native.dng import DngMetadata, DngMetadataError, DngMeta
 from openraw_studio.raw.native.fullres import render_bayer_full_resolution_rgb8
 from openraw_studio.raw.native.profiles import CameraColorProfile, Matrix3, find_camera_color_profile
 from openraw_studio.raw.native.regions import region_with_halo, sensor_region
+from openraw_studio.raw.native.tonal import apply_tonal_regions as _apply_tonal_regions
+from openraw_studio.raw.native.tonal import apply_tonal_regions_array
 
 
 MAKER_NOTE_TAG = 37500
@@ -910,6 +912,9 @@ def _bayer_blocks_to_rgb8_numpy(
     output_limit = len(output_lut) - 1
     saturation_factor = 1.0 + _clamp_float(saturation, -1.0, 1.0) * 0.75
     output = np.empty((out_height, out_width, 3), dtype=np.uint8)
+    contrast_factor = 1.0 + _clamp_float(contrast, -1.0, 1.0) * 0.75
+    highlights_value = _clamp_float(highlights, -1.0, 1.0)
+    shadows_value = _clamp_float(shadows, -1.0, 1.0)
 
     for row_start in range(0, out_height, chunk_rows):
         row_end = min(out_height, row_start + chunk_rows)
@@ -925,8 +930,15 @@ def _bayer_blocks_to_rgb8_numpy(
                 + matrix_luts[1][output_channel][camera_green]
                 + matrix_luts[2][output_channel][camera_blue]
             )
+            overflow = values > output_limit if highlights_value < 0 else None
+            upper = values[overflow].astype(np.float32) / 65535.0 if overflow is not None else None
             np.clip(values, 0, output_limit, out=values)
-            channels.append(encoded_lut[values])
+            encoded = encoded_lut[values]
+            if upper is not None and upper.size:
+                upper = (upper - .18) * contrast_factor + .18
+                apply_tonal_regions_array(upper, highlights=highlights_value, shadows=shadows_value)
+                encoded[overflow] = np.rint(np.clip(upper, 0, 1)**(1/2.2) * 255).astype(np.uint8)
+            channels.append(encoded)
 
         if saturation_factor != 1.0:
             red, green, blue = (channel.astype(np.float32) for channel in channels)
@@ -992,6 +1004,19 @@ def _bayer_blocks_to_rgb8_python(
     saturation_factor = 1.0 + _clamp_float(saturation, -1.0, 1.0) * 0.75
     output = bytearray(out_width * out_height * 3)
     out_index = 0
+    contrast_factor = 1.0 + _clamp_float(contrast, -1.0, 1.0) * 0.75
+    highlights_value = _clamp_float(highlights, -1.0, 1.0)
+    shadows_value = _clamp_float(shadows, -1.0, 1.0)
+
+    def encode(value):
+        # The old LUT endpoint was already white. A compressing shoulder needs
+        # the actual over-range value, without growing the lookup table.
+        if value > output_limit and highlights_value < 0:
+            return _encode_channel(_apply_tonal_regions(
+                _apply_contrast(value / 65535.0, contrast_factor),
+                highlights=highlights_value, shadows=shadows_value,
+            ))
+        return output_lut[_clamp_int(value, 0, output_limit)]
 
     if (red_index, green0_index, green1_index, blue_index) == (0, 1, 2, 3):
         for row in range(out_height):
@@ -1003,9 +1028,9 @@ def _bayer_blocks_to_rgb8_python(
                 camera_red = samples[row0 + source_column]
                 camera_green = (samples[row0 + source_column + 1] + samples[row1 + source_column]) >> 1
                 camera_blue = samples[row1 + source_column + 1]
-                red = output_lut[_clamp_int(rr_lut[camera_red] + gr_lut[camera_green] + br_lut[camera_blue], 0, output_limit)]
-                green = output_lut[_clamp_int(rg_lut[camera_red] + gg_lut[camera_green] + bg_lut[camera_blue], 0, output_limit)]
-                blue = output_lut[_clamp_int(rb_lut[camera_red] + gb_lut[camera_green] + bb_lut[camera_blue], 0, output_limit)]
+                red = encode(rr_lut[camera_red] + gr_lut[camera_green] + br_lut[camera_blue])
+                green = encode(rg_lut[camera_red] + gg_lut[camera_green] + bg_lut[camera_blue])
+                blue = encode(rb_lut[camera_red] + gb_lut[camera_green] + bb_lut[camera_blue])
                 if saturation_factor != 1.0:
                     red, green, blue = _apply_saturation8(red, green, blue, factor=saturation_factor)
                 output[out_index] = red
@@ -1029,9 +1054,9 @@ def _bayer_blocks_to_rgb8_python(
             camera_red = block_values[red_index]
             camera_green = (block_values[green0_index] + block_values[green1_index]) >> 1
             camera_blue = block_values[blue_index]
-            red = output_lut[_clamp_int(rr_lut[camera_red] + gr_lut[camera_green] + br_lut[camera_blue], 0, output_limit)]
-            green = output_lut[_clamp_int(rg_lut[camera_red] + gg_lut[camera_green] + bg_lut[camera_blue], 0, output_limit)]
-            blue = output_lut[_clamp_int(rb_lut[camera_red] + gb_lut[camera_green] + bb_lut[camera_blue], 0, output_limit)]
+            red = encode(rr_lut[camera_red] + gr_lut[camera_green] + br_lut[camera_blue])
+            green = encode(rg_lut[camera_red] + gg_lut[camera_green] + bg_lut[camera_blue])
+            blue = encode(rb_lut[camera_red] + gb_lut[camera_green] + bb_lut[camera_blue])
             if saturation_factor != 1.0:
                 red, green, blue = _apply_saturation8(red, green, blue, factor=saturation_factor)
             output[out_index] = red
@@ -1209,15 +1234,6 @@ def _camera_channel_scales(
 
 def _apply_contrast(value: float, factor: float) -> float:
     return ((value - 0.18) * factor) + 0.18
-
-
-def _apply_tonal_regions(value: float, *, highlights: float, shadows: float) -> float:
-    if highlights == 0.0 and shadows == 0.0:
-        return value
-    position = _clamp_float(value, 0.0, 1.0)
-    shadow_weight = 4.0 * position * (1.0 - position) ** 2
-    highlight_weight = position**2
-    return value + (shadows * 0.3 * shadow_weight) + (highlights * 0.3 * highlight_weight)
 
 
 def _encode_channel(value: float) -> int:

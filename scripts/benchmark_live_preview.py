@@ -21,7 +21,10 @@ def main():
     parser.add_argument("--cpu", action="store_true")
     parser.add_argument("--geometry", default="1080x720")
     parser.add_argument("--screenshot", action="store_true")
+    parser.add_argument("--highlights", type=float, help="Exercise a fixed highlight correction while dragging exposure")
     args = parser.parse_args()
+    if args.highlights is not None and not -1 <= args.highlights <= 1:
+        parser.error("--highlights must be within [-1, 1]")
     if args.cpu:
         os.environ["OPENRAW_GPU"] = "off"
     from PIL import Image, ImageTk
@@ -36,6 +39,8 @@ def main():
     app.output_dir = args.output
     app.messagebox.askyesno = lambda *_args, **_kwargs: True
     report = {
+        "source": str(args.source.resolve()),
+        "highlights": args.highlights,
         "mode": "CPU" if args.cpu else "auto",
         "slider_to_display_ms": [],
         "errors": [],
@@ -102,6 +107,8 @@ def main():
         if phase == "loading" and ready:
             report["first_raw_preview_ms"] = (perf_counter() - started) * 1000
             report["backend"] = app.preview_state_var.get()
+            if args.highlights is not None:
+                app.highlights_var.set(args.highlights)
             slider = next(
                 w
                 for w in descendants(app.root)

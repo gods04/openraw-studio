@@ -162,7 +162,8 @@ def suggest_auto_adjustments_for_photo(photo: InteractivePhoto) -> AutoAdjustSug
             "render_detail": lambda values: photo.render(values)[0],
         }
     return suggest_auto_adjustments_from_preview(
-        original, render=lambda values: analysis.render(values)[0], **detail
+        original, render=lambda values: analysis.render(values)[0],
+        validation_strengths=(.7, .5, .25), **detail
     )
 
 
@@ -177,6 +178,7 @@ def suggest_auto_adjustments_from_preview(
     render: Callable | None = None,
     detail_preview=None,
     render_detail: Callable | None = None,
+    validation_strengths: tuple[float, ...] = (),
 ) -> AutoAdjustSuggestion:
     """Analyze an unedited preview, optionally validating against the same renderer.
 
@@ -184,10 +186,17 @@ def suggest_auto_adjustments_from_preview(
     It must render from the original linear proxy, never from the edited preview.
     An optional finer-detail baseline/callback pair validates promising candidates
     without rendering every rejected candidate at the larger resolution.
+    Additional strength samples check the nonlinear exposure/highlight interaction
+    when a candidate relies on highlight compression. Full strength is always checked.
     This is a local heuristic, not a trained AI model or semantic scene classifier.
     """
     if (detail_preview is None) != (render_detail is None) or (render_detail is not None and render is None):
         raise ValueError("Detail validation requires a baseline, a detail renderer, and the analysis renderer")
+    if any(not np.isfinite(value) or not 0 < value <= 1 for value in validation_strengths):
+        raise ValueError("Validation strengths must be finite and within (0, 1]")
+    validation_strengths = tuple(dict.fromkeys(value for value in validation_strengths if value != 1))
+    if validation_strengths and render is None:
+        raise ValueError("Strength validation requires a renderer")
     pixels = _pixels(preview)
     luma = pixels @ np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
     p05, p10, median, p90, p95, p99 = np.quantile(
@@ -325,7 +334,19 @@ def suggest_auto_adjustments_from_preview(
         )
 
     def highlights_preserved(values):
-        return all(guard.highlights_preserved(values) for guard in guards)
+        # Compression can protect the endpoint while weaker settings still clip.
+        # Reject on the small proxy before spending work at display resolution.
+        samples = [values]
+        if values["highlights"] < 0:
+            samples.extend(
+                {key: value * strength for key, value in values.items()}
+                for strength in validation_strengths
+            )
+        for guard in guards:
+            for index, candidate in enumerate(samples):
+                if not guard.highlights_preserved(candidate) or (index and not guard.tones_preserved(candidate)):
+                    return False
+        return True
 
     # Positive contrast can undo an exposure lift and clip dim subjects. Test
     # that component first, retaining the other corrections where possible.
@@ -405,6 +426,7 @@ def suggest_auto_adjustments_from_preview(
                     "exposure_guarded": float(exposure_guarded),
                     "highlights_guarded": float(highlights_guarded),
                     "guard_strength": amount,
+                    "validated_strength_samples": float(1 + len(validation_strengths) if values["highlights"] < 0 else 1),
                 },
             )
     return suggestion

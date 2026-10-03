@@ -118,6 +118,8 @@ Then import `sample-data\openraw-synthetic.DNG` or
   black-preserving shadows, and rendered-highlight checks that also guard small
   bright subjects and individual color channels at two preview resolutions;
   joint exposure/contrast/highlight recovery retains useful corrections on difficult dim scenes
+- Smooth negative-highlight roll-off preserves distinctions above display white;
+  Auto also checks intermediate strengths when it relies on highlight compression
 - Folder export using current adjustments, per-photo saved edits, or Auto per
   photo; stopping finishes the current photo and cancels the remainder
 - Saved recipe detection that restores basic desktop adjustments for the same
@@ -151,6 +153,9 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - No AI model weights included
 - Auto is a deterministic luminance/color heuristic, not semantic AI or
   sensor highlight recovery. It cannot reconstruct clipped detail.
+- Negative Highlights now compress over-range display values smoothly. Existing
+  edits using that control may render differently; sensor saturation and the
+  current Nikon neutral highlight ceiling cannot be undone by this tone curve.
 - No portrait retouching algorithms yet
 - No film engine implementation yet
 - No public test photo dataset yet

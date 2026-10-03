@@ -465,7 +465,70 @@ sizes, not a GPU/CPU speedup comparison. No public ZIP was built or published.
 Inspection uses the current bilinear renderer; it does not add edge-aware
 demosaicing, denoise, 16-bit export, or support for unverified camera profiles.
 
-Next: better highlight tone rendering, reduced import latency, and
+### Smooth Over-Range Highlight Tones
+
+Negative Highlights previously subtracted a constant above linear display white:
+at -1, samples 1.4, 2, and 4 all encoded to 255. They now join a rational shoulder
+to the existing subwhite polynomial. For amount `a = -0.3 * highlights` and
+`x > 1`, the output is `1 - a*a / (a + (1 - 2*a)*(x - 1))`. At the join, both
+value `1-a` and slope `1-2*a` agree. The curve remains ordered and approaches
+white without a new hard cutoff. Shadows, subwhite behavior, and nonnegative
+Highlights retain their existing mathematical curves.
+
+`raw/native/tonal.py` shares scalar and in-place NumPy behavior across generic
+DNG, Nikon lookup previews, live proxies, and full CPU rendering. OpenCL implements
+the same expression; automatic device validation now checks the shoulder and both
+saturation modes against CPU output. Nikon lookup previews evaluate overflow
+above their old four-unit table directly, retaining distinctions at high exposure
+without growing the table or reducing its subwhite precision.
+The NumPy shoulder only evaluates over-white samples, avoiding full-frame
+temporary float arrays when most of a photograph needs no over-range compression.
+
+Full-strength Auto alone was insufficient with the new curve: one Z f portrait
+passed at 100% but failed six 25/50/70% checks across the two proxy resolutions.
+The full-photo Auto helper now validates 25%, 50%, and 70% as well as the endpoint
+whenever a candidate uses negative Highlights. Small-proxy checks run first;
+only surviving candidates pay for the display-resolution checks, and both reuse
+their existing per-call measurement caches. Budgets are not relaxed, and manual
+strength changes still use the fast live renderer without rerunning analysis.
+The low-level callback API can request additional validation strengths explicitly.
+
+This is not sensor highlight reconstruction or perceptual gamut mapping. Nikon's
+existing neutral camera-space ceiling remains; detail lost there or through sensor
+saturation cannot be restored by the shoulder. Saturation can still clip output
+channels, which Auto's rendered guards continue to measure. Existing recipes with
+negative Highlights may render differently. Neutral renders of all 23 selected
+private photos remain byte-identical to the pre-change GPU baseline.
+
+All 23 selected native Auto/full-resolution JPEG exports pass with unchanged
+sources. A separate audit at every integer strength from 1% to 100% and both
+256/960-pixel sizes passes 4,600 clipping/shadow checks. Runtime Auto samples
+25/50/70/100%, not all 100 positions, to bound its cost; the wider audit proves
+only these selected photos at these preview sizes. It is not a guarantee for
+every image, arbitrary fractional strength, or full-resolution highlight detail.
+
+The 322-test suite covers curve continuity/slope/order, subwhite compatibility,
+scalar/NumPy/GPU parity, legacy LUT overflow through +4 EV, device rejection,
+and intermediate-strength guard failures. GPU and CPU-only runs pass, with two
+GPU-only skips on CPU. Actual Tk checks cover the 16-step editing/export workflow,
+22 native-detail checks, and seven batch checks. The portrait Auto run takes
+0.65 s and retains +0.1751 EV versus +0.0875 EV before the curve change.
+
+The photo-set run takes 0.09-0.66 s for Auto plus its display render and 1.61-2.18 s
+for cached full-size JPEG export on the local RTX 5070. With Highlights fixed at
+-1, actual desktop exposure dragging takes 59 ms median and displays 49 frames
+during 50 edits; export takes 2.02 s. CPU-only median improves from 124 to 109 ms
+after masked shoulder evaluation, with export from 5.40 to 5.02 s. CPU dragging
+still displays only 16 frames during the same 50 edits and needs more work.
+Timings are local sample measurements, not universal performance promises.
+
+The refreshed EXE passes native Auto/export/detail checks on Z f GPU and D500
+CPU-only, preserving source hashes and the source-run adjustment settings.
+The portrait Z f exports in 2.09-2.12 s; preparation is 6.85 s for first-build JIT
+initialization and 2.20 s after process restart. The CPU sea sample exports in
+5.04 s with 1.17 s Auto. No public ZIP was generated or released.
+
+Next: faster CPU live tones, reduced import latency, improved color/gamut handling, and
 expand verified profiles only with real samples. The reference decoder, wrapper, binaries, private
 images, and comparison reports stay in ignored `output/`; none is a runtime or
 distributed dependency. Primary algorithm references include

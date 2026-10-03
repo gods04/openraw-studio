@@ -10,17 +10,31 @@ Nikon paths include F-series lossless, 12-bit D20 non-split (verified on 1 J5),
 and the verified Z f HE* 14-bit profile with approximate nonlinear mapping.
 Local Windows EXE builds are available; this is not a public installer release.
 
-Next quality work: better highlight tone rendering,
-faster first HE* import, broader verified HE profiles, broader camera calibration,
+Next quality work: faster CPU live tones and first HE* import, broader verified HE profiles,
+broader camera calibration and gamut handling,
 edge-aware demosaic, actual sensor highlight reconstruction, and denoise.
 Semantic portrait/scene AI and mobile remain later phases.
 
-Latest verified increment: true 100%/200% detail inspection uses bounded native
+Latest verified increment: a continuous negative-highlight shoulder retains distinctions
+above display white instead of applying a constant offset and clipping again.
+CPU, GPU, generic DNG, and Nikon preview/export paths share the curve. Auto now
+checks intermediate strengths for corrections relying on highlight compression;
+an endpoint-only check missed a real portrait regression at 25-70% strength.
+This is display-tone compression, not reconstruction of saturated sensor data.
+All 23 selected D500/Z f Auto/full-size exports pass with unchanged source hashes.
+A wider audit passes all 4,600 checks at integer strengths 1-100% and both proxy
+sizes. This remains sample-specific evidence, not a full-resolution guarantee.
+GPU live dragging with Highlights at -1 measures 59 ms median; CPU fallback is
+slower at 109 ms after limiting shoulder evaluation to over-white pixels.
+All 322 tests pass with GPU selection and CPU fallback (two GPU-only skips).
+The refreshed local EXE passes Z f GPU and D500 CPU-only export/detail checks.
+
+True 100%/200% detail inspection uses bounded native
 Nikon sensor regions, with an interpolation halo matching full-resolution export.
 It retains original comparison, live adjustments, click-centered zoom, and pan;
 Auto continues to analyze the whole photo. Real D500 and portrait Z f desktop
 checks verify exact displayed pixel pitch and equality with full RAW renders.
-GPU and CPU paths pass; all 313 tests pass (one GPU-only skip on CPU).
+That inspection increment passed its 313-test baseline on GPU and CPU.
 Native inspection does not add new format support or improve demosaic quality.
 
 Auto validates promising corrections at 960 pixels
