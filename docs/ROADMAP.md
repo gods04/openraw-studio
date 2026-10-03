@@ -8,8 +8,8 @@ JPEG/TIFF export, and cancellable per-photo batch modes. Supported compressed
 Nikon paths include F-series lossless and 12-bit D20 non-split (verified on 1 J5).
 Local Windows EXE builds are available; this is not a public installer release.
 
-Next quality work: Z f HE/HE* sensor decoding (mode identification and a read-only
-stream-framing diagnostic are implemented, pixel decoding is not), broader camera calibration, edge-aware
+Next quality work: Z f HE/HE* sensor decoding (experimental entropy and wavelet
+component reconstruction are verified, linear Bayer decoding is not), broader camera calibration, edge-aware
 demosaic, actual sensor highlight reconstruction, denoise, and full-resolution
 inspection. Semantic portrait/scene AI and mobile remain later phases.
 
@@ -17,9 +17,12 @@ Latest verified increment: Auto limits newly clipped bright channels relative to
 the available highlight detail, so small bright subjects do not disappear inside
 a whole-frame clipping allowance. It tries limiting exposure separately before
 reducing the entire correction. Fourteen private D500 exports and a real desktop
-moon-photo workflow pass; eight Z f HE* streams pass framing checks only.
-The next HE step is bounded entropy/sub-band decoding followed by sensor-plane
-validation, not enabling editing from the embedded JPEG.
+moon-photo workflow pass. Nine Z f HE* streams now match an independent development
+oracle through entropy, dequantization, and both wavelet directions, including
+partial-slice boundaries. Native component reconstruction takes about 2.4-2.8 s
+on these local samples, but those components are not yet linear Bayer pixels.
+The next HE step is verified Bayer/color inversion and nonlinear mapping followed
+by sensor-plane validation, not enabling editing from the embedded JPEG.
 
 ## Phase 0 - Foundation
 

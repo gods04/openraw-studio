@@ -1,4 +1,4 @@
-"""Read-only Nikon HE stream framing diagnostics; this does not decode pixels.
+"""Read-only Nikon HE diagnostics; this does not decode linear sensor pixels.
 
 Private paths and framing reports must stay in the ignored output directory.
 Format research: https://github.com/zidage/LibRaw/blob/main_alcedo/doc/nikon_he_public_algorithm.md
@@ -8,14 +8,17 @@ Only framing facts are used here, not the external decoder implementation.
 from __future__ import annotations
 
 import argparse
-from collections import Counter
 import json
 import mmap
+import time
+from collections import Counter
 from pathlib import Path
 
 from openraw_studio.core.files import sha256_file
 from openraw_studio.raw.native.dng import (
-    DngMetadataReader, _select_pixel_ifd, _tag_scalar_int,
+    DngMetadataReader,
+    _select_pixel_ifd,
+    _tag_scalar_int,
 )
 
 
@@ -84,7 +87,7 @@ def inspect_framing(data, *, offset, length, height):
     }
 
 
-def inspect_source(source):
+def inspect_source(source, *, decode_components=False):
     with source.open("rb") as handle, mmap.mmap(handle.fileno(), 0, access=mmap.ACCESS_READ) as data:
         _order, _endian, ifds = DngMetadataReader()._read_structure(data)
         raw = _select_pixel_ifd(ifds)
@@ -94,25 +97,46 @@ def inspect_source(source):
         length = _tag_scalar_int(raw, 279, "StripByteCounts")
         height = _tag_scalar_int(raw, 257, "ImageLength")
         width = _tag_scalar_int(raw, 256, "ImageWidth")
-        return {"width": width, "height": height, "strip_bytes": length,
-                **inspect_framing(data, offset=offset, length=length, height=height)}
+        result = {"width": width, "height": height, "strip_bytes": length,
+                  **inspect_framing(data, offset=offset, length=length, height=height)}
+        if decode_components:
+            from openraw_studio.raw.native.he import read_header
+            from openraw_studio.raw.native.he_transform import decode_component_planes
+
+            payload = data[offset:offset + length]
+            header = read_header(payload)
+            if (header.width, header.height) != (width, height):
+                raise ValueError("HE header dimensions disagree with the TIFF container")
+            started = time.perf_counter()
+            planes = decode_component_planes(payload)
+            result["experimental_components"] = {
+                "shape": list(planes.shape), "samples": int(planes.size),
+                "seconds": time.perf_counter() - started,
+                "ranges": [[int(plane.min()), int(plane.max())] for plane in planes],
+                "sensor_pixels_decoded": False,
+                "note": "Color-transform components only; not linear Bayer samples or export support",
+            }
+        return result
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("sources", nargs="+", type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--decode-components", action="store_true", help="Experimental coefficient/IDWT check, not a sensor decoder")
     args = parser.parse_args()
     ignored = Path(__file__).resolve().parents[1] / "output"
     if not args.output.resolve().is_relative_to(ignored):
         parser.error("Private diagnostics must stay inside the project's ignored output folder")
+    if args.output.resolve() in {source.resolve() for source in args.sources}:
+        parser.error("The diagnostic report must not overwrite an input photograph")
     records = []
     for source in args.sources:
         record = {"source": str(source), "pixels_decoded": False, "source_unchanged": None}
         before = None
         try:
             before = sha256_file(source)
-            record.update(inspect_source(source), ok=True)
+            record.update(inspect_source(source, decode_components=args.decode_components), ok=True)
         except (ValueError, OSError) as error:
             record.update(ok=False, error=str(error))
         if before is not None:

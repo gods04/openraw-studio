@@ -221,8 +221,54 @@ color rendering, or HE sensor support. The desktop remains preview-only for HE.
 ```
 
 Format research: [published HE stream description](https://github.com/zidage/LibRaw/blob/main_alcedo/doc/nikon_he_public_algorithm.md).
-The diagnostic is independently written from framing facts and local byte checks;
-no external HE decoder source or runtime was imported. Next work is entropy and
-sub-band reconstruction, inverse transforms, and independent sensor-plane
-comparison before any support flag changes. Upstream validation claims are not
-OpenRAW validation, and any future third-party integration needs its own review.
+The diagnostic is independently written from framing facts and local byte checks.
+Upstream validation claims are not OpenRAW validation, and any future third-party
+integration needs its own review.
+
+The experimental `raw/native/he.py`, `compiled_he.py`, and `he_transform.py` now
+implement bounded packet parsing, significance/unary/GCLI decoding, bit-plane
+unpacking, uniform dequantization, and horizontal/vertical 5/3 synthesis. The
+Numba packet loop has a checked Python fallback. Neither path is imported by the
+public RAW renderer/support decision. `decode_component_planes` returns four
+color-transform components, **not** linear Bayer pixels.
+
+Nine private 6064 x 4040 Z f HE* samples passed full-stream comparisons with an
+independently compiled development oracle: 220,705,200 dequantized coefficients
+and 220,487,040 reconstructed component values matched exactly, including slice
+boundaries and the partial final slice. All source SHA-256 hashes were unchanged.
+The slow validation implementation took 57.4 s on one sample; its compiled
+counterpart plus coefficient comparison took 1.8-1.9 s on the other eight.
+Native component reconstruction took 2.38-2.76 s per sample. These are local
+research timings, not HE preview/export performance or sensor-pixel validation.
+The oracle was `zidage/LibRaw` at
+`3f82ade9b65cfbb0a29020b76819b1a7b6e4ec78`, built only under ignored `output/`.
+
+Verified details differ from some older reference comments: every active band
+uses preceding-row prediction in this observed depth-hint profile; state resets
+every 16 precincts; bands 12/23 share the two unfiltered rows; and uniform integer
+reconstruction, not the older described midpoint formula, matches the oracle.
+Truncation levels are calculated from each file's WGT entries, not a copied
+camera table. Group padding is excluded before inverse wavelet synthesis.
+
+The experimental reader accepts the observed 14-bit, 5-horizontal/1-vertical
+configuration with 25 active depth-hint values of 3; raw-coded packets and other
+profiles fail explicitly. A 64-million-sample allocation bound applies. Synthetic
+tests cover multiple widths, predictor resets, negative lifting, partial slices,
+bitstream bounds/padding, damaged packets, transactional state, and JIT fallback.
+Synthetic width coverage does not establish support for additional cameras.
+The complete 269-test suite passes with automatic GPU selection and with
+`OPENRAW_GPU=off` (one GPU-only skip). Actual Tk verification passes 12 checks
+for HE preview-only labeling/disabled export and switching back to editable RAW.
+
+```powershell
+.\.venv\Scripts\python.exe scripts\inspect_nikon_he.py "E:\Photos\HE-sample.NEF" --decode-components --output output\he-components.json
+```
+
+Next: identify/validate the Nikon Bayer/color inverse and nonlinear sample
+mapping, then compare actual linear sensor planes and rendered output before
+changing any support flags. The generic Star-Tetrix inverse is a research lead,
+not a verified Nikon mapping. The reference decoder, wrapper, binaries, private
+images, and comparison reports stay in ignored `output/`; none is a runtime or
+distributed dependency. Primary algorithm references include
+[JPEG XS decoder design](https://github.com/OpenVisualCloud/SVT-JPEG-XS/blob/main/documentation/decoder/svt-jpegxs-decoder-design.md)
+and [Richter et al., Bayer CFA Pattern Compression With JPEG XS](https://doi.org/10.1109/TIP.2021.3095421).

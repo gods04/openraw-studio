@@ -40,6 +40,19 @@ local file observations, not external decoder implementation code. This does
 not add an HE pixel decoder or a LibRaw runtime dependency.
 https://github.com/zidage/LibRaw/blob/main_alcedo/doc/nikon_he_public_algorithm.md
 
+Experimental HE entropy and inverse-wavelet modules are project-authored from
+format facts, mathematical operations, and synthetic/local numerical validation.
+Technical references include the JPEG XS decoder documentation and the uniform
+quantizer reconstruction described by the SVT-JPEG-XS project. No SVT-JPEG-XS or
+LibRaw decoder implementation, lookup-table implementation, or binary is bundled.
+The independently compiled reference stays outside the distributed app and is
+used only to compare intermediate numeric results during development.
+https://github.com/OpenVisualCloud/SVT-JPEG-XS/blob/main/documentation/decoder/svt-jpegxs-decoder-design.md
+https://github.com/OpenVisualCloud/SVT-JPEG-XS/blob/main/Source/Lib/Decoder/Codec/Dequant.c
+
+This attribution and the MIT source license do not establish patent clearance
+for a future HE/JPEG XS implementation; distribution requires a separate review.
+
 Lucide Icons
 ------------
 

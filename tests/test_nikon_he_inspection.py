@@ -1,4 +1,7 @@
 import unittest
+from io import StringIO
+from pathlib import Path
+from unittest.mock import patch
 
 from test_photo_catalog import load_script
 
@@ -73,6 +76,16 @@ class NikonHeInspectionTests(unittest.TestCase):
         for offset, length in ((-1, len(data)), (0, len(data) + 1), (0, -1)):
             with self.subTest(offset=offset, length=length), self.assertRaises(ValueError):
                 self.probe.inspect_framing(data, offset=offset, length=length, height=72)
+
+    def test_report_cannot_overwrite_input(self):
+        source = Path(__file__).resolve().parents[1] / "output" / "private-test.NEF"
+        with (
+            patch("sys.argv", ["inspect_nikon_he", str(source), "--output", str(source)]),
+            patch("sys.stderr", new=StringIO()),
+            self.assertRaises(SystemExit) as raised,
+        ):
+            self.probe.main()
+        self.assertEqual(raised.exception.code, 2)
 
 
 if __name__ == "__main__":

@@ -7,6 +7,20 @@ This document is planning guidance, not legal advice. Before selling a packaged
 app, bundling third-party binaries, or changing the license strategy, get a real
 legal review.
 
+## Current Native HE Research Boundary
+
+The active engine direction is OpenRAW-owned decoding and rendering, not a
+required darktable/LibRaw backend. External decoders used for private development
+comparisons are not bundled into the app. Experimental HE entropy/wavelet work
+does not yet enable HE sensor editing or export.
+
+Source-code licensing and codec patent clearance are separate questions.
+Fraunhofer publishes a JPEG XS licensing program with intoPIX; an independently
+written MIT implementation is not evidence that a future HE/JPEG XS distribution
+is patent-cleared. Review the applicable implementation, territories, and release
+model with qualified counsel before distributing that functionality.
+Reference: [Fraunhofer JPEG XS](https://www.iis.fraunhofer.de/en/ff/amm/content-production/jpegxs.html).
+
 ## Current Recommendation
 
 Keep OpenRAW Studio open-source for now, but design it so future commercial
