@@ -556,7 +556,7 @@ def _scalar_int(value: Any, *, default: int | None = None) -> int | None:
         return default
     if isinstance(value, bool):
         return None
-    if isinstance(value, tuple):
+    if isinstance(value, (tuple, bytes)):
         if len(value) != 1:
             return None
         value = value[0]
@@ -572,7 +572,7 @@ def _scalar_int(value: Any, *, default: int | None = None) -> int | None:
 def _scalar_float(value: Any) -> float | None:
     if value is None or isinstance(value, bool):
         return None
-    if isinstance(value, tuple):
+    if isinstance(value, (tuple, bytes)):
         if len(value) != 1:
             return None
         value = value[0]
@@ -588,7 +588,7 @@ def _scalar_float(value: Any) -> float | None:
 def _tuple_int(value: Any) -> tuple[int, ...]:
     if value is None or isinstance(value, bool):
         return ()
-    values = value if isinstance(value, tuple) else (value,)
+    values = value if isinstance(value, (tuple, bytes)) else (value,)
     try:
         return tuple(int(item) for item in values if not isinstance(item, bool))
     except (TypeError, ValueError):

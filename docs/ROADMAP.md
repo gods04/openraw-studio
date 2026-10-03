@@ -10,12 +10,29 @@ Nikon paths include F-series lossless, 12-bit D20 non-split (verified on 1 J5),
 and the verified Z f HE* 14-bit profile with approximate nonlinear mapping.
 Local Windows EXE builds are available; this is not a public installer release.
 
-Next quality work: reduced metadata overhead and first HE* import, broader verified HE profiles,
+Next quality work: first HE* import, broader verified HE profiles,
 broader camera calibration and gamut handling,
 edge-aware demosaic, actual sensor highlight reconstruction, and denoise.
 Semantic portrait/scene AI and mobile remain later phases.
 
-Latest verified increment: vectorized Nikon preview tables and bounded RGB
+Latest verified increment: TIFF binary fields stay compact instead of repeatedly
+expanding and converting integer tuples; numeric fields use checked bulk parsing.
+All 363 tests pass on GPU and CPU-only (two GPU-only skips). The 6,847-file metadata
+inventory matches its earlier results, including six rejected containers; this
+does not imply all those files were decoded. The 23-photo D500/Z f set retains
+identical metadata, sensor data, 69 previews, and 23 full-size renders. Three
+additional 1 J5 decode/full-render comparisons pass with unchanged sources.
+The same D500 desktop export improves from 2.65 to 2.38 s CPU and 1.64 to 1.36 s
+GPU. Desktop editing, JPEG/TIFF, native inspection, and batch checks pass.
+First-use compilation remains separate work; no format support or Auto behavior
+was expanded. These are local sample timings, not universal performance promises.
+The refreshed EXE verifies compiled CPU/GPU operation and restart cache reuse;
+D500 CPU export is 2.34-2.53 s warm and Z f GPU export 1.42 s. GPU HE* preparation
+still takes 6.34 s on first compilation and 2.24 s after restart.
+
+### Earlier Verification
+
+Vectorized Nikon preview tables and bounded RGB
 histogram/QC reduce the same D500 desktop export from 3.11 to 2.65 s on CPU and
 1.95 to 1.64 s on GPU. All 69 previews and histograms across 23 private D500/Z f
 photos match the retained scalar references exactly, with unchanged originals.
@@ -26,8 +43,6 @@ not a new Auto algorithm or camera profile. Timings are local sample results.
 First HE* import and repeated MakerNote conversion remain optimization targets.
 The refreshed EXE passes D500 CPU and Z f CPU/GPU export/detail checks, including
 restart cache reuse. D500 CPU export is 2.52 s warm; Z f GPU export is 1.56-1.62 s.
-
-### Earlier Verification
 
 Compiled, bounded-memory CPU Bayer interpolation reuses
 the fused tone kernel for full-size exports and native detail. On the same D500

@@ -1327,7 +1327,7 @@ def _makernote_byte_order(metadata: DngMetadata) -> str:
 
 def _required_bits_per_sample(ifd: TiffIfd) -> int:
     value = ifd.tags.get(258).value if 258 in ifd.tags else None
-    if isinstance(value, tuple):
+    if isinstance(value, (tuple, bytes)):
         if len(value) != 1:
             raise NikonCompressionError("Nikon compressed BitsPerSample must be scalar")
         value = value[0]
@@ -1348,7 +1348,7 @@ def _optional_int(ifd: TiffIfd, tag_code: int, default: int | None = None) -> in
     if tag is None:
         return default
     value = tag.value
-    if isinstance(value, tuple):
+    if isinstance(value, (tuple, bytes)):
         if len(value) != 1:
             return default
         value = value[0]
@@ -1414,7 +1414,7 @@ def _tag_ascii(ifd: TiffIfd, tag_code: int) -> str | None:
 
 def _tag_int(ifd: TiffIfd, tag_code: int) -> int | None:
     value = ifd.tags.get(tag_code).value if tag_code in ifd.tags else None
-    if isinstance(value, tuple):
+    if isinstance(value, (tuple, bytes)):
         if len(value) != 1:
             return None
         value = value[0]
@@ -1430,7 +1430,7 @@ def _tag_int_tuple(ifd: TiffIfd, tag_code: int) -> tuple[int, ...] | None:
     value = ifd.tags.get(tag_code).value if tag_code in ifd.tags else None
     if value is None:
         return None
-    values = value if isinstance(value, tuple) else (value,)
+    values = value if isinstance(value, (tuple, bytes)) else (value,)
     try:
         return tuple(int(item) for item in values)
     except (TypeError, ValueError):
@@ -1463,7 +1463,7 @@ def _tag_float_tuple(ifd: TiffIfd, tag_code: int) -> tuple[float, ...] | None:
     tag = ifd.tags.get(tag_code)
     if tag is None:
         return None
-    values = tag.value if isinstance(tag.value, tuple) else (tag.value,)
+    values = tag.value if isinstance(tag.value, (tuple, bytes)) else (tag.value,)
     try:
         result = tuple(float(item) for item in values)
     except (TypeError, ValueError):
@@ -1496,7 +1496,7 @@ def _optional_int_tuple(ifd: TiffIfd, tag_code: int) -> tuple[int, ...] | None:
 def _value_int_tuple(value: Any) -> tuple[int, ...] | None:
     if value is None:
         return None
-    values = value if isinstance(value, tuple) else (value,)
+    values = value if isinstance(value, (tuple, bytes)) else (value,)
     try:
         return tuple(int(item) for item in values)
     except (TypeError, ValueError):

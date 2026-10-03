@@ -680,3 +680,44 @@ export takes 3.16 s including first-use Bayer compilation, then 2.52 s warm
 preparation still takes 6.47 s on first compilation and 2.26 s after restart;
 these timings exclude executable startup. All source hashes remain unchanged.
 No public ZIP was generated or released.
+
+### Compact TIFF Metadata
+
+TIFF `UNDEFINED` fields now remain immutable `bytes` internally instead of
+expanding into integer tuples and repeatedly converting back for MakerNote
+parsing. `TiffTag.value` consumers that inspect opaque fields should use bytes;
+the public inspection/recipe summaries keep their original tuple/JSON shape.
+Numeric accessors treat binary values as byte numbers, not ASCII numerals, and
+still accept legacy tuple metadata. Byte, integer, and floating-point numeric
+fields use one `struct.unpack` after the existing payload bounds check. Rational,
+ASCII, scalar/array, byte-order, and unsupported-type behavior is preserved.
+The parser does not retain mapped-file views or introduce a stale metadata cache.
+
+All 363 tests pass with GPU and CPU-only (two GPU-only skips). New tests cover
+both byte orders, every numeric field type, empty/single/array values, nonfinite
+floats and signed zero, large opaque fields, mapped-file lifetime, malformed
+ranges, JSON summaries, and legacy tuple decode/support parity. Private audits
+retain identical tag values, public metadata, support reports, decoded planes,
+69 preview renders and 23 full-size renders across the selected D500/Z f set.
+Three additional real 1 J5 files retain identical decoded/full-render output.
+All 26 decoded sources remain hash-identical. The full 6,847-file read-only
+inventory also matches its old results, including the same six rejected
+containers. Inventory agreement is not a sensor-decode claim for those files.
+
+Across the 23-photo set, mean metadata read plus MakerNote summary time falls
+from 24.3 to 8.9 ms. Retained opaque-tag storage averages 1.43 MB before and
+0.18 MB after; this is not total process memory. The same D500 actual desktop
+export improves from 2.65 to 2.38 s CPU and 1.64 to 1.36 s GPU. Live editing
+remains 62 ms median on CPU and 59 ms on GPU. The 16-step Z f CPU desktop workflow,
+22 native-detail checks, and seven batch checks pass. These local timings do not
+promise universal latency or reduced JIT startup. First HE* compilation remains
+an independent optimization target; no camera profile or image algorithm changed.
+
+The refreshed EXE passes D500 CPU and Z f CPU/GPU Auto/export/detail checks and
+restart cache reuse, with no compiler fallback and unchanged source hashes.
+D500 CPU sea export takes 2.82 s including first Bayer compilation and
+2.34-2.53 s across two warm runs (previous bundle: 2.52 s warm). The Z f portrait
+exports in 2.97-3.00 s CPU and 1.42 s GPU. GPU HE* preparation still takes
+6.34 s initially and 2.24 s after restart, excluding executable startup.
+Warm Auto settings match the preceding bundle. No public ZIP was generated or
+released; these measurements do not imply first-use compilation was solved.

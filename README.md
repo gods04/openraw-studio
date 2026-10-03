@@ -69,7 +69,8 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - `openraw process --dry-run` recipe/artifact planner for one RAW-like file
 - `openraw batch` folder export for currently renderable DNG/Nikon files
 - OpenRAW Native RAW engine scaffold as the default backend
-- Native DNG/TIFF metadata reader for the first RAW-engine milestone
+- Native DNG/TIFF metadata reader with compact binary fields and batch numeric
+  parsing; inspection and recipe metadata remain JSON-compatible
 - Nikon `.NEF` / `.NRW` metadata import and embedded JPEG preview extraction
 - Nikon MakerNote summary for compressed NEF render blockers, including
   0x0096 compression-table and 0x008c curve/table detection

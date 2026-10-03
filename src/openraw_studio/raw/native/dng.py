@@ -24,7 +24,7 @@ class DngMetadataError(ValueError):
 
 @dataclass(frozen=True)
 class TiffTag:
-    """One parsed TIFF/DNG tag."""
+    """One parsed TIFF/DNG tag; UNDEFINED payloads retain their binary bytes."""
 
     code: int
     name: str
@@ -466,7 +466,8 @@ def _read_tag_value(data: bytes, endian: str, field_type: int, count: int, value
     if type_name == "ASCII":
         return payload.split(b"\x00", 1)[0].decode("utf-8", errors="replace")
     if type_name == "UNDEFINED":
-        return tuple(payload)
+        # Opaque MakerNotes can be large and are consumed as bytes by decoders.
+        return payload
     if type_name in {"RATIONAL", "SRATIONAL"}:
         values = []
         pair_fmt = endian + fmt
@@ -476,14 +477,11 @@ def _read_tag_value(data: bytes, endian: str, field_type: int, count: int, value
             values.append(float(numerator) / float(denominator) if denominator else None)
         return _collapse(values)
 
-    values = [
-        struct.unpack(endian + fmt, payload[index * type_size : (index + 1) * type_size])[0]
-        for index in range(count)
-    ]
+    values = struct.unpack(endian + str(count) + fmt, payload)
     return _collapse(values)
 
 
-def _collapse(values: list[Any]) -> Any:
+def _collapse(values: list[Any] | tuple[Any, ...]) -> Any:
     if len(values) == 1:
         return values[0]
     return tuple(values)
@@ -492,7 +490,7 @@ def _collapse(values: list[Any]) -> Any:
 def _positive_offsets(value: Any) -> tuple[int, ...]:
     if value is None or isinstance(value, bool):
         return ()
-    values = value if isinstance(value, tuple) else (value,)
+    values = value if isinstance(value, (tuple, bytes)) else (value,)
     offsets: list[int] = []
     for item in values:
         try:
@@ -510,7 +508,8 @@ def _build_summary(ifds: list[TiffIfd]) -> dict[str, Any]:
         for tag in ifd.tags.values():
             key = SUMMARY_TAGS.get(tag.name)
             if key and key not in summary:
-                summary[key] = tag.value
+                # Keep inspection/recipe summaries JSON-compatible and stable.
+                summary[key] = tuple(tag.value) if isinstance(tag.value, bytes) else tag.value
 
     if "dng_version" in summary and isinstance(summary["dng_version"], tuple):
         summary["dng_version_text"] = ".".join(str(part) for part in summary["dng_version"])
@@ -589,7 +588,7 @@ def _optional_tag_int(ifd: TiffIfd, tag_code: int) -> int | None:
 
 
 def _scalar_int_value(value: Any) -> int:
-    if isinstance(value, tuple):
+    if isinstance(value, (tuple, bytes)):
         if len(value) != 1:
             raise DngMetadataError("metadata value must be scalar")
         value = value[0]
@@ -678,7 +677,7 @@ def _require_tag_value(ifd: TiffIfd, tag_code: int, label: str) -> Any:
 
 
 def _tuple_of_ints(value: Any) -> tuple[int, ...]:
-    values = value if isinstance(value, tuple) else (value,)
+    values = value if isinstance(value, (tuple, bytes)) else (value,)
     return tuple(int(item) for item in values)
 
 
