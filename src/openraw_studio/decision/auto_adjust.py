@@ -106,7 +106,7 @@ def suggest_auto_adjustments_from_preview(
         dark_fraction > 0.90 and float(np.mean(luma > 0.25)) > 0.001
     )
     high_key = p10 > 0.62 and median > 0.72
-    backlit = p10 < 0.10 and p95 > 0.84 and median < 0.4
+    backlit = p10 < 0.10 and p99 > 0.84 and median < 0.4
     scene = (
         "Low-key"
         if low_key
@@ -155,8 +155,12 @@ def suggest_auto_adjustments_from_preview(
         (chroma / np.maximum(maximum, 0.001) < 0.22) & (luma > 0.15) & (luma < 0.8)
     )
     neutral_fraction = float(np.mean(neutral))
+    dominant_channel_fraction = float(
+        np.bincount(np.argmax(pixels, axis=1), minlength=3).max() / len(pixels)
+    )
+    color_dominated = dominant_channel_fraction > 0.85 and neutral_fraction < 0.50
     warmth = tint = 0.0
-    if neutral_fraction >= 0.08 and np.count_nonzero(neutral) >= min(8, len(pixels)):
+    if not color_dominated and neutral_fraction >= 0.08 and np.count_nonzero(neutral) >= min(8, len(pixels)):
         red, green, blue = np.median(pixels[neutral], axis=0)
         warmth = float(
             np.clip(np.log(max(blue, 0.01) / max(red, 0.01)) * 0.65, -0.12, 0.12)
@@ -206,24 +210,60 @@ def suggest_auto_adjustments_from_preview(
             "shadow_fraction": dark_fraction,
             "highlight_fraction_before": clipped,
             "neutral_fraction": neutral_fraction,
+            "dominant_channel_fraction": dominant_channel_fraction,
         },
     )
     if render is None:
         return suggestion
 
-    # Back off the complete correction until the actual renderer respects the
-    # highlight budget. These small proxy renders never decode the RAW again.
+    # Positive contrast can undo an exposure lift and clip dim subjects. Test
+    # that component first, retaining the other corrections where possible.
+    luma_weights = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
+    usable_shadows = (luma > 8 / 255) & (luma < 0.25)
+
+    def rendered_metrics(values):
+        candidate = _pixels(render(values))
+        if candidate.shape != pixels.shape:
+            raise ValueError("Auto validation render must match the baseline preview dimensions")
+        candidate_luma = candidate @ luma_weights
+        crushed = float(np.mean(usable_shadows & (candidate_luma <= 2 / 255)))
+        return _clipping(candidate), float(np.median(candidate_luma)), crushed
+
+    def tones_preserved(candidate_median, crushed):
+        preserve_midtones = exposure >= 0 and median < 0.5 and not low_key
+        return crushed <= 0.005 and (
+            not preserve_midtones or candidate_median >= median - 0.01
+        )
+
+    initial_values = suggestion.as_overrides()
+    initial_metrics = rendered_metrics(initial_values)
+    contrast_guarded = False
+    if suggestion.contrast > 0 and not tones_preserved(*initial_metrics[1:]):
+        for fraction in (0.5, 0.0):
+            values = {**initial_values, "contrast": round(suggestion.contrast * fraction, 4)}
+            checked = rendered_metrics(values)
+            if tones_preserved(*checked[1:]) or fraction == 0:
+                suggestion = replace(suggestion, contrast=values["contrast"])
+                initial_values, initial_metrics = values, checked
+                contrast_guarded = True
+                break
+
+    # Back off the complete correction until rendered highlights AND dark
+    # subjects stay inside their budgets. Proxy renders do not decode RAW again.
     allowance = clipped + 0.005
     for amount in (1.0, 0.75, 0.5, 0.25, 0.0):
         values = {
             key: round(value * amount, 4)
             for key, value in suggestion.as_overrides().items()
         }
-        candidate = _pixels(render(values))
-        after = _clipping(candidate)
-        if after <= allowance or amount == 0:
+        after, candidate_median, crushed = (
+            initial_metrics if amount == 1.0 else rendered_metrics(values)
+        )
+        if (after <= allowance and tones_preserved(candidate_median, crushed)) or amount == 0:
             notes = suggestion.rationale + (
-                ("Reduced correction to protect highlights.",) if amount < 1 else ()
+                ("Reduced contrast to preserve dark subjects.",) if contrast_guarded else ()
+            ) + (
+                ("Reduced correction to protect highlights and shadows.",) if amount < 1 else ()
             )
             return replace(
                 suggestion,
@@ -232,6 +272,9 @@ def suggest_auto_adjustments_from_preview(
                 metrics={
                     **suggestion.metrics,
                     "highlight_fraction_after": after,
+                    "median_luma_after": candidate_median,
+                    "new_shadow_clipping_fraction": crushed,
+                    "contrast_guarded": float(contrast_guarded),
                     "guard_strength": amount,
                 },
             )

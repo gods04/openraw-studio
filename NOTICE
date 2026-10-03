@@ -30,6 +30,11 @@ the input NEF. Independent development comparisons do not introduce a LibRaw
 runtime dependency. Format-data reference:
 https://github.com/LibRaw/LibRaw/blob/master/src/decoders/decoders_dcraw.cpp
 
+Newer Nikon compression mode identifiers and the MakerNote 0x0051 field offset
+follow the ExifTool Nikon tag reference. OpenRAW's metadata parser is
+project-authored. Identifying HE/HE* does not implement their sensor codecs.
+https://github.com/exiftool/exiftool/blob/master/lib/Image/ExifTool/Nikon.pm
+
 Lucide Icons
 ------------
 

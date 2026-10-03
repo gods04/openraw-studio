@@ -45,6 +45,39 @@ class AutoAdjustTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             suggest_auto_adjustments_from_preview(PreviewRgbImage(0, 0, (), "gamma-2.2"))
 
+    def test_render_guard_reduces_contrast_that_darkens_a_dim_subject(self):
+        preview = PreviewRgbImage(10, 10, ((90, 90, 90),) * 100, "gamma-2.2")
+        def render(values):
+            return np.full((10, 10, 3), 65 if values["contrast"] > .01 else 105, dtype=np.uint8)
+        suggestion = suggest_auto_adjustments_from_preview(preview, render=render)
+        self.assertEqual(suggestion.contrast, 0)
+        self.assertGreater(suggestion.exposure, 0)
+        self.assertEqual(suggestion.metrics["contrast_guarded"], 1)
+        self.assertGreater(suggestion.metrics["median_luma_after"], 90 / 255)
+
+    def test_render_guard_protects_shadow_detail_even_when_median_is_bright(self):
+        pixels = ((25, 25, 25),) * 20 + ((150, 150, 150),) * 80
+        preview = PreviewRgbImage(10, 10, pixels, "gamma-2.2")
+        def render(values):
+            candidate = np.array(pixels, dtype=np.uint8)
+            if values["contrast"] > .01:
+                candidate[:20] = 0
+            return candidate
+        suggestion = suggest_auto_adjustments_from_preview(preview, render=render)
+        self.assertEqual(suggestion.contrast, 0)
+        self.assertEqual(suggestion.metrics["new_shadow_clipping_fraction"], 0)
+
+    def test_render_guard_rejects_mismatched_sampling(self):
+        preview = PreviewRgbImage(2, 2, ((90, 90, 90),) * 4, "gamma-2.2")
+        with self.assertRaisesRegex(ValueError, "baseline preview dimensions"):
+            suggest_auto_adjustments_from_preview(preview, render=lambda _: np.zeros((3, 3, 3)))
+
+    def test_small_bright_background_does_not_trigger_positive_contrast(self):
+        pixels = ((15, 15, 15),) * 30 + ((70, 70, 70),) * 68 + ((245, 245, 245),) * 2
+        suggestion = suggest_auto_adjustments_from_preview(PreviewRgbImage(10, 10, pixels, "gamma-2.2"))
+        self.assertEqual(suggestion.scene, "High contrast")
+        self.assertEqual(suggestion.contrast, 0)
+
     def test_dark_flat_preview_gets_lift_and_contrast(self) -> None:
         preview = PreviewRgbImage(
             width=2,
@@ -104,6 +137,18 @@ class AutoAdjustTests(unittest.TestCase):
         suggestion = suggest_auto_adjustments_from_preview(preview)
 
         self.assertEqual(suggestion.tint, 0.0)
+
+    def test_warm_sky_with_nearly_neutral_clouds_is_not_a_gray_card(self):
+        pixels = ((170, 110, 70),) * 75 + ((150, 130, 120),) * 25
+        suggestion = suggest_auto_adjustments_from_preview(PreviewRgbImage(10, 10, pixels, "gamma-2.2"))
+        self.assertGreater(suggestion.metrics["neutral_fraction"], .08)
+        self.assertEqual((suggestion.warmth, suggestion.tint), (0, 0))
+
+    def test_blue_sea_with_pale_clouds_keeps_its_color(self):
+        pixels = ((40, 100, 150),) * 85 + ((120, 130, 150),) * 15
+        suggestion = suggest_auto_adjustments_from_preview(PreviewRgbImage(10, 10, pixels, "gamma-2.2"))
+        self.assertGreater(suggestion.metrics["neutral_fraction"], .08)
+        self.assertEqual((suggestion.warmth, suggestion.tint), (0, 0))
 
     def test_suggestion_exports_recipe_overrides(self) -> None:
         preview = PreviewRgbImage(width=1, height=1, pixels=((128, 128, 128),), transfer="gamma-1")

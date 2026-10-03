@@ -348,6 +348,10 @@ def build_workspace(app, filedialog, messagebox):
         lambda e: app.export_canvas.itemconfigure(export_window, width=e.width),
     )
     root.bind_all("<MouseWheel>", app._scroll_controls, add="+")
+    app.support_notice_label = ttk.Label(
+        controls, textvariable=app.support_notice_var,
+        style="Warning.TLabel", wraplength=238,
+    )
     app.histogram_canvas = tk.Canvas(
         controls, height=76, width=240, background="#f7f8f9", highlightthickness=0
     )

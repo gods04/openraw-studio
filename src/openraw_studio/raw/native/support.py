@@ -201,6 +201,14 @@ def _inspect_nikon_raw(source_path: Path, *, dng_reader: DngMetadataReader | Non
 
     blocker_details = _render_blocker_details(render_issues)
     next_steps = _nikon_next_steps(render_issues, has_embedded_preview=embedded_preview_label is not None)
+    high_efficiency = maker_note is not None and maker_note.compression_mode in {13, 14}
+    if high_efficiency:
+        next_steps = (
+            "The camera JPEG opens automatically when available; RAW adjustments and export remain unavailable.",
+            "For future photos, select RAW recording > Lossless compression in the camera; "
+            "existing HE/HE* files cannot be changed by changing this setting. "
+            "Lossless files still need a supported sensor layout.",
+        )
 
     if embedded_preview_label is None:
         details.append("Preview: embedded JPEG not found")
@@ -213,6 +221,8 @@ def _inspect_nikon_raw(source_path: Path, *, dng_reader: DngMetadataReader | Non
             can_render=False,
             status="import_only",
             reason=(
+                f"Nikon {maker_note.compression_name} RAW decoding is not implemented, and no embedded JPEG was found."
+                if high_efficiency else
                 "Nikon RAW metadata import is supported; preview/export are blocked because this file has no "
                 "embedded JPEG preview and native sensor rendering is not implemented for its payload yet."
             ),
@@ -230,7 +240,12 @@ def _inspect_nikon_raw(source_path: Path, *, dng_reader: DngMetadataReader | Non
         can_preview=True,
         can_render=False,
         status="preview_only",
-        reason="Nikon RAW embedded preview is supported; final export is blocked by native sensor rendering limits.",
+        reason=(
+            f"Nikon {maker_note.compression_name}: camera JPEG preview only. "
+            "RAW adjustments and final export are not supported for this compression yet."
+            if high_efficiency else
+            "Nikon RAW embedded preview is supported; final export is blocked by native sensor rendering limits."
+        ),
         details=tuple(details),
         next_steps=next_steps,
         metadata=support_metadata,
@@ -294,7 +309,8 @@ def _nikon_makernote_details(maker_note: NikonMakerNoteSummary | None) -> list[s
 
     details = [f"MakerNote: {maker_note.kind}, {maker_note.tag_count} tags"]
     if maker_note.compression_mode is not None:
-        details.append(f"Nikon compression mode tag 0x0093: {maker_note.compression_mode}")
+        name = f" ({maker_note.compression_name})" if maker_note.compression_name else ""
+        details.append(f"Nikon compression mode tag {maker_note.compression_source}: {maker_note.compression_mode}{name}")
     if maker_note.compression_table_byte_count is not None:
         prefix = f", prefix {maker_note.compression_table_prefix}" if maker_note.compression_table_prefix else ""
         details.append(f"Nikon compression table tag 0x0096: {maker_note.compression_table_byte_count} bytes{prefix}")
@@ -329,7 +345,7 @@ def _nikon_next_steps(render_issues: list[str], *, has_embedded_preview: bool) -
 
     steps = []
     if has_embedded_preview:
-        steps.append("Use Update Preview to view the embedded JPEG; final export needs native sensor decoding for this file.")
+        steps.append("The embedded JPEG opens automatically; final export needs native sensor decoding for this file.")
     else:
         steps.append("Use Create Sample DNG/NEF or a supported uncompressed file to test rendering today.")
 
@@ -381,6 +397,10 @@ def _evaluate_nikon_summary(
         compression_detail="only uncompressed TIFF-style sensor data is supported",
     )
     compression = _scalar_int(summary.get("compression"), default=1)
+    maker_note = summarize_nikon_makernote(metadata)
+    if compression == NIKON_COMPRESSED_RAW and maker_note and maker_note.compression_mode in {13, 14}:
+        issues = [issue for issue in issues if "compression" not in issue.lower()]
+        issues.insert(0, f"Nikon {maker_note.compression_name} compression requires a separate sensor decoder.")
     if compression == NIKON_COMPRESSED_RAW and can_decode_nikon_34713_lossless(metadata):
         issues = [issue for issue in issues if "compression" not in issue.lower()]
         issues = [issue for issue in issues if issue != "Missing scalar black level."]

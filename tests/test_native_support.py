@@ -90,7 +90,7 @@ class NativeSupportTests(unittest.TestCase):
         self.assertIn("Nikon compression table tag 0x0096", "\n".join(report.details))
         self.assertIn("Nikon active area tag 0x0045", "\n".join(report.details))
         self.assertIn("final export is blocked", report.reason)
-        self.assertIn("Use Update Preview", report.next_steps[0])
+        self.assertIn("opens automatically", report.next_steps[0])
         self.assertIn("Nikon compression value 34713", report.next_steps[1])
 
     def test_nikon_nef_reports_renderable_when_sensor_payload_is_supported(self) -> None:

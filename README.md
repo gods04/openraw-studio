@@ -132,7 +132,10 @@ Then import `sample-data\openraw-synthetic.DNG` or
   demosaic quality, further speed work, and more profiles remain
 - Other compressed/proprietary Nikon `.NEF` / `.NRW` sensor payload variants
   are not decoded yet. J5 D20 support is limited to 12-bit, non-split streams;
-  the tested Z f samples remain preview-only. Check each file with `openraw inspect`.
+  the tested Z f samples use HE* and remain camera-JPEG-preview-only, with RAW
+  editing/export disabled. HE and HE* are now identified explicitly using Nikon's
+  newer compression metadata. Z5 sensor support has not been verified with a
+  real sample. Check each file with `openraw inspect`.
 - Broad proprietary RAW rendering support is not implemented yet
 - TIFF export is currently 8-bit sRGB; 16-bit linear/working-space TIFF is not implemented yet
 - QC currently checks rendered 8-bit preview clipping only; sensor-domain

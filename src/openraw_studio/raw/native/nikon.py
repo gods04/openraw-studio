@@ -19,6 +19,20 @@ MAKER_NOTE_TAG = 37500
 NIKON_MAKER_PREFIX = b"Nikon\x00"
 NIKON_MAKER_TIFF_OFFSET = 10
 NIKON_COMPRESSED_RAW = 34713
+NIKON_COMPRESSION_NAMES = {
+    1: "Lossy (type 1)",
+    2: "Uncompressed",
+    3: "Lossless",
+    4: "Lossy (type 2)",
+    5: "Striped packed 12-bit",
+    6: "Uncompressed reduced 12-bit",
+    7: "Unpacked 12-bit",
+    8: "Small RAW",
+    9: "Packed 12-bit",
+    10: "Packed 14-bit",
+    13: "High Efficiency",
+    14: "High Efficiency*",
+}
 
 _NIKON_HUFFMAN_TABLES = {
     0: (
@@ -47,6 +61,8 @@ class NikonMakerNoteSummary:
     active_area: tuple[int, ...] | None = None
     crop_info: tuple[int, ...] | None = None
     compression_mode: int | None = None
+    compression_source: str | None = None
+    compression_name: str | None = None
     curve_byte_count: int | None = None
     curve_prefix: str | None = None
     compression_table_byte_count: int | None = None
@@ -65,6 +81,8 @@ class NikonMakerNoteSummary:
             "active_area": self.active_area,
             "crop_info": self.crop_info,
             "compression_mode": self.compression_mode,
+            "compression_source": self.compression_source,
+            "compression_name": self.compression_name,
             "curve_byte_count": self.curve_byte_count,
             "curve_prefix": self.curve_prefix,
             "compression_table_byte_count": self.compression_table_byte_count,
@@ -476,6 +494,7 @@ def summarize_nikon_makernote_payload(payload: bytes) -> NikonMakerNoteSummary |
     curve_payload = _tag_bytes(ifd, 0x008C)
     compression_table_payload = _tag_bytes(ifd, 0x0096)
     white_balance = _white_balance_from_makernote_ifd(ifd)
+    compression_mode, compression_source = _compression_from_makernote(ifd, byte_order)
     return NikonMakerNoteSummary(
         kind=kind,
         byte_order=byte_order,
@@ -483,7 +502,9 @@ def summarize_nikon_makernote_payload(payload: bytes) -> NikonMakerNoteSummary |
         version=_tag_ascii(ifd, 0x0001),
         crop_info=_tag_int_tuple(ifd, 0x001B),
         active_area=_tag_int_tuple(ifd, 0x0045),
-        compression_mode=_tag_int(ifd, 0x0093),
+        compression_mode=compression_mode,
+        compression_source=compression_source,
+        compression_name=NIKON_COMPRESSION_NAMES.get(compression_mode),
         curve_byte_count=len(curve_payload) if curve_payload is not None else None,
         curve_prefix=_ascii_prefix(curve_payload) if curve_payload is not None else None,
         compression_table_byte_count=len(compression_table_payload) if compression_table_payload is not None else None,
@@ -495,14 +516,29 @@ def summarize_nikon_makernote_payload(payload: bytes) -> NikonMakerNoteSummary |
     )
 
 
+def _compression_from_makernote(ifd: TiffIfd, byte_order: str) -> tuple[int | None, str | None]:
+    # Newer cameras moved NEFCompression to a binary record at byte offset 10.
+    payload = _tag_bytes(ifd, 0x0051)
+    if payload is not None and len(payload) >= 12 and payload[:8].isdigit():
+        return int.from_bytes(payload[10:12], byte_order), "0x0051+10"
+    mode = _tag_int(ifd, 0x0093)
+    return mode, "0x0093" if mode is not None else None
+
+
 def _nikon_compression_setup(metadata: DngMetadata, bits_per_sample: int) -> NikonCompressionSetup:
     maker_ifd = _nikon_makernote_ifd(metadata)
     if maker_ifd is None:
         raise NikonCompressionError("missing Nikon MakerNote")
+    byte_order = _makernote_byte_order(metadata)
+    compression_mode, _source = _compression_from_makernote(maker_ifd, byte_order)
+    if compression_mode in {13, 14}:
+        raise NikonCompressionError(
+            f"Nikon {NIKON_COMPRESSION_NAMES[compression_mode]} compression is not supported yet; "
+            "the embedded JPEG is not decoded RAW sensor data"
+        )
     compression_payload = _tag_bytes(maker_ifd, 0x0096)
     if compression_payload is None:
         raise NikonCompressionError("missing Nikon NEF linearization/compression table tag 0x0096")
-    byte_order = _makernote_byte_order(metadata)
     if len(compression_payload) < 12:
         raise NikonCompressionError("Nikon compression table is too short")
 
@@ -552,7 +588,7 @@ def _nikon_compression_setup(metadata: DngMetadata, bits_per_sample: int) -> Nik
         huffman_select=huffman_select,
         initial_predictors=initial_predictors,
         active_area=_tag_int_tuple(maker_ifd, 0x0045),
-        compression_mode=_tag_int(maker_ifd, 0x0093),
+        compression_mode=compression_mode,
         linearization=linearization,
     )
 

@@ -143,3 +143,46 @@ cache-write failures retry in-memory JIT before using the Python fallback.
 This keeps a cache permission/cross-volume error from turning RAW import into a
 slow interpreted decode. The packaged diagnostic distinguishes compilation
 from disk-cache availability.
+
+## Broader Nikon Sample Validation
+
+The October 2026 local catalog read 6,847 NEF candidates. Metadata identified
+3,852 D500 lossless 14-bit, 2,497 1 J5 lossy 12-bit, and 492 Z f HE* 14-bit files;
+six containers failed bounds validation. Three additional sampled JPEG previews
+were unreadable. These errors are retained in private reports, not silently
+repaired or deleted. No Z5 sample was identified in that catalog.
+
+Fourteen representative D500 files were actually decoded and exported, including
+backlight, warm/blue scenery, silhouettes, neon, fireworks, high ISO, and an
+aspect-cropped portrait. All 289,004,800 sensor samples and active crop rectangles
+matched an independent development decoder; all source hashes stayed unchanged.
+This validates these samples, not every file in the metadata inventory or exact
+camera-JPEG color matching. Private manifests and results stay under `output/`.
+
+Auto now uses rendered checks for newly crushed shadows and unintended midtone
+darkening as well as highlight clipping. It reduces positive contrast first when
+that harms a dim subject. A strongly dominant color with insufficient neutral
+coverage no longer drives a white-balance correction. These are conservative
+heuristics, not semantic detection, denoising, or model training. Small bright
+subjects, mixed-light skin, and silhouette intent still need quality work.
+The optional render callback must return the same pixel count as its baseline.
+
+HE/HE* mode identification reads the newer MakerNote `0x0051` record at byte
+offset 10; legacy `0x0093` remains supported. The Huffman path explicitly rejects
+HE/HE*, even if a stale legacy linearization table is also present. The desktop
+names the unsupported compression in Adjust and labels its JPEG as preview-only.
+Changing a camera's future recording mode does not convert existing HE files.
+References: [ExifTool Nikon tag definitions](https://github.com/exiftool/exiftool/blob/master/lib/Image/ExifTool/Nikon.pm)
+and [Nikon Z f recording options](https://onlinemanual.nikonimglib.com/zf/en/psm_raw_recording_122.html).
+
+```powershell
+.\.venv\Scripts\python.exe scripts\catalog_raw_samples.py "E:\Photos" --model D500 --per-folder 10 --output output\catalog
+.\.venv\Scripts\python.exe scripts\validate_photo_set.py --manifest output\selection.json --export --output output\selected-check
+.\.venv\Scripts\python.exe scripts\smoke_preview_only.py "E:\Photos\HE-sample.NEF" --output output\preview-only-check
+```
+
+The catalog uses read-only memory mapping to avoid loading every sensor payload.
+Its contact sheets contain camera JPEGs for selection, not proof of native decode.
+The optional manifest is a JSON list of objects with `source`, `case`, and `reason`.
+The preview-only smoke test checks disabled editing/export and switching back to
+a supported file using actual Tk widgets. These scripts do not upload photographs.

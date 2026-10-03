@@ -676,6 +676,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.last_live_latency_ms = None
             self.live_image = None
             self.source_orientation = 1
+            self.preview_only_name = "Camera JPEG"
             self.reference_image = None
             self.resize_after_id = None
             self.info_width = 700
@@ -713,6 +714,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.auto_strength_var = tk.DoubleVar(value=70)
             self.auto_strength_label_var = tk.StringVar(value="70%")
             self.auto_summary_var = tk.StringVar(value="")
+            self.support_notice_var = tk.StringVar(value="")
             self.batch_mode_var = tk.StringVar(value="Current adjustments")
             self.status_var = tk.StringVar(value="Choose a RAW photo to begin")
             self.preview_state_var = tk.StringVar(value="No preview yet")
@@ -970,6 +972,9 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.run_counter += 1
             self.source_path = source
             self.source_orientation = 1
+            self.preview_only_name = "Camera JPEG"
+            self.support_notice_var.set("")
+            self.support_notice_label.pack_forget()
             self.zoom_var.set("Fit")
             self.pan_offset = [0.0, 0.0]
             self.last_auto_suggestion = None
@@ -1097,7 +1102,17 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                 self.current_can_preview = support.can_preview or support.can_render
                 self.current_can_render = support.can_render
                 if support.can_preview and not support.can_render:
-                    self.status_var.set("RAW preview ready; export support is next")
+                    mode = support.metadata.get("nikon_makernote", {}).get("compression_name")
+                    self.preview_only_name = f"{mode} | Camera JPEG" if mode else "Camera JPEG"
+                    self.support_notice_var.set(
+                        f"{mode or 'Unsupported RAW encoding'}\n"
+                        "Camera preview only. RAW editing and export unavailable."
+                    )
+                    self.support_notice_label.pack(
+                        before=self.histogram_canvas, fill="x", pady=(0, 12)
+                    )
+                    self.edit_status_var.set("Preview only")
+                    self.status_var.set("Loading camera JPEG...")
                 elif support.can_inspect and not support.can_render:
                     self.status_var.set(
                         "RAW metadata imported; preview/export support is next"
@@ -1861,6 +1876,10 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             )
 
         def _refresh_preview_state(self) -> str:
+            if self.current_can_preview and self.current_can_render is False:
+                preview_state = f"{self.preview_only_name} | Preview only"
+                self.preview_state_var.set(preview_state)
+                return preview_state
             preview_state = _preview_state_text(
                 self.last_preview_overrides, self._current_overrides()
             )

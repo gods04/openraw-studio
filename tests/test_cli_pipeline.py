@@ -445,7 +445,7 @@ class CliPipelineTests(unittest.TestCase):
         self.assertIn("Native render: not supported yet", text)
         self.assertIn("Preview: embedded JPEG", text)
         self.assertIn("Next:", text)
-        self.assertIn("Use Update Preview", text)
+        self.assertIn("opens automatically", text)
 
     def test_cli_batch_exports_supported_folder_items(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
