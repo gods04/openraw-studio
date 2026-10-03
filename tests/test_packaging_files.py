@@ -37,8 +37,11 @@ class PackagingFilesTests(unittest.TestCase):
         script = (ROOT / "scripts" / "build_windows.ps1").read_text(encoding="utf-8")
         self.assertIn('--additional-hooks-dir "$RepoRoot/packaging/hooks"', script)
         hook = runpy.run_path(str(ROOT / "packaging" / "hooks" / "hook-openraw_studio.raw.native.py"))
-        for module in ("compiled_decode", "compiled_he", "compiled_he_transform", "compiled_tone", "compiled_bayer"):
-            self.assertEqual(hook["module_collection_mode"][f"openraw_studio.raw.native.{module}"], "py")
+        self.assertEqual(hook["module_collection_mode"], {"openraw_studio.raw.native": "py"})
+        native = ROOT / "src" / "openraw_studio" / "raw" / "native"
+        for module in ("compiled_decode", "compiled_he", "compiled_he_transform", "compiled_tone",
+                       "compiled_bayer", "compiled_chroma", "compiled_luminance", "malvar", "he_cpu"):
+            self.assertTrue((native / (module + ".py")).is_file(), module)
 
     def test_pyinstaller_entrypoint_is_import_safe(self) -> None:
         module_globals = runpy.run_path(str(ROOT / "packaging" / "openraw_app.py"))

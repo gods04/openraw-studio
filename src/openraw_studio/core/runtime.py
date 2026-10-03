@@ -37,15 +37,22 @@ def _usable_cache(root):
 
 def configure_numba_cache():
     """Choose a tested per-user cache before importing Numba in a bundle."""
-    if not getattr(sys, "frozen", False) or os.environ.get("NUMBA_CACHE_DIR"):
+    if not getattr(sys, "frozen", False):
         return
-    local = os.environ.get("LOCALAPPDATA")
-    cache = _usable_cache(Path(local)) if local else None
-    if cache is None:
-        try:
-            cache = _usable_cache(Path.home() / ".cache")
-        except (OSError, RuntimeError):
-            return
-    if cache is not None:
-        os.environ["NUMBA_CACHE_DIR"] = str(cache)
+    if not os.environ.get("NUMBA_CACHE_DIR"):
+        local = os.environ.get("LOCALAPPDATA")
+        cache = _usable_cache(Path(local)) if local else None
+        if cache is None:
+            try:
+                cache = _usable_cache(Path.home() / ".cache")
+            except (OSError, RuntimeError):
+                return
+        if cache is not None:
+            os.environ["NUMBA_CACHE_DIR"] = str(cache)
+    if os.environ.get("NUMBA_CACHE_DIR"):
+        os.environ.setdefault("NUMBA_CACHE_LOCATOR_CLASSES", ",".join((
+            "openraw_studio.core.kernel_cache.FrozenKernelCacheLocator",
+            "UserProvidedCacheLocator", "InTreeCacheLocator", "UserWideCacheLocator",
+            "IPythonCacheLocator", "ZipCacheLocator",
+        )))
     # If neither private location works, checked in-memory JIT remains available.

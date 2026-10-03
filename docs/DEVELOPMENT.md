@@ -1632,3 +1632,65 @@ The checked frozen D500 CPU Auto takes 2.72 s initially and 1.54 s after restart
 Z f GPU Auto takes 0.75 s. These timings are separate from preparation/export
 and remain machine/run-dependent; first-use compilation still exists. The
 Windows EXE is refreshed locally without a public ZIP, installer, or photos.
+
+### Content-Checked Frozen Kernel Caches
+
+The frozen app now selects a content-based cache locator for its seven reviewed
+native JIT modules. The previous standard locator tied source validity to the
+EXE, so rebuilding unrelated UI code discarded reusable compiled kernels.
+The new identity hashes every bundled native Python source file, Python/NumPy/
+Numba/llvmlite versions, platform, and resolved Numba configuration. Cache
+location and cache logging are excluded; installation path, EXE content, and
+source timestamps do not determine validity. Numba's existing CPU-feature,
+signature, bytecode, and version checks remain in place.
+
+The PyInstaller hook collects the whole native package as source, including
+helpers. Only known functions located inside that bundle may use the locator.
+Missing/unreadable sources or an unwritable cache fall through to the standard
+locators and existing checked in-memory compilation. Explicit cache directory
+and locator overrides are preserved. Source-mode execution is unchanged. A
+dependency test requires review before kernels import new external project
+helpers; expanding those dependencies requires expanding the cache identity.
+
+This uses Numba's documented [custom locator configuration](https://numba.readthedocs.io/en/stable/reference/envvars.html#numba-cache-locator-classes).
+Its [cache limitations](https://numba.readthedocs.io/en/stable/developer/caching.html)
+explain why helper content and compiler configuration must be included, not
+only the decorated function's timestamp. First-ever compilation, runtime
+startup, RAW decoding, and full-resolution rendering are still real costs.
+Cache reuse is conditional on an unchanged processing package and compatible
+runtime, not a guarantee that all future app updates avoid compilation.
+
+All 585 tests pass in source and packaging environments (Numba 0.67/0.68),
+including GPU-disabled execution with six expected skips. Twelve added tests
+cover identity, path ownership, helper changes, writable-cache fallback, and
+explicit runtime configuration. A real subprocess regression compiles 8/16-bit
+tones, then proves reuse after EXE replacement, timestamp changes, and bundle
+relocation. Same-size/same-timestamp source edits and changed compilation flags
+invalidate the cache; changed source also changes the rendered pixels.
+
+Two actual Windows builds have different EXE hashes but identical copies of all
+42 native Python source files. Nine checks per build cover D500, Z f, Z5 D40,
+synthetic DNG, CPU/GPU, and the HE JIT fallback with the prebuilt extension
+disabled. After repacking, every previously used JIT signature hits its cache
+with zero misses, including tone8/tone16, Bayer, both noise filters, and the
+three HE kernels. Default Z f GPU processing uses prebuilt HE and OpenCL rather
+than those JIT kernels. All nine paired exports and native-detail images remain
+byte-identical, with exact Auto/metrics/noise advice and unchanged originals.
+The eight main checks also match the preceding EXE; source verification covers
+all five main TIFF16 exports and two older saved recipes.
+
+On the local i5-12500H, the first D500 CPU run prepares in 1.91 s and runs Auto
+in 2.83 s; after repacking these take 0.94/2.09 s without recompilation. The HE
+JIT example prepares in 4.23 s initially and 2.15 s after repacking. Runtime
+loading is included but EXE startup is not. These are individual observations,
+not a paired steady-state benchmark: several warm exports were slower during
+the second pass, and the Z5 CPU TIFF16 example still takes about 7 s. No render
+math or export compression was accelerated in this increment. Private reports
+remain local and no photos or public installer are included in the build.
+
+Two actual desktop workflows (D500 CPU at 900x640 and Z f GPU at 1080x720)
+each pass 46 checks for pointer preview, Auto/noise advice, history, comparison,
+JPEG/TIFF16 export, and saved edits/bit depth. Screenshots retain visible
+controls and an unobstructed photo viewport. These source-mode checks exercise
+workflow regression, not frozen startup timing; the separate EXE checks above
+verify the changed cache/packaging behavior.

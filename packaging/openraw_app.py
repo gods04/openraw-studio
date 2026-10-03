@@ -122,6 +122,23 @@ def smoke_test(source: Path, output: Path, *, color_noise=0.0, luminance_noise=0
         report["compiled_cpu_luminance"] = bool(getattr(compiled_luminance.luminance, "signatures", []))
         report["cpu_luminance_fallback_reason"] = compiled_luminance.last_error
         report["cpu_luminance_cache_disabled_reason"] = compiled_luminance.cache_disabled_reason
+        report["kernel_cache"] = {}
+        kernels = {
+            "decode": compiled_decode.decode, "he_decode": compiled_he.decode,
+            "tone": compiled_tone.tone, "tone16": compiled_tone.tone16,
+            "bayer": compiled_bayer.malvar_demosaic,
+            "chroma": compiled_chroma.chroma, "luminance": compiled_luminance.luminance,
+            **compiled_he_transform.kernels,
+        }
+        for name, kernel in kernels.items():
+            stats = getattr(kernel, "stats", None)
+            cache_impl = getattr(getattr(kernel, "_cache", None), "_impl", None)
+            locator = getattr(cache_impl, "locator", None)
+            report["kernel_cache"][name] = {
+                "locator": type(locator).__name__ if locator is not None else None,
+                "hits": sum(getattr(stats, "cache_hits", {}).values()),
+                "misses": sum(getattr(stats, "cache_misses", {}).values()),
+            }
         report["source_unchanged"] = sha256_file(source) == before
         report["ok"] = report["source_unchanged"] and result.exports[0].path.is_file() and detail_image.size == region[2:]
     except Exception as error:  # noqa: BLE001 - Persist unexpected frozen-runtime failures.

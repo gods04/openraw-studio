@@ -99,3 +99,24 @@ class RuntimeCacheTests(unittest.TestCase):
             configure_numba_cache()
             self.assertNotIn("NUMBA_CACHE_DIR", os.environ)
             self.assertFalse(list(Path(folder).rglob(".openraw-cache-*")))
+
+    def test_frozen_cache_installs_content_locator_and_standard_fallbacks(self):
+        with patch.dict(os.environ, {"NUMBA_CACHE_DIR": "explicit"}, clear=True), patch.object(
+            sys, "frozen", True, create=True
+        ):
+            configure_numba_cache()
+            self.assertEqual(os.environ["NUMBA_CACHE_DIR"], "explicit")
+            locators = os.environ["NUMBA_CACHE_LOCATOR_CLASSES"].split(",")
+            self.assertEqual(locators[0], "openraw_studio.core.kernel_cache.FrozenKernelCacheLocator")
+            self.assertIn("UserProvidedCacheLocator", locators)
+            self.assertIn("UserWideCacheLocator", locators)
+
+    def test_explicit_locator_and_source_runtime_are_not_overridden(self):
+        with patch.dict(os.environ, {"NUMBA_CACHE_DIR": "explicit", "NUMBA_CACHE_LOCATOR_CLASSES": "custom.Locator"}, clear=True), patch.object(
+            sys, "frozen", True, create=True
+        ):
+            configure_numba_cache()
+            self.assertEqual(os.environ["NUMBA_CACHE_LOCATOR_CLASSES"], "custom.Locator")
+        with patch.dict(os.environ, {}, clear=True), patch.object(sys, "frozen", False, create=True):
+            configure_numba_cache()
+            self.assertNotIn("NUMBA_CACHE_LOCATOR_CLASSES", os.environ)

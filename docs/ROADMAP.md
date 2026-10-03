@@ -18,6 +18,17 @@ and sensor-domain denoise with calibrated luminance-noise advice. Further first-
 also remain open.
 Semantic portrait/scene AI and mobile remain later phases.
 
+Latest startup increment preserves compiled native kernels across EXE rebuilds
+when the processing sources and runtime remain compatible. Content, compiler
+configuration, and CPU checks still invalidate incompatible code. All 585
+source/packaging tests pass. Two different EXE builds and nine paired CPU/GPU
+checks, including HE fallback, retain exact outputs and Auto with no repeat JIT
+compilation in the second build. This does not eliminate clean-install startup
+or full-size render/export costs; the checked CPU TIFF16 example remains about
+7 s. See `DEVELOPMENT.md` for cache boundaries and verification. The local EXE
+is refreshed without a public installer or private-photo bundle. Two 46-check
+desktop workflows also pass with unchanged originals and saved edit behavior.
+
 Latest Auto performance increment removes redundant RGB8 normalization and
 three-channel reductions, retaining the same candidate/strength checks. Across
 33 real photos, parameters and all metrics/render counts remain exact on both
