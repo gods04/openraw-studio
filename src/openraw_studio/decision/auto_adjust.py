@@ -57,6 +57,15 @@ class AutoAdjustSuggestion:
         }
 
 
+@dataclass(frozen=True)
+class _RenderedMetrics:
+    clipping: float
+    median: float
+    crushed_shadows: float
+    new_clipping: float
+    lost_highlight_channels: int
+
+
 def _pixels(preview):
     if isinstance(preview, PreviewRgbImage):
         pixels = np.asarray(preview.pixels, dtype=np.float32)
@@ -220,6 +229,13 @@ def suggest_auto_adjustments_from_preview(
     # that component first, retaining the other corrections where possible.
     luma_weights = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
     usable_shadows = (luma > 8 / 255) & (luma < 0.25)
+    # A moon or lamp can be much smaller than the whole-frame clipping budget.
+    # Track individual channels too: an already clipped red must not hide a
+    # newly clipped green. Leave a few code values of headroom for quantization.
+    headroom = pixels <= 250 / 255
+    highlight_detail = (pixels >= 0.60) & headroom
+    highlight_channels = int(np.count_nonzero(highlight_detail))
+    detail_allowance = max(2, highlight_channels * 0.02)
 
     def rendered_metrics(values):
         candidate = _pixels(render(values))
@@ -227,41 +243,65 @@ def suggest_auto_adjustments_from_preview(
             raise ValueError("Auto validation render must match the baseline preview dimensions")
         candidate_luma = candidate @ luma_weights
         crushed = float(np.mean(usable_shadows & (candidate_luma <= 2 / 255)))
-        return _clipping(candidate), float(np.median(candidate_luma)), crushed
+        clipped_channels = candidate >= 254 / 255
+        return _RenderedMetrics(
+            _clipping(candidate), float(np.median(candidate_luma)), crushed,
+            float(np.mean(np.any(headroom & clipped_channels, axis=1))),
+            int(np.count_nonzero(highlight_detail & clipped_channels)),
+        )
 
-    def tones_preserved(candidate_median, crushed):
+    def tones_preserved(checked):
         preserve_midtones = exposure >= 0 and median < 0.5 and not low_key
-        return crushed <= 0.005 and (
-            not preserve_midtones or candidate_median >= median - 0.01
+        return checked.crushed_shadows <= 0.005 and (
+            not preserve_midtones or checked.median >= median - 0.01
+        )
+
+    def highlights_preserved(checked):
+        return (
+            checked.clipping <= clipped + 0.005
+            and checked.new_clipping <= 0.005
+            and checked.lost_highlight_channels <= detail_allowance
         )
 
     initial_values = suggestion.as_overrides()
     initial_metrics = rendered_metrics(initial_values)
     contrast_guarded = False
-    if suggestion.contrast > 0 and not tones_preserved(*initial_metrics[1:]):
+    if suggestion.contrast > 0 and not tones_preserved(initial_metrics):
         for fraction in (0.5, 0.0):
             values = {**initial_values, "contrast": round(suggestion.contrast * fraction, 4)}
             checked = rendered_metrics(values)
-            if tones_preserved(*checked[1:]) or fraction == 0:
+            if tones_preserved(checked) or fraction == 0:
                 suggestion = replace(suggestion, contrast=values["contrast"])
                 initial_values, initial_metrics = values, checked
                 contrast_guarded = True
                 break
 
+    exposure_guarded = False
+    if suggestion.exposure > 0 and not highlights_preserved(initial_metrics):
+        for fraction in (0.75, 0.5, 0.25, 0.0):
+            values = {**initial_values, "exposure": round(suggestion.exposure * fraction, 4)}
+            checked = rendered_metrics(values)
+            if highlights_preserved(checked) and tones_preserved(checked):
+                suggestion = replace(suggestion, exposure=values["exposure"])
+                initial_values, initial_metrics = values, checked
+                exposure_guarded = True
+                break
+
     # Back off the complete correction until rendered highlights AND dark
     # subjects stay inside their budgets. Proxy renders do not decode RAW again.
-    allowance = clipped + 0.005
     for amount in (1.0, 0.75, 0.5, 0.25, 0.0):
         values = {
             key: round(value * amount, 4)
             for key, value in suggestion.as_overrides().items()
         }
-        after, candidate_median, crushed = (
+        checked = (
             initial_metrics if amount == 1.0 else rendered_metrics(values)
         )
-        if (after <= allowance and tones_preserved(candidate_median, crushed)) or amount == 0:
+        if (highlights_preserved(checked) and tones_preserved(checked)) or amount == 0:
             notes = suggestion.rationale + (
                 ("Reduced contrast to preserve dark subjects.",) if contrast_guarded else ()
+            ) + (
+                ("Limited exposure to preserve highlight detail.",) if exposure_guarded else ()
             ) + (
                 ("Reduced correction to protect highlights and shadows.",) if amount < 1 else ()
             )
@@ -271,10 +311,13 @@ def suggest_auto_adjustments_from_preview(
                 rationale=notes,
                 metrics={
                     **suggestion.metrics,
-                    "highlight_fraction_after": after,
-                    "median_luma_after": candidate_median,
-                    "new_shadow_clipping_fraction": crushed,
+                    "highlight_fraction_after": checked.clipping,
+                    "median_luma_after": checked.median,
+                    "new_shadow_clipping_fraction": checked.crushed_shadows,
+                    "new_highlight_clipping_fraction": checked.new_clipping,
+                    "highlight_detail_loss_fraction": checked.lost_highlight_channels / max(1, highlight_channels),
                     "contrast_guarded": float(contrast_guarded),
+                    "exposure_guarded": float(exposure_guarded),
                     "guard_strength": amount,
                 },
             )

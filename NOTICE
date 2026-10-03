@@ -35,6 +35,11 @@ follow the ExifTool Nikon tag reference. OpenRAW's metadata parser is
 project-authored. Identifying HE/HE* does not implement their sensor codecs.
 https://github.com/exiftool/exiftool/blob/master/lib/Image/ExifTool/Nikon.pm
 
+The read-only HE research diagnostic uses published stream-framing facts and
+local file observations, not external decoder implementation code. This does
+not add an HE pixel decoder or a LibRaw runtime dependency.
+https://github.com/zidage/LibRaw/blob/main_alcedo/doc/nikon_he_public_algorithm.md
+
 Lucide Icons
 ------------
 

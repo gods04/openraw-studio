@@ -35,9 +35,72 @@ class AutoAdjustTests(unittest.TestCase):
             return np.full((10, 10, 3), 255 if settings['exposure'] > .4 else 100, dtype=np.uint8)
         result = suggest_auto_adjustments_from_preview(preview, render=render)
         self.assertLessEqual(result.exposure, .4)
-        self.assertLess(result.metrics["guard_strength"], 1)
+        self.assertEqual(result.metrics["exposure_guarded"], 1)
         self.assertEqual(result.metrics["highlight_fraction_after"], 0)
         self.assertGreater(len(renders), 1)
+
+    def test_small_bright_subject_is_not_hidden_by_global_clipping_budget(self):
+        pixels = np.full((100, 100, 3), 60, dtype=np.uint8)
+        pixels[45:50, 48:52] = 200
+        preview = PreviewRgbImage(100, 100, tuple(map(tuple, pixels.reshape(-1, 3))), "gamma-2.2")
+
+        def render(values):
+            result = pixels.copy()
+            result[45:50, 48:52] = 255 if values["exposure"] > .4 else 220
+            return result
+
+        result = suggest_auto_adjustments_from_preview(preview, render=render)
+        self.assertGreater(result.exposure, 0)
+        self.assertLessEqual(result.exposure, .4)
+        self.assertGreater(result.shadows, 0)
+        self.assertEqual(result.metrics["highlight_detail_loss_fraction"], 0)
+        self.assertEqual(result.metrics["exposure_guarded"], 1)
+
+    def test_clipped_red_does_not_hide_newly_clipped_green_detail(self):
+        pixels = np.full((100, 100, 3), 60, dtype=np.uint8)
+        pixels[45:50, 48:52] = (255, 200, 160)
+        preview = PreviewRgbImage(100, 100, tuple(map(tuple, pixels.reshape(-1, 3))), "gamma-2.2")
+
+        def render(values):
+            result = pixels.copy()
+            if values["exposure"] > .4:
+                result[45:50, 48:52, 1] = 255
+            return result
+
+        result = suggest_auto_adjustments_from_preview(preview, render=render)
+        self.assertEqual(result.metrics["highlight_fraction_before"], result.metrics["highlight_fraction_after"])
+        self.assertLessEqual(result.exposure, .4)
+        self.assertEqual(result.metrics["highlight_detail_loss_fraction"], 0)
+
+    def test_isolated_bright_outlier_does_not_disable_exposure_lift(self):
+        pixels = np.full((100, 100, 3), 60, dtype=np.uint8)
+        pixels[45, 48, 0] = 200
+        preview = PreviewRgbImage(100, 100, tuple(map(tuple, pixels.reshape(-1, 3))), "gamma-2.2")
+
+        def render(values):
+            result = pixels.copy()
+            result[45, 48, 0] = 255
+            return result
+
+        result = suggest_auto_adjustments_from_preview(preview, render=render)
+        self.assertGreater(result.exposure, .4)
+        self.assertEqual(result.metrics["exposure_guarded"], 0)
+
+    def test_saturation_clipping_backs_off_when_exposure_alone_cannot_help(self):
+        pixels = np.full((100, 100, 3), 60, dtype=np.uint8)
+        pixels[:, :, 2] = 63
+        pixels[45:50, 48:52] = (200, 195, 195)
+        preview = PreviewRgbImage(100, 100, tuple(map(tuple, pixels.reshape(-1, 3))), "gamma-2.2")
+
+        def render(values):
+            result = pixels.copy()
+            if values["saturation"] > .01:
+                result[45:50, 48:52, 0] = 255
+            return result
+
+        result = suggest_auto_adjustments_from_preview(preview, render=render)
+        self.assertLess(result.metrics["guard_strength"], 1)
+        self.assertEqual(result.metrics["highlight_detail_loss_fraction"], 0)
 
     def test_balanced_input_is_deterministic_and_rejects_invalid_pixels(self) -> None:
         preview = PreviewRgbImage(2, 2, ((100, 110, 120),) * 4, "gamma-2.2")

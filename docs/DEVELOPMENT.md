@@ -164,7 +164,8 @@ darkening as well as highlight clipping. It reduces positive contrast first when
 that harms a dim subject. A strongly dominant color with insufficient neutral
 coverage no longer drives a white-balance correction. These are conservative
 heuristics, not semantic detection, denoising, or model training. Small bright
-subjects, mixed-light skin, and silhouette intent still need quality work.
+subjects now have an additional rendered guard described below; mixed-light skin
+and silhouette intent still need quality work.
 The optional render callback must return the same pixel count as its baseline.
 
 HE/HE* mode identification reads the newer MakerNote `0x0051` record at byte
@@ -186,3 +187,42 @@ Its contact sheets contain camera JPEGs for selection, not proof of native decod
 The optional manifest is a JSON list of objects with `source`, `case`, and `reason`.
 The preview-only smoke test checks disabled editing/export and switching back to
 a supported file using actual Tk widgets. These scripts do not upload photographs.
+
+### Small Highlight Guard
+
+Auto also counts newly clipped channels with baseline headroom (at most 250/255).
+For baseline channels at least 0.60, newly clipped values may consume at most 2%
+of that set, with a two-channel allowance for isolated outliers. A separate
+whole-frame new-clipping limit prevents previously clipped pixels elsewhere from
+offsetting newly lost detail. It tests a smaller positive exposure first, keeping
+shadow/color settings when safe, then uses the existing whole-correction backoff.
+These are bounded proxy heuristics, not guarantees for sub-pixel highlights or
+full-resolution sensor reconstruction. Auto strength below 100% scales settings;
+it does not independently re-run the guard at each strength.
+
+All fourteen selected D500 files still decode/export without source changes.
+The blue-hour moon's validation-proxy clipped-pixel fraction at full Auto strength
+fell from 0.002718 to 0.000046; the visible 70% comparison remains in the private
+report. Real Tk Auto took 0.44 s on that sample. A separate D500 landscape run
+measured a 52 ms median slider-to-display delay, 49 frames during 50 drag edits,
+and a 1.93 s JPEG export on the local RTX 5070. These are sample-specific results.
+
+### HE Stream Research
+
+`scripts/inspect_nikon_he.py` checks strip bounds, length-delimited header markers,
+precinct payload bounds, slice sequence numbers, and the exact end marker. It
+records Bp/Br/depth-hint distributions without decoding any image coefficients.
+Eight local 6064 x 4040 Z f HE* files each walked 1010 precincts over 64 slices;
+all source hashes were unchanged. This does not establish valid entropy data,
+color rendering, or HE sensor support. The desktop remains preview-only for HE.
+
+```powershell
+.\.venv\Scripts\python.exe scripts\inspect_nikon_he.py "E:\Photos\HE-sample.NEF" --output output\he-framing.json
+```
+
+Format research: [published HE stream description](https://github.com/zidage/LibRaw/blob/main_alcedo/doc/nikon_he_public_algorithm.md).
+The diagnostic is independently written from framing facts and local byte checks;
+no external HE decoder source or runtime was imported. Next work is entropy and
+sub-band reconstruction, inverse transforms, and independent sensor-plane
+comparison before any support flag changes. Upstream validation claims are not
+OpenRAW validation, and any future third-party integration needs its own review.
