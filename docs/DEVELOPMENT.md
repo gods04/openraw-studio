@@ -1524,3 +1524,71 @@ new build still takes 6.48 s for export, plus preparation/Auto compilation;
 this change does not remove cold-start costs. Checked GPU TIFF16 export stays
 at 2.55 s for D500 and 3.54 s for Z f. These exclude EXE startup. The local EXE
 is refreshed without creating a public ZIP, installer, or private-photo bundle.
+
+### Auto Exposure Recovery
+
+The initial upper-tail exposure cap is estimated before highlight compression.
+Joint tonal recovery can now try -0.50 highlights before giving up useful
+exposure. Auto then revisits the initial exposure cap when usable midtones
+remain dim. This additional step tries at most 0.4/0.2 EV extra exposure, never
+exceeding the original scene request, and at most -0.50 highlights. A candidate
+must improve the same original shadow midtones and median at both proxy sizes,
+within bounded brightness gains, and retain existing clipping/shadow budgets
+at all validation domains. The additional step excludes low-key, predominantly
+dark, already-bright, and unconstrained scenes. No RAW renderer, recipe fields,
+live slider math, or manual noise amounts change; previous saved edits render
+unchanged until Auto is run again.
+
+Stronger exposure and compression can produce a clipping peak between zero and
+25% Auto strength. A private sweep reproduced this on Z f and Z5 even though
+25/50/70/100% passed, including a preceding Z f suggestion. Photo Auto now also
+checks 10/15/20/35% throughout tonal recovery and white-balance refinement, not
+just in the additional exposure step. Rejected candidates back off or try
+additional compression; the budget thresholds are unchanged.
+
+Comparisons include backlit subjects, sky/sea, sunset, aquarium, and night scenes.
+Stronger compression can reduce highlight contrast; this remains a sampled
+global heuristic, not semantic lighting recognition, local HDR, or sensor-level
+highlight reconstruction. Private comparison images remain under ignored output.
+
+Additional validation adds work: this increment does not accelerate Auto,
+import, preview, or export. Cold-start costs and broader image-quality limits
+remain separate work.
+
+Across the same 33 D500/Z f/1 J5/Z5 captures, 15 suggestions change and 18 retain
+their preceding settings; four changes use the additional exposure step.
+CPU/GPU settings agree exactly and original hashes remain unchanged. An integer
+1-100% sweep at three validation scales passes 9,900 clipping/shadow checks.
+Full-size checks pass at four strengths on all 15 changed photos, plus four
+additional low/intermediate strengths on the two shoulder-peak examples: 68
+full-resolution checks in total. Negative-exposure scenes permit intended
+midtone darkening while retaining clipping and newly-crushed-shadow guards.
+These are sampled budget checks, not proof of zero clipping on arbitrary photos.
+
+With prepared photos and warm kernels, the 33-photo Auto audit measures a
+median of 1.08 s on RTX 5070 and 1.82 s on i5-12500H CPU; maxima are 2.52/5.12 s.
+These exclude RAW import, startup, and denoise advice. Stronger guards add
+analysis latency, which remains an optimization target separate from live edits.
+
+All 564 tests pass in source and packaging environments, including twelve new
+exposure/strength regressions; GPU-disabled execution passes with six expected
+GPU-only skips. Actual compact CPU D500 and GPU Z f workflows each pass 46
+checks covering pointer edits,
+noise advice, history, comparison, JPEG/TIFF16, and edit/bit-depth restoration.
+Screenshots verify the visible export selector at 900x640 and 1080x720.
+
+With highlights at -0.50 and both noise filters active, the same D500 live test
+measures 46/109 ms median GPU/CPU slider response, 46/16 visible frames during
+50 drag events, and 61/178 ms release-to-final. JPEG export takes 1.30/2.38 s.
+These are local warm-run measurements, not startup or universal latency claims.
+
+Eight rebuilt-EXE runs cover D500, Z f, Z5 D40, and synthetic DNG. Source Auto,
+noise advice, and native-detail pixels agree exactly; all five TIFF16 outputs
+match source pixels, and two preceding saved recipes retain identical native
+detail. All original hashes remain unchanged, with no compiler/cache fallback.
+The new D500 CPU Auto takes 6.07 s on first build use and 2.40 s after restart;
+its JPEG export takes 2.81 s. Checked GPU TIFF16 exports take 3.01-3.81 s on
+these examples. A separate Z5 CPU TIFF16 restart check takes 5.72 s versus
+9.30 s initially, producing byte-identical output. First-use and CPU high-bit
+depth performance remain open. The local EXE is refreshed without a public ZIP,
+installer, or private-photo bundle.

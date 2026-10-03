@@ -132,13 +132,15 @@ class AutoAdjustTests(unittest.TestCase):
         result = suggest_auto_adjustments_from_preview(pixels, render=render)
         self.assertEqual(result.metrics["shadows_refined"], 0)
 
-    def test_real_shadow_refinement_retains_black_and_highlight_detail(self):
+    def test_real_tonal_recovery_retains_black_and_highlight_detail(self):
         pixels = np.full((100, 100, 3), .025, dtype=np.float32)
         pixels[:10] = 0
         pixels[45:50, 48:52] = .75
         photo = InteractivePhoto(pixels, np.eye(3, dtype=np.float32), (1, 1, 1))
         result = suggest_auto_adjustments_for_photo(photo)
-        self.assertEqual(result.metrics["shadows_refined"], 1)
+        # Stronger highlight compression can retain exposure without needing
+        # the later shadow refinement; keep the output-preservation contract.
+        self.assertTrue(result.metrics["shadows_refined"] or result.metrics["highlights_guarded"])
         final = np.asarray(photo.render(result.as_overrides())[0])
         self.assertTrue(np.all(final[:10] == 0))
         self.assertTrue(np.all(final[45:50, 48:52] < 254))

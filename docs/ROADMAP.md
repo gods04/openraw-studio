@@ -18,6 +18,23 @@ and sensor-domain denoise with calibrated luminance-noise advice. Further first-
 also remain open.
 Semantic portrait/scene AI and mobile remain later phases.
 
+Latest Auto exposure increment combines stronger highlight compression with
+bounded midtone recovery. Tonal and white-balance validation now also checks
+10/15/20/35% strengths to catch clipping peaks below the usual 25% sample.
+Across 33 real photos, 15 suggestions change and 18 remain unchanged; CPU/GPU
+settings agree. A 9,900-check strength sweep and 68 full-size checks pass, with
+unchanged original hashes. Stronger compression can reduce highlight contrast,
+and added validation increases Auto analysis time; neither live-preview nor
+export rendering changes. This remains a global heuristic, not local HDR or
+semantic scene recognition. See `DEVELOPMENT.md` for limits and verification.
+All 564 source/packaging tests and two 46-check desktop workflows pass. With both noise
+filters and stronger highlights, checked GPU/CPU live medians remain 46/109 ms;
+the same D500 JPEG exports in 1.30/2.38 s, excluding startup and RAW preparation.
+Eight rebuilt-EXE checks match source Auto, noise advice, native detail, and
+TIFF16 pixels; preceding saved recipes remain unchanged. The local EXE is
+refreshed without a public installer release. Cold Auto and CPU TIFF16 export
+remain performance targets, not solved by this image-quality increment.
+
 Latest performance increment runs large compiled CPU Bayer/tone and noise
 strips on up to four bounded workers, retaining serial preview/fallback and
 unchanged pixel math. Sixteen paired JPEG/TIFF16 checks across D500/Z f/Z5/1 J5

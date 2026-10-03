@@ -14,6 +14,9 @@ from openraw_studio.raw.native.preview import render_preview_image
 from openraw_studio.raw.native.tone import PreviewRgbImage
 
 
+_SHOULDER_STRENGTHS = (.10, .15, .20, .35)
+
+
 @dataclass(frozen=True)
 class PreviewStats:
     """Legacy public summary shape retained for existing integrations."""
@@ -196,7 +199,7 @@ def suggest_auto_adjustments_for_photo(photo: InteractivePhoto) -> AutoAdjustSug
         )
     return suggest_auto_adjustments_from_preview(
         original, render=lambda values: analysis.render(values)[0],
-        validation_strengths=(.7, .5, .25), **detail
+        validation_strengths=(.7, .5, .25, *_SHOULDER_STRENGTHS), **detail
     )
 
 
@@ -227,6 +230,8 @@ def suggest_auto_adjustments_from_preview(
     and contrast applied to substantial shadow midtones. Full strength is always checked.
     A highlight-limited result can receive bounded shadow refinement, measured on
     the same original shadow midtones and revalidated at both proxy resolutions.
+    Still-dim scenes can recover bounded exposure with additional compression;
+    these candidates also check low/intermediate-strength shoulder peaks.
     This is a local heuristic, not a trained AI model or semantic scene classifier.
     """
     if (detail_preview is None) != (render_detail is None) or (render_detail is not None and render is None):
@@ -386,14 +391,18 @@ def suggest_auto_adjustments_from_preview(
             values["contrast"] > 0 and any(guard.preserve_shadow_midtones for guard in guards)
         )
 
-    def highlights_preserved(values, *, all_strengths=False):
+    # More exposure/compression can have a clipping peak below the usual 25%
+    # strength sample, even when both the original and full correction are safe.
+    recovery_strengths = tuple(dict.fromkeys((*validation_strengths, *_SHOULDER_STRENGTHS)))
+
+    def highlights_preserved(values, *, all_strengths=False, strengths=None):
         # Compression can protect the endpoint while weaker settings still clip.
         # Reject on the small proxy before spending work at display resolution.
         samples = [values]
         if all_strengths or needs_strength_checks(values):
             samples.extend(
                 {key: value * strength for key, value in values.items()}
-                for strength in validation_strengths
+                for strength in (validation_strengths if strengths is None else strengths)
             )
         for guard in guards:
             for index, candidate in enumerate(samples):
@@ -426,6 +435,43 @@ def suggest_auto_adjustments_from_preview(
                 )
             ):
                 return candidate
+        return values
+
+    def refine_exposure(values):
+        # The upper-tail exposure estimate precedes rendered highlight recovery.
+        # Revisit that limit only for still-dim scenes with usable shadow tones.
+        before = primary.measure(values)
+        if (
+            low_key or dark_fraction >= 0.55 or values["highlights"] > -0.16
+            or requested_exposure <= values["exposure"] + 0.15
+            or before.median >= min(0.35, target - 0.07)
+            or primary.shadow_midtone_fraction < 0.10
+        ):
+            return values
+
+        def useful(guard, candidate):
+            old, new = guard.measure(values), guard.measure(candidate)
+            ceiling = min(0.38, old.shadow_midtone_mean + 0.05, old.shadow_midtone_mean * 1.25)
+            return (
+                old.median + 2 / 255 <= new.median <= min(target, old.median + 0.06)
+                and old.shadow_midtone_mean + 1 / 255 <= new.shadow_midtone_mean <= ceiling
+            )
+
+        for increment in (0.40, 0.20):
+            exposure = round(min(requested_exposure, values["exposure"] + increment), 4)
+            for highlights in dict.fromkeys((values["highlights"], -0.50)):
+                candidate = {**values, "exposure": exposure, "highlights": highlights}
+                if not useful(primary, candidate):
+                    continue
+                if (
+                    highlights_preserved(candidate, all_strengths=True, strengths=recovery_strengths)
+                    and tones_preserved(candidate)
+                    and all(
+                        useful(guard, candidate)
+                        for guard, prefix in zip(guards[1:], prefixes[1:]) if prefix != "native_"
+                    )
+                ):
+                    return candidate
         return values
 
     # Positive contrast can undo an exposure lift and clip dim subjects. Test
@@ -462,7 +508,7 @@ def suggest_auto_adjustments_from_preview(
                 color_candidate = values
                 if highlights_preserved(values) and tones_preserved(values, tolerance=1e-6):
                     return values
-                for candidate_highlights in (-0.16, -0.30):
+                for candidate_highlights in (-0.16, -0.30, -0.50):
                     if candidate_highlights >= suggestion.highlights:
                         continue
                     compressed = {**values, "highlights": candidate_highlights}
@@ -507,14 +553,18 @@ def suggest_auto_adjustments_from_preview(
             refined = refine_shadows(values) if amount else values
             shadows_refined = refined["shadows"] > values["shadows"]
             values = refined
+            refined = refine_exposure(values) if amount else values
+            exposure_refined = refined["exposure"] > values["exposure"]
+            values = refined
+            final_strengths = recovery_strengths if exposure_refined else validation_strengths
             balance_metrics = {"white_balance_refined": 0.0}
             if amount and not low_key:
                 values, balance_metrics = refine_white_balance(
                     primary.neutral, lambda candidate: primary.measure(candidate).neutral_bias, values,
-                    lambda candidate: highlights_preserved(candidate, all_strengths=True) and tones_preserved(candidate),
+                    lambda candidate: highlights_preserved(candidate, all_strengths=True, strengths=final_strengths) and tones_preserved(candidate),
                     detail_evidence=guards[-1].neutral if render_detail is not None else None,
                     measure_detail=(lambda candidate: guards[-1].measure(candidate).neutral_bias) if render_detail is not None else None,
-                    validation_strengths=validation_strengths,
+                    validation_strengths=final_strengths,
                 )
             notes = suggestion.rationale + (
                 ("Reduced contrast to preserve dark subjects.",) if contrast_guarded else ()
@@ -528,6 +578,8 @@ def suggest_auto_adjustments_from_preview(
                 ("Reduced correction to protect highlights and shadows.",) if amount < 1 else ()
             ) + (
                 ("Lifted usable shadows after limiting global exposure.",) if shadows_refined else ()
+            ) + (
+                ("Recovered midtones within rendered highlight limits.",) if exposure_refined else ()
             ) + (
                 ("Refined a consistent near-neutral cast using measured renderer response.",) if balance_metrics["white_balance_refined"] else ()
             )
@@ -547,8 +599,9 @@ def suggest_auto_adjustments_from_preview(
                     "highlights_guarded": float(highlights_guarded),
                     "saturation_guarded": float(saturation_guarded),
                     "shadows_refined": float(shadows_refined),
+                    "exposure_refined": float(exposure_refined),
                     "guard_strength": amount,
-                    "validated_strength_samples": float(1 + len(validation_strengths) if needs_strength_checks(values) or balance_metrics["white_balance_refined"] else 1),
+                    "validated_strength_samples": float(1 + len(final_strengths) if needs_strength_checks(values) or balance_metrics["white_balance_refined"] else 1),
                 },
             )
     return suggestion

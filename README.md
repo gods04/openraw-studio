@@ -140,6 +140,8 @@ Then import `sample-data\openraw-synthetic.DNG` or
   accepting it; uncertain or dim color-dominated scenes retain the prior correction.
 - Highlight-limited Auto can add a bounded shadow lift, checking visible benefit
   and clipping at both preview sizes; low-key and predominantly dark scenes are excluded
+- Still-dim Auto results can recover bounded exposure with stronger highlight
+  compression, rechecking native samples and low/intermediate Auto strengths
 - Optional `Detail > Color noise` and `Luminance noise` controls, with GPU/CPU
   fallback, live preview, undo/redo, saved edits, and JPEG/TIFF export. Both default
   to off; Auto preserves manual amounts instead of guessing a noise level.
