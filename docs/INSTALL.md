@@ -79,7 +79,11 @@ remain portable artifacts. No edit operation modifies the source RAW.
 
 Nikon 1 J5 12-bit D20 non-split compressed files are also supported, with an
 exact camera color profile and a 5584 x 3724 output for the tested landscape files.
-The tested Z f encoding and D20 split-row streams remain preview-only.
+The verified Nikon Z f HE* 14-bit profile supports native editing and full-size
+JPEG/TIFF export (6048 x 4032 for the tested landscape files). Its computed
+nonlinear mapping is approximate, with at most 1 DN difference from the
+development reference in nine tested sensor planes. HE (non-star), other HE*
+profiles, and D20 split-row streams remain preview-only when a camera JPEG exists.
 
 The app probes installed OpenCL GPU devices and validates a small render before
 using one. A working discrete GPU is preferred; integrated GPUs are also eligible.
@@ -87,7 +91,7 @@ If no usable GPU/driver is present, or GPU rendering fails, processing falls bac
 to the CPU. No driver installation or GPU selection is required inside the app.
 The preview status identifies the active backend.
 
-Nikon lossless decoding can compile OpenRAW's own decoder using Numba. The first
+Nikon lossless and verified HE* decoding can compile OpenRAW's own loops using Numba. The first
 launch may take longer while machine code and GPU kernels are initialized/cached.
 This is separate from subsequent slider response; it does not replace our RAW
 engine with another photo application's decoder.

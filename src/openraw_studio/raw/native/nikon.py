@@ -175,7 +175,18 @@ def summarize_nikon_makernote(metadata: DngMetadata) -> NikonMakerNoteSummary | 
     return summarize_nikon_makernote_payload(payload)
 
 
-def can_decode_nikon_34713_lossless(metadata: DngMetadata) -> bool:
+def can_decode_nikon_34713_lossless(metadata: DngMetadata, source_path: str | Path | None = None) -> bool:
+    maker = summarize_nikon_makernote(metadata)
+    if maker is not None and maker.compression_mode in {13, 14}:
+        if source_path is None:
+            return False
+        from .nikon_he import read_zf_he_payload
+
+        try:
+            read_zf_he_payload(source_path, metadata)
+        except (NikonCompressionError, OSError, ValueError):
+            return False
+        return True
     try:
         _nikon_compression_setup(metadata, _required_bits_per_sample(_nikon_pixel_ifd(metadata)))
     except NikonCompressionError:
@@ -198,15 +209,20 @@ def extract_nikon_as_shot_white_balance(metadata: DngMetadata) -> NikonWhiteBala
 
 
 def decode_nikon_34713_lossless(path: str | Path, metadata: DngMetadata | None = None) -> NikonDecodedPixelData:
-    """Decode supported Nikon Huffman data; the legacy API name is retained.
+    """Decode supported Nikon data; the legacy API name is retained.
 
     F-series lossless and 12-bit D20 non-split lossy streams are supported.
     D20 samples are linearized before any black-level or color processing.
     """
 
     source_path = Path(path)
-    data = source_path.read_bytes()
     source_metadata = metadata or DngMetadataReader().read(source_path)
+    maker = summarize_nikon_makernote(source_metadata)
+    if maker is not None and maker.compression_mode in {13, 14}:
+        from .nikon_he import decode_zf_he
+
+        return decode_zf_he(source_path, source_metadata)
+    data = source_path.read_bytes()
     pixel_ifd = _nikon_pixel_ifd(source_metadata)
 
     compression = _required_int(pixel_ifd, 259, "Compression")

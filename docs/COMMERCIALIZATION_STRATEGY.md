@@ -11,8 +11,9 @@ legal review.
 
 The active engine direction is OpenRAW-owned decoding and rendering, not a
 required darktable/LibRaw backend. External decoders used for private development
-comparisons are not bundled into the app. Experimental HE entropy/wavelet work
-does not yet enable HE sensor editing or export.
+comparisons are not bundled into the app. A guarded, locally verified Z f HE*
+profile now supports native sensor editing/export, using a computed approximate
+nonlinear mapping. This technical milestone is not a commercial release clearance.
 
 Source-code licensing and codec patent clearance are separate questions.
 Fraunhofer publishes a JPEG XS licensing program with intoPIX; an independently

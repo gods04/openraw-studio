@@ -264,7 +264,7 @@ class NativeRawProcessor:
         summary = metadata.as_dict()
         if _optional_int(summary.get("compression")) != NIKON_COMPRESSED_RAW:
             return None
-        if not can_decode_nikon_34713_lossless(metadata):
+        if not can_decode_nikon_34713_lossless(metadata, source_path):
             return None
         return metadata
 

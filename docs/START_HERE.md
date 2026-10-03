@@ -234,12 +234,14 @@ renderable files, view the generated preview and histogram, check clipping and s
 and planned output paths, compare before/after or Nikon result/camera preview, adjust exposure, create safe
 sample DNG/NEF files, adjust contrast/highlights/shadows/temperature/tint/saturation, open the exported JPEG, export
 supported photos from the imported folder, and open the output folder. When
-adjustments change, the UI marks the preview as needing an update until the
-next preview/export render. If the current output folder already has a matching
+adjustments change, the live preview updates automatically during dragging.
+If the current output folder already has a matching
 recipe for the selected photo, the UI restores the saved basic adjustments.
 Supported compressed Nikon 34713 files use a fast half-resolution preview and
-a full-resolution bilinear final JPEG. Camera-aware color is exact for the
-Nikon D500 and remains generic for other models.
+a full-resolution bilinear final JPEG. Exact-model color profiles cover the
+Nikon D500, 1 J5, and Z f. Compressed support also includes J5 12-bit D20 non-split
+and the verified Z f HE* 14-bit profile; see the README for the profile and
+nonlinear-mapping limitations. Other models use generic color where renderable.
 
 ### Step 4 - Real RAW Backend
 

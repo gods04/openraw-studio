@@ -221,7 +221,7 @@ def _inspect_nikon_raw(source_path: Path, *, dng_reader: DngMetadataReader | Non
             can_render=False,
             status="import_only",
             reason=(
-                f"Nikon {maker_note.compression_name} RAW decoding is not implemented, and no embedded JPEG was found."
+                f"This Nikon {maker_note.compression_name} profile is unsupported, and no embedded JPEG was found."
                 if high_efficiency else
                 "Nikon RAW metadata import is supported; preview/export are blocked because this file has no "
                 "embedded JPEG preview and native sensor rendering is not implemented for its payload yet."
@@ -242,7 +242,7 @@ def _inspect_nikon_raw(source_path: Path, *, dng_reader: DngMetadataReader | Non
         status="preview_only",
         reason=(
             f"Nikon {maker_note.compression_name}: camera JPEG preview only. "
-            "RAW adjustments and final export are not supported for this compression yet."
+            "RAW adjustments and final export are not supported for this profile yet."
             if high_efficiency else
             "Nikon RAW embedded preview is supported; final export is blocked by native sensor rendering limits."
         ),
@@ -401,13 +401,15 @@ def _evaluate_nikon_summary(
     if compression == NIKON_COMPRESSED_RAW and maker_note and maker_note.compression_mode in {13, 14}:
         issues = [issue for issue in issues if "compression" not in issue.lower()]
         issues.insert(0, f"Nikon {maker_note.compression_name} compression requires a separate sensor decoder.")
-    if compression == NIKON_COMPRESSED_RAW and can_decode_nikon_34713_lossless(metadata):
+    if compression == NIKON_COMPRESSED_RAW and can_decode_nikon_34713_lossless(metadata, source_path):
         issues = [issue for issue in issues if "compression" not in issue.lower()]
         issues = [issue for issue in issues if issue != "Missing scalar black level."]
         issues = [issue for issue in issues if issue != "Missing scalar white level."]
-        details.append(
-            "Compression: Nikon 34713 Huffman (F lossless / 12-bit D20 non-split)"
-        )
+        if maker_note and maker_note.compression_mode == 14:
+            details.append("Compression: Nikon Z f HE* verified 14-bit profile")
+            details.append("HE nonlinear mapping: approximation, <=1 DN versus the development reference")
+        else:
+            details.append("Compression: Nikon 34713 Huffman (F lossless / 12-bit D20 non-split)")
         details.append(
             "Levels: native sample range with MakerNote black level or inactive-border fallback"
         )

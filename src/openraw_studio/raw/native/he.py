@@ -1,7 +1,6 @@
-"""Experimental Nikon HE entropy primitives, not a sensor decoder.
+"""Bounded Nikon HE entropy primitives for the guarded native profile adapter.
 
-No public render/support path uses this module until inverse transforms and
-sensor-plane validation are complete. Original files are never opened writable.
+Coefficients alone are not sensor samples. Original files are never writable.
 """
 
 from __future__ import annotations
@@ -193,6 +192,40 @@ class EntropyPrecinct:
     packets: tuple[tuple[int, int, int, int], ...]
 
 
+def packet_streams(precinct, packet_groups):
+    """Yield bounded packet slices; exhaustion validates trailing padding."""
+    if len(precinct) < 68 or int.from_bytes(precinct[:3], "big") + 12 != len(precinct):
+        raise HeFormatError("Invalid HE precinct length")
+    if int.from_bytes(precinct[5:12], "big") != ((1 << 50) - 1) << 6:
+        raise HeFormatError("Unsupported HE depth-hint profile")
+    position = 12
+    for groups in packet_groups:
+        sizes = BitReader(precinct[position:position + 7])
+        if sizes.read(1):
+            raise HeFormatError("HE raw packet coding is not implemented")
+        data_size, gcli_size, signs_size = sizes.read(20), sizes.read(20), sizes.read(15)
+        significance_size = (sum((count + 7) // 8 for count in groups) + 7) // 8
+        lengths = (significance_size, gcli_size, data_size, signs_size)
+        position += 7
+        streams = []
+        for count in lengths:
+            if position + count > len(precinct):
+                raise HeFormatError("HE packet exceeds its precinct")
+            streams.append(memoryview(precinct)[position:position + count])
+            position += count
+        yield tuple(streams), lengths
+    if any(precinct[position:]):
+        raise HeFormatError("Nonzero HE precinct padding")
+
+
+def validate_packet_profile(data, header):
+    groups = band_groups(header.width)
+    for _index, block in precincts(data, header):
+        truncation_levels(header.weights, block[3], block[4])
+        for _streams, _lengths in packet_streams(block, groups):
+            pass
+
+
 class HeEntropyDecoder:
     """Decode quantized wavelet coefficients; these are NOT Bayer samples."""
 
@@ -206,29 +239,14 @@ class HeEntropyDecoder:
     def decode(self, precinct):
         if len(precinct) < 68 or int.from_bytes(precinct[:3], "big") + 12 != len(precinct):
             raise HeFormatError("Invalid HE precinct length")
-        # Only the fixed depth-hint profile verified on the local Z f is accepted.
-        packed_modes = int.from_bytes(precinct[5:12], "big")
-        if packed_modes != ((1 << 50) - 1) << 6:
-            raise HeFormatError("Unsupported HE depth-hint profile")
         thresholds = truncation_levels(self.header.weights, precinct[3], precinct[4])
         previous = self.previous if self.index % 16 else tuple(np.zeros_like(band) for band in self.previous)
-        position = 12
         all_gcli, all_coefficients, packets = [], [], []
-        for groups in self.groups:
-            sizes = BitReader(precinct[position:position + 7])
-            if sizes.read(1):
-                raise HeFormatError("HE raw packet coding is not implemented")
-            data_size, gcli_size, signs_size = sizes.read(20), sizes.read(20), sizes.read(15)
-            significance_size = (sum((count + 7) // 8 for count in groups) + 7) // 8
-            position += 7
-            readers = []
-            for count in (significance_size, gcli_size, data_size, signs_size):
-                if position + count > len(precinct):
-                    raise HeFormatError("HE packet exceeds its precinct")
-                readers.append(BitReader(precinct[position:position + count]))
-                position += count
+        for packet, (streams, lengths) in enumerate(packet_streams(precinct, self.groups)):
+            groups = self.groups[packet]
+            readers = [BitReader(stream) for stream in streams]
             sig, codes, magnitudes, signs = readers
-            packets.append((significance_size, gcli_size, data_size, signs_size))
+            packets.append(lengths)
             if self.accelerated:
                 from .compiled_he import decode_packet
 
@@ -265,8 +283,6 @@ class HeEntropyDecoder:
                     reader.finish()
                 except HeFormatError as error:
                     raise HeFormatError(f"Precinct {self.index}, packet {len(packets) - 1}, {label}: {error}") from error
-        if any(precinct[position:]):
-            raise HeFormatError("Nonzero HE precinct padding")
         # Failed packets must not poison the context for a retry.
         self.previous = tuple(band.copy() for band in all_gcli)
         self.index += 1

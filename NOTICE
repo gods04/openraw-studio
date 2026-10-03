@@ -12,7 +12,7 @@ https://helpx.adobe.com/camera-raw/desktop/dng-and-file-formats/digital-negative
 Nikon Camera Calibration Data
 -----------------------------
 
-OpenRAW Native includes numeric Nikon D500 and Nikon 1 J5 camera-calibration constants
+OpenRAW Native includes numeric Nikon D500, 1 J5, and Z f camera-calibration constants
 published as Adobe DNG Converter profile data. The OpenRAW transform and render
 implementation is project-authored. LibRaw was used as a development reference
 and validation oracle; no LibRaw code or binary is bundled as a runtime
@@ -32,26 +32,32 @@ https://github.com/LibRaw/LibRaw/blob/master/src/decoders/decoders_dcraw.cpp
 
 Newer Nikon compression mode identifiers and the MakerNote 0x0051 field offset
 follow the ExifTool Nikon tag reference. OpenRAW's metadata parser is
-project-authored. Identifying HE/HE* does not implement their sensor codecs.
+project-authored. Mode identification alone does not establish decoding support.
 https://github.com/exiftool/exiftool/blob/master/lib/Image/ExifTool/Nikon.pm
 
 The read-only HE research diagnostic uses published stream-framing facts and
-local file observations, not external decoder implementation code. This does
-not add an HE pixel decoder or a LibRaw runtime dependency.
+local file observations, not external decoder implementation code.
 https://github.com/zidage/LibRaw/blob/main_alcedo/doc/nikon_he_public_algorithm.md
 
-Experimental HE entropy and inverse-wavelet modules are project-authored from
+The guarded Z f HE* entropy, inverse-wavelet, and color-lifting modules are project-authored from
 format facts, mathematical operations, and synthetic/local numerical validation.
 Technical references include the JPEG XS decoder documentation and the uniform
 quantizer reconstruction described by the SVT-JPEG-XS project. No SVT-JPEG-XS or
 LibRaw decoder implementation, lookup-table implementation, or binary is bundled.
 The independently compiled reference stays outside the distributed app and is
-used only to compare intermediate numeric results during development.
+used only to compare numeric results during development.
 https://github.com/OpenVisualCloud/SVT-JPEG-XS/blob/main/documentation/decoder/svt-jpegxs-decoder-design.md
 https://github.com/OpenVisualCloud/SVT-JPEG-XS/blob/main/Source/Lib/Decoder/Codec/Dequant.c
 
+The inverse color lift also uses the mathematical framework described by
+Richter et al., Bayer CFA Pattern Compression With JPEG XS (2021).
+https://doi.org/10.1109/TIP.2021.3095421
+OpenRAW computes its own two-sided quadratic nonlinear mapping for the verified
+Z f profile. This is an approximation, not a copied reference decoder LUT or a
+claim of exact Nikon curve reproduction.
+
 This attribution and the MIT source license do not establish patent clearance
-for a future HE/JPEG XS implementation; distribution requires a separate review.
+for the HE/JPEG XS implementation; distribution requires a separate review.
 
 Lucide Icons
 ------------

@@ -170,8 +170,9 @@ The optional render callback must return the same pixel count as its baseline.
 
 HE/HE* mode identification reads the newer MakerNote `0x0051` record at byte
 offset 10; legacy `0x0093` remains supported. The Huffman path explicitly rejects
-HE/HE*, even if a stale legacy linearization table is also present. The desktop
-names the unsupported compression in Adjust and labels its JPEG as preview-only.
+HE/HE*, even if a stale legacy linearization table is also present. Verified Z f
+HE* files now dispatch to a separate guarded native decoder. For other profiles,
+the desktop names the unsupported compression and labels its JPEG as preview-only.
 Changing a camera's future recording mode does not convert existing HE files.
 References: [ExifTool Nikon tag definitions](https://github.com/exiftool/exiftool/blob/master/lib/Image/ExifTool/Nikon.pm)
 and [Nikon Z f recording options](https://onlinemanual.nikonimglib.com/zf/en/psm_raw_recording_122.html).
@@ -179,14 +180,15 @@ and [Nikon Z f recording options](https://onlinemanual.nikonimglib.com/zf/en/psm
 ```powershell
 .\.venv\Scripts\python.exe scripts\catalog_raw_samples.py "E:\Photos" --model D500 --per-folder 10 --output output\catalog
 .\.venv\Scripts\python.exe scripts\validate_photo_set.py --manifest output\selection.json --export --output output\selected-check
-.\.venv\Scripts\python.exe scripts\smoke_preview_only.py "E:\Photos\HE-sample.NEF" --output output\preview-only-check
+.\.venv\Scripts\python.exe scripts\smoke_preview_only.py "E:\Photos\unsupported-HE-profile.NEF" --output output\preview-only-check
 ```
 
 The catalog uses read-only memory mapping to avoid loading every sensor payload.
 Its contact sheets contain camera JPEGs for selection, not proof of native decode.
 The optional manifest is a JSON list of objects with `source`, `case`, and `reason`.
-The preview-only smoke test checks disabled editing/export and switching back to
-a supported file using actual Tk widgets. These scripts do not upload photographs.
+The preview-only smoke test requires an unsupported profile and checks disabled
+editing/export and switching back to a supported file using actual Tk widgets.
+These scripts do not upload photographs.
 
 ### Small Highlight Guard
 
@@ -207,14 +209,15 @@ report. Real Tk Auto took 0.44 s on that sample. A separate D500 landscape run
 measured a 52 ms median slider-to-display delay, 49 frames during 50 drag edits,
 and a 1.93 s JPEG export on the local RTX 5070. These are sample-specific results.
 
-### HE Stream Research
+### Verified Z f HE* Profile
 
 `scripts/inspect_nikon_he.py` checks strip bounds, length-delimited header markers,
 precinct payload bounds, slice sequence numbers, and the exact end marker. It
 records Bp/Br/depth-hint distributions without decoding any image coefficients.
 Eight local 6064 x 4040 Z f HE* files each walked 1010 precincts over 64 slices;
-all source hashes were unchanged. This does not establish valid entropy data,
-color rendering, or HE sensor support. The desktop remains preview-only for HE.
+all source hashes were unchanged. This framing-only diagnostic does not itself
+establish valid entropy data or sensor support; the native adapter below does
+additional validation and reconstruction.
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\inspect_nikon_he.py "E:\Photos\HE-sample.NEF" --output output\he-framing.json
@@ -225,12 +228,13 @@ The diagnostic is independently written from framing facts and local byte checks
 Upstream validation claims are not OpenRAW validation, and any future third-party
 integration needs its own review.
 
-The experimental `raw/native/he.py`, `compiled_he.py`, and `he_transform.py` now
+The `raw/native/he.py`, `compiled_he.py`, and `he_transform.py` modules now
 implement bounded packet parsing, significance/unary/GCLI decoding, bit-plane
 unpacking, uniform dequantization, and horizontal/vertical 5/3 synthesis. The
-Numba packet loop has a checked Python fallback. Neither path is imported by the
-public RAW renderer/support decision. `decode_component_planes` returns four
-color-transform components, **not** linear Bayer pixels.
+Numba packet loop has a checked Python fallback. `decode_component_planes`
+returns four color-transform components, **not** linear Bayer pixels. Only the
+guarded `nikon_he.py` adapter completes the color inverse/nonlinear mapping and
+returns sensor data to the public RAW renderer.
 
 Nine private 6064 x 4040 Z f HE* samples passed full-stream comparisons with an
 independently compiled development oracle: 220,705,200 dequantized coefficients
@@ -256,18 +260,53 @@ profiles fail explicitly. A 64-million-sample allocation bound applies. Syntheti
 tests cover multiple widths, predictor resets, negative lifting, partial slices,
 bitstream bounds/padding, damaged packets, transactional state, and JIT fallback.
 Synthetic width coverage does not establish support for additional cameras.
-The complete 269-test suite passes with automatic GPU selection and with
-`OPENRAW_GPU=off` (one GPU-only skip). Actual Tk verification passes 12 checks
-for HE preview-only labeling/disabled export and switching back to editable RAW.
+The complete 278-test suite passes with automatic GPU selection and with
+`OPENRAW_GPU=off` (one GPU-only skip). New synthetic tests cover the complete
+pipeline, color-lifting borders, curve bounds, CPU/JIT equality, crop/orientation,
+JPEG/TIFF output, decoder-cache reuse, and rejection of unknown profiles before
+editing is enabled.
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\inspect_nikon_he.py "E:\Photos\HE-sample.NEF" --decode-components --output output\he-components.json
 ```
 
-Next: identify/validate the Nikon Bayer/color inverse and nonlinear sample
-mapping, then compare actual linear sensor planes and rendered output before
-changing any support flags. The generic Star-Tetrix inverse is a research lead,
-not a verified Nikon mapping. The reference decoder, wrapper, binaries, private
+The color inverse reconstructs RGGB from luma, red difference, diagonal
+difference, and blue difference. Neighbor extension must happen before lifting
+the virtual bottom row; clamping the already lifted row produces border errors.
+All 220,487,040 nonlinear Bayer codes across the nine samples, plus 150 randomized
+synthetic fields, match the development oracle exactly.
+
+The nonlinear mapping is a project-authored, computed two-sided quadratic with
+black=1008 and white=16383, not an imported decoder lookup table. It differs by
+at most 1 DN against the oracle across its entire index domain and all nine
+14-bit linear sensor planes (mean absolute sensor difference 0.264-0.331 DN).
+This is an approximation, **not** bit-exact Nikon curve reproduction. The adapter
+requires Nikon Z f, HE* mode 14, 14-bit RGGB, the observed black levels, matching
+container/stream dimensions, and exact PIH profile bytes. Unknown configurations,
+raw-coded packets, and unverified depth hints fail before claiming edit support.
+HE mode 13, other cameras/profiles, and Z5 remain unverified.
+
+All nine samples pass native preparation, Auto, and full-resolution JPEG export
+without source changes. Landscape exports are 6048 x 4032 after active cropping;
+portrait orientation is retained. Local preparation took 3.38-4.28 s and cached
+exports 1.72-2.41 s. One actual desktop run passed 16 checks including pointer
+dragging, history, Auto, original comparison, JPEG/TIFF export, and persisted edits.
+A separate RTX 5070 run measured 58 ms median slider-to-display delay, 49 frames
+during 50 drag edits, 1.98 s export, and 4.77 s first native preview. These are
+sample-specific timings, not a promise of instant first import. Auto still
+backs off entirely on one dark museum scene with a small bright subject; improving
+that correction without losing highlight detail is further quality work.
+
+The refreshed local Windows bundle also passes actual frozen-runtime checks:
+HE packet JIT stays active even when its disk cache cannot be written. A landscape
+GPU run prepared in 6.32 s and exported in 2.54 s at 6048 x 4032. A separate
+CPU-only portrait run prepared in 4.98 s and exported in 6.01 s at 4032 x 6048.
+These are different photographs, not a controlled GPU speedup ratio. Neither
+run changed its source. All fourteen D500 regression exports also still pass.
+The bundle contains no private photographs or external reference decoder.
+
+Next: reduce initial import latency, expand verified profiles only with real
+samples, and improve difficult-scene Auto. The reference decoder, wrapper, binaries, private
 images, and comparison reports stay in ignored `output/`; none is a runtime or
 distributed dependency. Primary algorithm references include
 [JPEG XS decoder design](https://github.com/OpenVisualCloud/SVT-JPEG-XS/blob/main/documentation/decoder/svt-jpegxs-decoder-design.md)

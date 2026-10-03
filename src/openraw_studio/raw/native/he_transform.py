@@ -1,6 +1,8 @@
-"""Experimental HE transform math, not yet a supported RAW rendering path."""
+"""HE transform math; only the guarded profile adapter returns sensor pixels."""
 
 from __future__ import annotations
+
+from functools import lru_cache
 
 import numpy as np
 
@@ -55,8 +57,8 @@ def horizontal_rows(precinct, width):
 def decode_component_planes(data, *, accelerated=True):
     """Decode four color-transform planes, NOT linear Bayer sensor samples.
 
-    Color-transform inversion and Nikon nonlinearity are still required. Keep
-    this research entry point out of the public renderer/support decision.
+    Color-transform inversion and Nikon nonlinearity are still required. Use
+    the guarded profile adapter for rendering rather than these intermediates.
     """
     header = read_header(data)
     blocks = list(precincts(data, header))
@@ -70,3 +72,74 @@ def decode_component_planes(data, *, accelerated=True):
     output[2, ::2] = rows[2]
     output[2, 1::2] = rows[6]
     return output
+
+
+def _neighbor(plane, row_offset, column_offset):
+    rows = np.clip(np.arange(plane.shape[0]) + row_offset, 0, plane.shape[0] - 1)
+    columns = np.clip(np.arange(plane.shape[1]) + column_offset, 0, plane.shape[1] - 1)
+    return plane[np.ix_(rows, columns)]
+
+
+def reconstruct_nonlinear_bayer(components):
+    """Invert the observed zero-chroma-exponent color lift into signed RGGB.
+
+    These four-fractional-bit samples remain in the codec's nonlinear domain.
+    They must NOT be fed to the RAW renderer as linear sensor values.
+    """
+    components = np.asarray(components)
+    if (components.ndim != 3 or components.shape[0] != 4
+            or min(components.shape[1:]) < 1 or components.size > 64_000_000):
+        raise HeFormatError("Invalid HE color component dimensions")
+    luma, red_difference, delta, blue_difference = components.astype(np.int64)
+    first_luma = luma - ((delta + _neighbor(delta, 0, 1)
+                         + _neighbor(delta, -1, 0) + _neighbor(delta, -1, 1)) >> 3)
+    next_luma = _neighbor(first_luma, 1, 0)
+    # Extend source components before reconstructing the virtual bottom row.
+    next_luma[-1] = luma[-1] - ((delta[-1] + _neighbor(delta[-1:], 0, 1)[0]) >> 2)
+    second_luma = delta + ((first_luma + _neighbor(first_luma, 0, -1)
+                           + next_luma + _neighbor(next_luma, 0, -1)) >> 2)
+    first_green = first_luma - ((red_difference + _neighbor(red_difference, 0, 1)
+                                + blue_difference + _neighbor(blue_difference, -1, 0)) >> 3)
+    second_green = second_luma - ((red_difference + _neighbor(red_difference, 1, 0)
+                                  + blue_difference + _neighbor(blue_difference, 0, -1)) >> 3)
+    red = red_difference + ((first_green + _neighbor(first_green, 0, -1)
+                            + second_green + _neighbor(second_green, -1, 0)) >> 2)
+    blue = blue_difference + ((first_green + _neighbor(first_green, 1, 0)
+                              + second_green + _neighbor(second_green, 0, 1)) >> 2)
+    height, width = luma.shape
+    bayer = np.empty((height * 2, width * 2), dtype=np.int64)
+    bayer[::2, ::2], bayer[::2, 1::2] = red, first_green
+    bayer[1::2, ::2], bayer[1::2, 1::2] = second_green, blue
+    return bayer
+
+
+@lru_cache(maxsize=1)
+def _zf_linearization_curve():
+    """Computed two-sided quadratic, not an imported decoder lookup table.
+
+    Limited to the observed Z f profile with black=1008, white=16383. Across
+    the reference's full index domain the rounded result differs by <=1 DN.
+    This is an approximation, not a claim of exact Nikon curve reproduction.
+    """
+    black, white = 1008, 16383
+    pivot = 65535 * np.sqrt(black / white)
+    distance = np.arange(65536, dtype=np.float64) - pivot
+    below = black * (1 - (distance / pivot) ** 2)
+    above = black + (white - black) * (distance / (65535 - pivot)) ** 2
+    curve = np.clip(np.floor(np.where(distance < 0, below, above) + 0.5), 0, white).astype(np.uint16)
+    curve.flags.writeable = False
+    return curve
+
+
+def linearize_zf_he_bayer(nonlinear):
+    """Linear sensor samples for the validated Z f profile only."""
+    values = np.asarray(nonlinear)
+    flat = values.reshape(-1)
+    result = np.empty(flat.shape, dtype=np.uint16)
+    curve = _zf_linearization_curve()
+    # Avoid multiple full-resolution int64 temporaries during linearization.
+    for start in range(0, len(flat), 1 << 20):
+        end = start + (1 << 20)
+        indices = np.clip(flat[start:end] + 32768, 0, 65535).astype(np.uint16)
+        result[start:end] = curve[indices]
+    return result.reshape(values.shape)

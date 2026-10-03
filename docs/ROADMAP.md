@@ -5,11 +5,12 @@
 Implemented: photo-first editor, continuous GPU/CPU preview, guarded Auto with
 strength control, original RAW comparison, undo/redo, local edit retention,
 JPEG/TIFF export, and cancellable per-photo batch modes. Supported compressed
-Nikon paths include F-series lossless and 12-bit D20 non-split (verified on 1 J5).
+Nikon paths include F-series lossless, 12-bit D20 non-split (verified on 1 J5),
+and the verified Z f HE* 14-bit profile with approximate nonlinear mapping.
 Local Windows EXE builds are available; this is not a public installer release.
 
-Next quality work: Z f HE/HE* sensor decoding (experimental entropy and wavelet
-component reconstruction are verified, linear Bayer decoding is not), broader camera calibration, edge-aware
+Next quality work: faster first HE* import, broader verified HE profiles,
+Auto on small bright subjects in dark scenes, broader camera calibration, edge-aware
 demosaic, actual sensor highlight reconstruction, denoise, and full-resolution
 inspection. Semantic portrait/scene AI and mobile remain later phases.
 
@@ -18,11 +19,14 @@ the available highlight detail, so small bright subjects do not disappear inside
 a whole-frame clipping allowance. It tries limiting exposure separately before
 reducing the entire correction. Fourteen private D500 exports and a real desktop
 moon-photo workflow pass. Nine Z f HE* streams now match an independent development
-oracle through entropy, dequantization, and both wavelet directions, including
-partial-slice boundaries. Native component reconstruction takes about 2.4-2.8 s
-on these local samples, but those components are not yet linear Bayer pixels.
-The next HE step is verified Bayer/color inversion and nonlinear mapping followed
-by sensor-plane validation, not enabling editing from the embedded JPEG.
+oracle through entropy, wavelets, and nonlinear Bayer reconstruction. The computed
+two-sided quadratic mapping differs by at most 1 DN in all nine 14-bit linear
+sensor planes; this is an approximation, not bit-exact Nikon curve reproduction.
+All nine native Auto/export runs pass with unchanged sources. A real desktop
+workflow passes 16 checks including JPEG/TIFF export, history, and edit persistence.
+One local RTX 5070 run measured 58 ms median slider-to-display latency, 1.98 s
+export, and 4.77 s first native preview. Initial loading still needs improvement.
+Unknown cameras, HE modes, black levels, and stream profiles remain blocked.
 
 ## Phase 0 - Foundation
 

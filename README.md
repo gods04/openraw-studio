@@ -78,9 +78,13 @@ Then import `sample-data\openraw-synthetic.DNG` or
   fallback, and full-resolution bilinear RGB export for supported files
 - Native Nikon 1 J5 12-bit D20 non-split compressed NEF decoding, linearization,
   corrected black levels, exact camera profile, and full-size JPEG/TIFF export
+- Native Nikon Z f HE* 14-bit decoding for the verified profile, with real RAW
+  adjustments and full-size JPEG/TIFF export. Its computed nonlinear mapping is
+  approximate: at most 1 DN difference against the development reference in
+  nine tested sensor planes. Other HE profiles are not implied to be supported.
 - Automatic OpenCL GPU selection for live adjustments and full-resolution Nikon
   rendering, with CPU fallback when a GPU/driver is unavailable
-- Camera-aware Nikon D500 and 1 J5 rendering with standard as-shot white balance, an
+- Camera-aware Nikon D500, 1 J5, and Z f rendering with standard as-shot white balance, an
   exact camera-to-linear-sRGB profile, and EXIF orientation handling
 - Native extraction for simple uncompressed DNG 12/14-bit packed strip payloads
   and 16-bit strip/tile pixel payloads
@@ -128,15 +132,16 @@ Then import `sample-data\openraw-synthetic.DNG` or
   gamut mapping are not implemented yet
 - OpenRAW Native has a first optimized Nikon 34713 lossless decode/render path,
   with a half-resolution preview and full-resolution bilinear final export.
-  Camera profiles are provided for the D500 and 1 J5, with generic color for other models;
+  Camera profiles are provided for the D500, 1 J5, and Z f, with generic color for other models;
   first-use compiler/GPU initialization still adds latency, while edge-aware
   demosaic quality, further speed work, and more profiles remain
 - Other compressed/proprietary Nikon `.NEF` / `.NRW` sensor payload variants
   are not decoded yet. J5 D20 support is limited to 12-bit, non-split streams;
-  the tested Z f samples use HE* and remain camera-JPEG-preview-only, with RAW
-  editing/export disabled. HE and HE* are now identified explicitly using Nikon's
-  newer compression metadata. Z5 sensor support has not been verified with a
-  real sample. Check each file with `openraw inspect`.
+  HE* support is restricted to the verified Z f 14-bit profile with matching
+  stream configuration and black levels. HE (non-star), other HE* profiles, and
+  D20 split-row streams remain unsupported for RAW editing/export. Z5 sensor
+  support has not been verified with a real sample. Check each file with
+  `openraw inspect`.
 - Broad proprietary RAW rendering support is not implemented yet
 - TIFF export is currently 8-bit sRGB; 16-bit linear/working-space TIFF is not implemented yet
 - QC currently checks rendered 8-bit preview clipping only; sensor-domain

@@ -18,7 +18,7 @@ def smoke_test(source: Path, output: Path) -> int:
     )
     from openraw_studio.pipeline.interfaces import PipelineRequest
     from openraw_studio.pipeline.local import LocalPhotoPipeline
-    from openraw_studio.raw.native import compiled_decode
+    from openraw_studio.raw.native import compiled_decode, compiled_he
     from openraw_studio.raw.native.interactive import prepare_interactive_photo
     from openraw_studio.raw.native.tone import PreviewRgbImage
 
@@ -39,6 +39,11 @@ def smoke_test(source: Path, output: Path) -> int:
         )
         report["decoder_fallback_reason"] = compiled_decode.last_error
         report["decoder_disk_cache_disabled"] = compiled_decode.cache_disabled_reason is not None
+        report["compiled_he_decoder"] = bool(
+            getattr(compiled_he.decode, "signatures", [])
+        )
+        report["he_decoder_fallback_reason"] = compiled_he.last_error
+        report["he_decoder_disk_cache_disabled"] = compiled_he.cache_disabled_reason is not None
         preview = PreviewRgbImage(
             image.width, image.height, tuple(image.getdata()), "gamma-2.2"
         )
