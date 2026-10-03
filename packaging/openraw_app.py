@@ -16,7 +16,11 @@ def smoke_test(source: Path, output: Path) -> int:
     )
     from openraw_studio.pipeline.interfaces import PipelineRequest
     from openraw_studio.pipeline.local import LocalPhotoPipeline
-    from openraw_studio.raw.native import compiled_decode, compiled_he, compiled_he_transform
+    from openraw_studio.raw.native import (
+        compiled_decode,
+        compiled_he,
+        compiled_he_transform,
+    )
     from openraw_studio.raw.native.interactive import prepare_interactive_photo
     from openraw_studio.raw.native.tone import PreviewRgbImage
 
@@ -52,9 +56,13 @@ def smoke_test(source: Path, output: Path) -> int:
         preview = PreviewRgbImage(
             image.width, image.height, tuple(image.getdata()), "gamma-2.2"
         )
+        started = perf_counter()
         suggestion = suggest_auto_adjustments_from_preview(
             preview, render=lambda values: photo.render(values)[0]
         )
+        report["auto_seconds"] = perf_counter() - started
+        report["auto"] = suggestion.as_overrides()
+        report["auto_metrics"] = suggestion.metrics
         started = perf_counter()
         result = pipeline.process(
             PipelineRequest(source, output, overrides=suggestion.as_overrides())
@@ -63,7 +71,7 @@ def smoke_test(source: Path, output: Path) -> int:
         report["export_size"] = [result.exports[0].width, result.exports[0].height]
         report["source_unchanged"] = sha256_file(source) == before
         report["ok"] = report["source_unchanged"] and result.exports[0].path.is_file()
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001 - Persist unexpected frozen-runtime failures.
         report.update(ok=False, error=f"{type(error).__name__}: {error}")
     (output / "packaged-smoke.json").write_text(
         json.dumps(report, indent=2), encoding="utf-8"

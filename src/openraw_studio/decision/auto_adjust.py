@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Callable
 
 import numpy as np
 
@@ -236,24 +236,30 @@ def suggest_auto_adjustments_from_preview(
     highlight_detail = (pixels >= 0.60) & headroom
     highlight_channels = int(np.count_nonzero(highlight_detail))
     detail_allowance = max(2, highlight_channels * 0.02)
+    rendered_cache = {}
 
     def rendered_metrics(values):
+        key = tuple(sorted(values.items()))
+        if key in rendered_cache:
+            return rendered_cache[key]
         candidate = _pixels(render(values))
         if candidate.shape != pixels.shape:
             raise ValueError("Auto validation render must match the baseline preview dimensions")
         candidate_luma = candidate @ luma_weights
         crushed = float(np.mean(usable_shadows & (candidate_luma <= 2 / 255)))
         clipped_channels = candidate >= 254 / 255
-        return _RenderedMetrics(
+        checked = _RenderedMetrics(
             _clipping(candidate), float(np.median(candidate_luma)), crushed,
             float(np.mean(np.any(headroom & clipped_channels, axis=1))),
             int(np.count_nonzero(highlight_detail & clipped_channels)),
         )
+        rendered_cache[key] = checked
+        return checked
 
-    def tones_preserved(checked):
+    def tones_preserved(checked, *, tolerance=0.01):
         preserve_midtones = exposure >= 0 and median < 0.5 and not low_key
         return checked.crushed_shadows <= 0.005 and (
-            not preserve_midtones or checked.median >= median - 0.01
+            not preserve_midtones or checked.median >= median - tolerance
         )
 
     def highlights_preserved(checked):
@@ -277,15 +283,42 @@ def suggest_auto_adjustments_from_preview(
                 break
 
     exposure_guarded = False
-    if suggestion.exposure > 0 and not highlights_preserved(initial_metrics):
-        for fraction in (0.75, 0.5, 0.25, 0.0):
-            values = {**initial_values, "exposure": round(suggestion.exposure * fraction, 4)}
-            checked = rendered_metrics(values)
-            if highlights_preserved(checked) and tones_preserved(checked):
-                suggestion = replace(suggestion, exposure=values["exposure"])
-                initial_values, initial_metrics = values, checked
-                exposure_guarded = True
-                break
+    highlights_guarded = False
+
+    def recover_tones():
+        fractions = (1.0, 0.75, 0.5, 0.25, 0.125, 0.0) if suggestion.exposure > 0 else (1.0,)
+        contrasts = (suggestion.contrast, 0.0) if suggestion.contrast > 0 else (suggestion.contrast,)
+        for fraction in fractions:
+            for candidate_contrast in contrasts:
+                values = {
+                    **initial_values, "exposure": round(suggestion.exposure * fraction, 4),
+                    "contrast": candidate_contrast,
+                }
+                checked = rendered_metrics(values)
+                # A recovered correction must not darken dim midtones. Contrast
+                # that worked before limiting exposure may now defeat the lift.
+                if not tones_preserved(checked, tolerance=1e-6):
+                    continue
+                if highlights_preserved(checked):
+                    return values, checked
+                for candidate_highlights in (-0.16, -0.30):
+                    if candidate_highlights >= suggestion.highlights:
+                        continue
+                    compressed = {**values, "highlights": candidate_highlights}
+                    compressed_metrics = rendered_metrics(compressed)
+                    if highlights_preserved(compressed_metrics) and tones_preserved(compressed_metrics, tolerance=1e-6):
+                        return compressed, compressed_metrics
+        return None
+
+    if not highlights_preserved(initial_metrics):
+        recovered = recover_tones()
+        if recovered is not None:
+            values, checked = recovered
+            exposure_guarded = values["exposure"] != suggestion.exposure
+            highlights_guarded = values["highlights"] != suggestion.highlights
+            contrast_guarded |= values["contrast"] != suggestion.contrast
+            suggestion = replace(suggestion, **values)
+            initial_values, initial_metrics = values, checked
 
     # Back off the complete correction until rendered highlights AND dark
     # subjects stay inside their budgets. Proxy renders do not decode RAW again.
@@ -303,6 +336,8 @@ def suggest_auto_adjustments_from_preview(
             ) + (
                 ("Limited exposure to preserve highlight detail.",) if exposure_guarded else ()
             ) + (
+                ("Compressed highlights to retain a useful tonal correction.",) if highlights_guarded else ()
+            ) + (
                 ("Reduced correction to protect highlights and shadows.",) if amount < 1 else ()
             )
             return replace(
@@ -318,7 +353,9 @@ def suggest_auto_adjustments_from_preview(
                     "highlight_detail_loss_fraction": checked.lost_highlight_channels / max(1, highlight_channels),
                     "contrast_guarded": float(contrast_guarded),
                     "exposure_guarded": float(exposure_guarded),
+                    "highlights_guarded": float(highlights_guarded),
                     "guard_strength": amount,
+                    "validation_renders": float(len(rendered_cache)),
                 },
             )
     return suggestion

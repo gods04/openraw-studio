@@ -196,8 +196,9 @@ Auto also counts newly clipped channels with baseline headroom (at most 250/255)
 For baseline channels at least 0.60, newly clipped values may consume at most 2%
 of that set, with a two-channel allowance for isolated outliers. A separate
 whole-frame new-clipping limit prevents previously clipped pixels elsewhere from
-offsetting newly lost detail. It tests a smaller positive exposure first, keeping
-shadow/color settings when safe, then uses the existing whole-correction backoff.
+offsetting newly lost detail. It jointly tests reduced exposure, neutral contrast,
+and bounded highlight compression, retaining shadow/color settings when safe,
+then uses the existing whole-correction backoff.
 These are bounded proxy heuristics, not guarantees for sub-pixel highlights or
 full-resolution sensor reconstruction. Auto strength below 100% scales settings;
 it does not independently re-run the guard at each strength.
@@ -260,7 +261,7 @@ profiles fail explicitly. A 64-million-sample allocation bound applies. Syntheti
 tests cover multiple widths, predictor resets, negative lifting, partial slices,
 bitstream bounds/padding, damaged packets, transactional state, and JIT fallback.
 Synthetic width coverage does not establish support for additional cameras.
-The complete 289-test suite passes with automatic GPU selection and with
+The complete 295-test suite passes with automatic GPU selection and with
 `OPENRAW_GPU=off` (one GPU-only skip). New synthetic tests cover the complete
 pipeline, color-lifting borders, curve bounds, CPU/JIT equality, crop/orientation,
 JPEG/TIFF output, decoder-cache reuse, and rejection of unknown profiles before
@@ -293,9 +294,9 @@ exports 1.72-2.41 s. One actual desktop run passed 16 checks including pointer
 dragging, history, Auto, original comparison, JPEG/TIFF export, and persisted edits.
 A separate RTX 5070 run measured 58 ms median slider-to-display delay, 49 frames
 during 50 drag edits, 1.98 s export, and 4.77 s first native preview. These are
-sample-specific timings, not a promise of instant first import. Auto still
-backs off entirely on one dark museum scene with a small bright subject; improving
-that correction without losing highlight detail is further quality work.
+sample-specific timings, not a promise of instant first import. The dark museum
+scene initially forced Auto to back off entirely; joint tone recovery below
+now retains a modest correction on that sample.
 
 The initial local Windows bundle also passed actual frozen-runtime checks:
 HE packet JIT stays active even when its disk cache cannot be written. A landscape
@@ -338,8 +339,41 @@ errors. A separate D500 check prepared in 1.47 s initially and 0.87 s after rest
 exporting in 1.58-1.62 s at 5568 x 3712 with its compiled decoder active. These are
 local sample-specific measurements; new app builds can require recompilation.
 
-Next: reduce initial import latency, expand verified profiles only with real
-samples, and improve difficult-scene Auto. The reference decoder, wrapper, binaries, private
+### Joint Auto Tone Recovery
+
+When a suggestion fails highlight checks, Auto now searches a bounded set of
+exposure reductions, neutral contrast, and highlight compression down to -0.30.
+It rechecks dark tones after changing exposure: a recovered dim-scene correction
+must not darken median luminance. Low-key intent and existing clipping/shadow
+budgets remain unchanged. Failed recovery still backs off the entire correction.
+Per-call metric caching avoids duplicate renders; `validation_renders` and
+`highlights_guarded` expose this work without retaining rendered images.
+
+The private validation script now uses the same scene-linear 256-pixel proxy as
+desktop Auto, not a downsized gamma-encoded display image. This fixes a sampling
+discrepancy in older comparison reports. Fourteen D500 and nine Z f samples all
+pass native Auto/full-size JPEG export with unchanged source hashes. On the local
+RTX 5070, Auto plus the 960-pixel comparison render took 0.033-0.109 s, and cached
+JPEG exports took 1.60-2.46 s. These exclude first import/decoder preparation.
+
+The museum sample now keeps +0.15 EV, zero contrast, and -0.30 highlights at
+100% Auto. Proxy median luma rises from 0.2527 to 0.2700, with one newly clipped
+bright channel out of 249 (below the existing allowance). Actual Tk Auto took
+0.62 s including proxy preparation/display, and all 16 workflow checks passed.
+A separate D500 moon run measured 51 ms median slider response, 49 frames during
+50 drag edits, and 1.76 s export. Unit regressions cover real linear rendering,
+zero/negative exposure, the one-render fast path, and bounded duplicate-free search.
+
+Remaining quality limitation: a separate 23-photo audit at 25/50/70/100% strength
+and 256/960-pixel resolution passed 178 of 184 clipping/shadow checks. All 256-pixel
+checks passed, but six 960-pixel cases exceeded the same budgets: backlight, moon,
+and high-ISO highlight detail at 100%; fine sea highlights at 70% and 100%; and
+temple shadow detail at 100%. This is evidence that a small analysis proxy misses
+fine detail, not proof of full-resolution protection. The next Auto priority is
+detail-aware validation without making normal editing slower. Reports remain local.
+
+Next: improve finer-detail Auto validation, reduce initial import latency, and
+expand verified profiles only with real samples. The reference decoder, wrapper, binaries, private
 images, and comparison reports stay in ignored `output/`; none is a runtime or
 distributed dependency. Primary algorithm references include
 [JPEG XS decoder design](https://github.com/OpenVisualCloud/SVT-JPEG-XS/blob/main/documentation/decoder/svt-jpegxs-decoder-design.md)

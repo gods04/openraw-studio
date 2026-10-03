@@ -9,16 +9,21 @@ Nikon paths include F-series lossless, 12-bit D20 non-split (verified on 1 J5),
 and the verified Z f HE* 14-bit profile with approximate nonlinear mapping.
 Local Windows EXE builds are available; this is not a public installer release.
 
-Next quality work: faster first HE* import, broader verified HE profiles,
-Auto on small bright subjects in dark scenes, broader camera calibration, edge-aware
+Next quality work: finer-detail Auto validation, faster first HE* import,
+broader verified HE profiles, broader camera calibration, edge-aware
 demosaic, actual sensor highlight reconstruction, denoise, and full-resolution
 inspection. Semantic portrait/scene AI and mobile remain later phases.
 
-Latest verified increment: Auto limits newly clipped bright channels relative to
-the available highlight detail, so small bright subjects do not disappear inside
-a whole-frame clipping allowance. It tries limiting exposure separately before
-reducing the entire correction. Fourteen private D500 exports and a real desktop
-moon-photo workflow pass. Nine Z f HE* streams now match an independent development
+Latest verified increment: Auto jointly checks exposure, contrast, and highlight
+compression, retaining a modest correction on a previously unchanged museum photo.
+It still limits newly clipped channels relative to available highlight detail;
+cached proxy metrics avoid duplicate candidate renders. Fourteen D500 and nine
+Z f full-size exports pass with unchanged sources. All 295 tests pass with GPU
+auto-selection and CPU-only fallback (one GPU-only skip). A finer-resolution
+audit found six clipping/shadow budget overruns among 184 checks, including tiny
+sea highlights at default strength. Small-proxy guards are not full-resolution
+guarantees; addressing these cases is the next Auto priority.
+Nine Z f HE* streams match an independent development
 oracle through entropy, wavelets, and nonlinear Bayer reconstruction. The computed
 two-sided quadratic mapping differs by at most 1 DN in all nine 14-bit linear
 sensor planes; this is an approximation, not bit-exact Nikon curve reproduction.

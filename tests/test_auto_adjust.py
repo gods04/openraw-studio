@@ -3,10 +3,13 @@ import unittest
 from pathlib import Path
 
 import numpy as np
-
 from fixtures_nikon import synthetic_nikon_nef_compressed_bytes
 
-from openraw_studio.decision.auto_adjust import suggest_auto_adjustments, suggest_auto_adjustments_from_preview
+from openraw_studio.decision.auto_adjust import (
+    suggest_auto_adjustments,
+    suggest_auto_adjustments_from_preview,
+)
+from openraw_studio.raw.native.interactive import InteractivePhoto
 from openraw_studio.raw.native.synthetic import write_synthetic_dng
 from openraw_studio.raw.native.tone import PreviewRgbImage
 
@@ -92,7 +95,9 @@ class AutoAdjustTests(unittest.TestCase):
         pixels[45:50, 48:52] = (200, 195, 195)
         preview = PreviewRgbImage(100, 100, tuple(map(tuple, pixels.reshape(-1, 3))), "gamma-2.2")
 
+        rendered_settings = []
         def render(values):
+            rendered_settings.append(tuple(sorted(values.items())))
             result = pixels.copy()
             if values["saturation"] > .01:
                 result[45:50, 48:52, 0] = 255
@@ -101,6 +106,91 @@ class AutoAdjustTests(unittest.TestCase):
         result = suggest_auto_adjustments_from_preview(preview, render=render)
         self.assertLess(result.metrics["guard_strength"], 1)
         self.assertEqual(result.metrics["highlight_detail_loss_fraction"], 0)
+        self.assertEqual(len(rendered_settings), len(set(rendered_settings)))
+        self.assertEqual(result.metrics["validation_renders"], len(rendered_settings))
+        self.assertLessEqual(len(rendered_settings), 42)
+
+    def test_limited_exposure_rechecks_contrast_and_compresses_highlights(self):
+        pixels = np.full((100, 100, 3), (60, 62, 64), dtype=np.uint8)
+        pixels[45:50, 48:52] = (220, 210, 200)
+
+        def render(values):
+            delta = round(30 * values["exposure"] - 80 * values["contrast"])
+            candidate = np.clip(pixels.astype(np.int32) + delta, 0, 255).astype(np.uint8)
+            if values["exposure"] > .31 or values["highlights"] > -.2:
+                candidate[45:50, 48:52] = 255
+            return candidate
+
+        result = suggest_auto_adjustments_from_preview(pixels, render=render)
+        self.assertGreater(result.exposure, 0)
+        self.assertLessEqual(result.exposure, .31)
+        self.assertEqual(result.contrast, 0)
+        self.assertEqual(result.highlights, -.3)
+        self.assertGreater(result.shadows, 0)
+        self.assertGreater(result.saturation, 0)
+        self.assertEqual(result.metrics["guard_strength"], 1)
+        self.assertEqual(result.metrics["highlight_detail_loss_fraction"], 0)
+        self.assertGreater(result.metrics["median_luma_after"], result.metrics["median_luma"])
+        self.assertEqual(result.metrics["highlights_guarded"], 1)
+        self.assertLessEqual(result.metrics["validation_renders"], 42)
+
+    def test_joint_tone_guard_can_help_without_positive_exposure(self):
+        pixels = np.full((100, 100, 3), 110, dtype=np.uint8)
+        pixels[45:50, 48:52] = 220
+
+        def render(values):
+            candidate = pixels.copy()
+            if values["contrast"] > .01 or values["highlights"] > -.2:
+                candidate[45:50, 48:52] = 255
+            return candidate
+
+        result = suggest_auto_adjustments_from_preview(pixels, render=render)
+        self.assertEqual(result.exposure, 0)
+        self.assertEqual(result.contrast, 0)
+        self.assertEqual(result.highlights, -.3)
+        self.assertEqual(result.metrics["guard_strength"], 1)
+        self.assertEqual(result.metrics["highlight_detail_loss_fraction"], 0)
+
+    def test_real_linear_renderer_lifts_dim_scene_without_losing_small_bright_subject(self):
+        values = np.full((100, 100, 3), .05, dtype=np.float32)
+        values[45:50, 48:52] = .75
+        photo = InteractivePhoto(values, np.eye(3, dtype=np.float32), (1, 1, 1))
+        original, _ = photo.render({})
+        result = suggest_auto_adjustments_from_preview(original, render=lambda edits: photo.render(edits)[0])
+        self.assertGreater(result.exposure, 0)
+        self.assertGreater(result.metrics["median_luma_after"], result.metrics["median_luma"])
+        self.assertEqual(result.metrics["highlight_detail_loss_fraction"], 0)
+        self.assertLessEqual(result.metrics["new_shadow_clipping_fraction"], .005)
+
+    def test_safe_suggestion_only_renders_once(self):
+        pixels = np.full((10, 10, 3), 100, dtype=np.uint8)
+        renders = []
+
+        def render(values):
+            renders.append(values)
+            return pixels
+
+        result = suggest_auto_adjustments_from_preview(pixels, render=render)
+        self.assertEqual(len(renders), 1)
+        self.assertEqual(result.metrics["validation_renders"], 1)
+        self.assertEqual(result.metrics["guard_strength"], 1)
+
+    def test_bright_scene_can_recover_highlights_without_undoing_negative_exposure(self):
+        pixels = np.full((100, 100, 3), 150, dtype=np.uint8)
+        pixels[45:50, 48:52] = 220
+
+        def render(values):
+            candidate = pixels.copy()
+            candidate[:40] = 140
+            if values["highlights"] > -.2:
+                candidate[45:50, 48:52] = 255
+            return candidate
+
+        result = suggest_auto_adjustments_from_preview(pixels, render=render)
+        self.assertLess(result.exposure, 0)
+        self.assertEqual(result.highlights, -.3)
+        self.assertEqual(result.metrics["highlight_detail_loss_fraction"], 0)
+        self.assertEqual(result.metrics["exposure_guarded"], 0)
 
     def test_balanced_input_is_deterministic_and_rejects_invalid_pixels(self) -> None:
         preview = PreviewRgbImage(2, 2, ((100, 110, 120),) * 4, "gamma-2.2")

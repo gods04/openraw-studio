@@ -1,12 +1,18 @@
 import importlib.util
-from io import BytesIO
-from pathlib import Path
 import sys
 import tempfile
 import unittest
+from io import BytesIO, StringIO
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
+from fixtures_nikon import (
+    embedded_jpeg_bytes,
+    nikon_makernote_bytes,
+    synthetic_nikon_nef_metadata_bytes,
+)
 from PIL import Image
-from fixtures_nikon import embedded_jpeg_bytes, nikon_makernote_bytes, synthetic_nikon_nef_metadata_bytes
 
 
 def load_script(name):
@@ -75,6 +81,22 @@ class PhotoCatalogTests(unittest.TestCase):
         self.assertIn("&lt;bad&gt;", report)
         self.assertIn('photo-00/auto.jpg', report)
         self.assertNotIn('photo-01/auto.jpg', report)
+
+    def test_auto_validation_uses_desktop_linear_proxy_not_display_thumbnail(self):
+        validation = sys.modules["validate_photo_set"]
+        display = SimpleNamespace(render=lambda _: (Image.new("RGB", (40, 30), (200, 200, 200)), "CPU"))
+        analysis = SimpleNamespace(render=lambda _: (Image.new("RGB", (4, 3), (100, 100, 100)), "CPU"))
+        with tempfile.TemporaryDirectory() as folder, patch.object(
+            validation, "prepare_interactive_photo", side_effect=[display, analysis]
+        ) as prepare, patch("sys.stdout", new_callable=StringIO):
+            source = Path(folder) / "photo.NEF"
+            source.write_bytes(b"synthetic harness input")
+            record = validation.validate([source], Path(folder), False)[0]
+        self.assertTrue(record["ok"])
+        self.assertTrue(record["source_unchanged"])
+        self.assertEqual([call.kwargs["max_dimension"] for call in prepare.call_args_list], [960, 256])
+        self.assertEqual(record["analysis_size"], [4, 3])
+        self.assertAlmostEqual(record["metrics"]["median_luma"], 100 / 255, places=5)
 
 
 if __name__ == "__main__":

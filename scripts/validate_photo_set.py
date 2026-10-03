@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import json
 from html import escape
 from io import BytesIO
-import json
 from pathlib import Path
 from time import perf_counter
 
@@ -123,7 +123,10 @@ def validate(sources, output, export):
             )
             original, backend = photo.render({})
             record.update(prepare_seconds=perf_counter() - started, backend=backend)
-            sample = ImageOps.contain(original, (256, 256))
+            analysis_photo = prepare_interactive_photo(
+                pipeline.raw_processor, source, max_dimension=256
+            )
+            sample, _ = analysis_photo.render({})
             preview = PreviewRgbImage(
                 sample.width, sample.height,
                 tuple(map(tuple, np.asarray(sample).reshape(-1, 3))), "gamma-2.2"
@@ -131,9 +134,7 @@ def validate(sources, output, export):
             started = perf_counter()
             suggestion = suggest_auto_adjustments_from_preview(
                 preview,
-                render=lambda values: ImageOps.contain(
-                    photo.render(values)[0], (256, 256)
-                ),
+                render=lambda values, photo=analysis_photo: photo.render(values)[0],
             )
             adjustments = {
                 key: value * 0.7 for key, value in suggestion.as_overrides().items()
@@ -144,6 +145,8 @@ def validate(sources, output, export):
                 scene=suggestion.scene,
                 metrics=suggestion.metrics,
                 adjustments=adjustments,
+                full_strength_adjustments=suggestion.as_overrides(),
+                analysis_size=list(sample.size),
             )
             item_dir = output / f"photo-{len(records):02d}"
             item_dir.mkdir(exist_ok=True)
