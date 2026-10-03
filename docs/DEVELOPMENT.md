@@ -881,3 +881,69 @@ checks reproduce the corrected high-ISO portrait and sea suggestions (Auto
 remains visible latency, not an instant-open guarantee. The existing optional
 TBB packaging warning remains; these sequential kernels and frozen smokes pass
 without that library. No public ZIP or installer was generated or released.
+
+### Manual Rendered Color-Noise Reduction
+
+`Adjust > Detail > Color noise` adds a manual 0-100 control, stored as
+`adjustments.raw.color_noise` in `[0, 1]`. Missing values default to zero, an
+exact bypass without filtering work. Undo/redo, local sessions, recipes,
+JPEG/TIFF, and CLI `process`/`batch --color-noise` retain the value. Single-photo
+Auto and its strength control preserve the manual amount. Batch Auto uses the
+current manual amount; Saved edits uses each photo's retained amount. No noise
+level is automatically estimated, and existing Auto tone suggestions are unchanged.
+
+The native implementation uses a 5x5 bilateral-style filter on rendered RGB8
+chroma, after tone mapping and before orientation, crop, or resize. It adapts
+the domain/range weighting principle cited in `raw/native/chroma.py`, using
+display-luma and R-G/B-G differences rather than CIE-Lab. Reconstructed color
+is contracted toward the original luminance at gamut boundaries; this is not
+camera gamut mapping or preservation of individual channel highlights. There
+is no new dependency, external RAW engine, fastmath, or extra thread pool.
+
+NumPy is the independent bounded-chunk fallback. Cached sequential CPU code
+prepares each chunk's guide/chroma planes once; OpenCL validates against NumPy
+before first use. Driver/compiler failures retain the same filter on fallback,
+and disk-cache failures retry compilation in memory. Native Nikon regions use
+a four-pixel combined MHC/filter halo; generic DNG regions add two pixels around
+the linear tile. Fit still filters a fast linear proxy and is only approximate.
+Native 100%/200% inspection is the authoritative full-export detail view.
+
+All 414 tests pass with GPU and CPU-only (four GPU-only skips). New coverage
+includes zero bypass, neutral/constant pixels, synthetic chroma noise, saturated
+boundaries, luminance rounding, CPU/GPU/reference parity, chunk seams and bounded
+scratch arrays, read-only inputs, cache/compiler/driver/JIT failure, every Bayer
+phase and EXIF orientation, ROI equality, old recipes, persistence, CLI bounds,
+and full pipeline TIFF pixels. No test requires private photos or an installed GPU.
+
+All 26 selected D500/Z f/1 J5 captures pass full-frame CPU/GPU comparison at
+strength 75 with at most one 8-bit level difference and at most 0.4961 DN change
+in the filter's weighted luminance. Three native regions per photo exactly match
+its full export. A separate comparison against Auto70 without the filter (neutral
+for 1 J5) passes the existing clipping/shadow budgets on all 26 full frames.
+Newly clipped pixels peak below 0.003%, not zero; this remains sample evidence,
+not a universal guarantee. Source hashes are unchanged; reports/photos stay local.
+
+Compact-window Tk checks pass pointer input with changed displayed pixels,
+undo/redo, Auto preservation, session restoration, JPEG/TIFF, native detail,
+saved-edit/Auto/current batch modes, and cancellation. Separate live benchmarks
+with color noise at 75 measure 49 ms median slider response and 2.11 s full-size
+export for Z f on GPU; D500 on CPU measures 113 ms and 4.36 s. Reusing CPU guide
+planes improves that same CPU export from 4.83 s. These are local measurements
+with different samples, not a direct hardware comparison. Filtering adds work,
+especially on CPU. First-use compilation is separate from cached edit latency.
+
+Visual native crops show fewer colored speckles, but luminance grain, larger
+color blotches, and defocus remain. Fine low-contrast color texture can soften.
+This is manual rendered-chroma reduction, not sensor-domain, luminance,
+ISO-adaptive, or AI denoise. Broader verified camera support, noise estimation,
+camera/gamut calibration, and image-quality improvements remain open work.
+
+The refreshed local Windows EXE passes D500 CPU and Z f GPU Auto/export/detail
+smokes with color noise at 75. Its native-detail pixels exactly match source
+runs, recipes retain the amount, and original hashes are unchanged. D500 CPU
+export measures 5.14 s on the first new-kernel run and 4.48 s after restarting
+with the cache; Auto falls from 2.26 to 0.69 s. Z f GPU export measures 1.64-1.67 s;
+RAW preparation falls from 4.57 to 2.20 s after restart, excluding EXE startup.
+There is no compiler/cache fallback. The known optional TBB packaging warning
+remains; the sequential kernels do not require it. No public ZIP or installer
+was generated or released.

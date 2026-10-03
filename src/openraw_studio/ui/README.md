@@ -42,6 +42,8 @@ The UI should keep the image workspace first:
 - saved recipe detection for restoring basic adjustments
 - automatic local edit retention, undo/redo, Auto strength, and preview zoom/pan
 - true 100%/200% native detail, with click-centered zoom and original comparison
+- optional `Detail > Color noise` slider, persisted in recipes/history/sessions;
+  Auto and its strength slider preserve this manual setting, while Reset clears it
 - per-photo Auto or saved-edit batch export with between-photo cancellation
 
 The UI uses the pipeline and recipe contracts for saved artifacts and export.
@@ -66,11 +68,16 @@ comparison uses a cached unedited RAW render from the same linear proxy as the
 edited image. The camera JPEG is never treated as the source for OpenRAW export.
 In 100%/200% modes, the worker requests a native sensor rectangle instead of an
 enlarged proxy. Nikon uses its cached decoded sensor and the full export renderer
-with a one-pixel interpolation halo; the original tile is retained across edits.
+with a two-pixel MHC interpolation halo, expanded to four when the color-noise
+filter is enabled; the original tile is retained across edits.
 The generic DNG path prepares a full linear image before cropping. Pan displays a
 temporary proxy while the requested native tile loads. 200% uses integer nearest
 neighbor scaling, including odd viewport edges. Detail histograms describe the
-visible region, but Auto always uses the full-photo proxy. Fit/2x/4x retain the
+visible region, but Auto always analyzes the full-photo proxy and validates native
+samples where available. Fit/2x/4x retain the
 fast display path. `viewport.py` owns native viewport geometry.
 `workspace.py` owns the photo-first layout; `editing.py` owns bounded history and
 atomic local edit persistence. Worker callbacks enter Tk through a main-thread queue.
+Color-noise reduction runs after tone rendering, before orientation/resize/crop,
+on both preview and export paths. Fit remains approximate because its input is a
+downsampled linear proxy; native-pixel inspection is the authoritative detail view.

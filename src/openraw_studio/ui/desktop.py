@@ -391,6 +391,7 @@ def _recipe_adjustment_overrides(recipe: Mapping[str, Any]) -> dict[str, float]:
         "warmth": _clamped_recipe_float(raw.get("warmth"), default=0.0, minimum=-1.0, maximum=1.0),
         "tint": _clamped_recipe_float(raw.get("tint"), default=0.0, minimum=-1.0, maximum=1.0),
         "saturation": _clamped_recipe_float(raw.get("saturation"), default=0.0, minimum=-1.0, maximum=1.0),
+        "color_noise": _clamped_recipe_float(raw.get("color_noise"), default=0.0, minimum=0.0, maximum=1.0),
     }
 
 
@@ -556,6 +557,7 @@ def _manual_overrides(
     warmth: float,
     tint: float,
     saturation: float,
+    color_noise: float = 0.0,
 ) -> dict[str, float]:
     return {
         "exposure": float(exposure),
@@ -565,6 +567,7 @@ def _manual_overrides(
         "warmth": float(warmth),
         "tint": float(tint),
         "saturation": float(saturation),
+        "color_noise": float(color_noise),
     }
 
 
@@ -576,7 +579,7 @@ def _adjustments_match(
 ) -> bool:
     if rendered is None:
         return False
-    for key in ("exposure", "contrast", "highlights", "shadows", "warmth", "tint", "saturation"):
+    for key in ("exposure", "contrast", "highlights", "shadows", "warmth", "tint", "saturation", "color_noise"):
         if abs(float(rendered.get(key, 0.0)) - float(current.get(key, 0.0))) > tolerance:
             return False
     return True
@@ -729,6 +732,8 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.warmth_var = tk.DoubleVar(value=0.0)
             self.tint_var = tk.DoubleVar(value=0.0)
             self.saturation_var = tk.DoubleVar(value=0.0)
+            self.color_noise_var = tk.DoubleVar(value=0.0)
+            self.color_noise_label_var = tk.StringVar(value="0")
             self.export_format_var = tk.StringVar(value="JPEG")
             self.jpeg_quality_var = tk.DoubleVar(value=92.0)
             self.jpeg_quality_label_var = tk.StringVar(value="92")
@@ -1058,6 +1063,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.warmth_var.set(float(overrides.get("warmth", 0.0)))
             self.tint_var.set(float(overrides.get("tint", 0.0)))
             self.saturation_var.set(float(overrides.get("saturation", 0.0)))
+            self.color_noise_var.set(float(overrides.get("color_noise", 0.0)))
             self._sync_adjustment_labels(update_status=False)
 
         def _restore_recipe_if_available(self) -> str | None:
@@ -1149,6 +1155,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.saturation_label_var.set(
                 _format_adjustment_label(float(self.saturation_var.get()))
             )
+            self.color_noise_label_var.set(f"{self.color_noise_var.get() * 100:.0f}")
             if update_status and self.source_path is not None and not self.is_busy:
                 preview_state = self._refresh_preview_state()
                 self.status_var.set(
@@ -1225,8 +1232,8 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             if self.last_auto_suggestion is not None and not self.is_busy:
                 self._set_adjustment_values(
                     {
-                        key: value * amount / 100
-                        for key, value in self.last_auto_suggestion.as_overrides().items()
+                        **{key: value * amount / 100 for key, value in self.last_auto_suggestion.as_overrides().items()},
+                        "color_noise": self.color_noise_var.get(),
                     }
                 )
                 self._sync_adjustment_labels()
@@ -1341,6 +1348,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.warmth_var.set(0.0)
             self.tint_var.set(0.0)
             self.saturation_var.set(0.0)
+            self.color_noise_var.set(0.0)
             self._sync_adjustment_labels()
             self._commit_edit()
 
@@ -1712,8 +1720,8 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                     )
                     suggested = suggest_auto_adjustments_for_photo(photo)
                     return {
-                        key: value * strength
-                        for key, value in suggested.as_overrides().items()
+                        **{key: value * strength for key, value in suggested.as_overrides().items()},
+                        "color_noise": overrides.get("color_noise", 0),
                     }
                 return overrides
 
@@ -1937,6 +1945,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                     float(self.warmth_var.get()),
                     float(self.tint_var.get()),
                     float(self.saturation_var.get()),
+                    float(self.color_noise_var.get()),
                 )
             )
 

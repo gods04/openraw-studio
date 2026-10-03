@@ -7,4 +7,5 @@ module_collection_mode = {
     "openraw_studio.raw.native.compiled_he_transform": "py",
     "openraw_studio.raw.native.compiled_tone": "py",
     "openraw_studio.raw.native.compiled_bayer": "py",
+    "openraw_studio.raw.native.compiled_chroma": "py",
 }

@@ -35,6 +35,7 @@ def tone_map_preview(
     warmth: float = 0.0,
     tint: float = 0.0,
     saturation: float = 0.0,
+    color_noise: float = 0.0,
     gamma: float = 2.2,
 ) -> PreviewRgbImage:
     """Map linear RGB values to a small 8-bit preview.
@@ -69,6 +70,13 @@ def tone_map_preview(
         )
         for red, green, blue in linear.pixels
     )
+    if color_noise != 0:
+        import numpy as np
+
+        from openraw_studio.raw.native.chroma import reduce_color_noise
+
+        rgb = np.asarray(pixels, np.uint8).reshape(linear.height, linear.width, 3)
+        pixels = tuple(map(tuple, reduce_color_noise(rgb, color_noise).reshape(-1, 3).tolist()))
     return PreviewRgbImage(width=linear.width, height=linear.height, pixels=pixels, transfer=f"gamma-{gamma:g}")
 
 

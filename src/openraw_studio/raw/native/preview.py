@@ -36,6 +36,7 @@ def render_png_preview(
     warmth: float = 0.0,
     tint: float = 0.0,
     saturation: float = 0.0,
+    color_noise: float = 0.0,
     max_dimension: int | None = None,
 ) -> PreviewRgbImage:
     """Render the current simple native DNG pipeline to a PNG preview."""
@@ -50,6 +51,7 @@ def render_png_preview(
         warmth=warmth,
         tint=tint,
         saturation=saturation,
+        color_noise=color_noise,
         max_dimension=max_dimension,
     )
     write_png(preview, output_path)
@@ -75,6 +77,7 @@ def render_preview_image(
     warmth: float = 0.0,
     tint: float = 0.0,
     saturation: float = 0.0,
+    color_noise: float = 0.0,
     max_dimension: int | None = None,
 ) -> PreviewRgbImage:
     """Render a source RAW file into an 8-bit RGB preview image."""
@@ -88,6 +91,7 @@ def render_preview_image(
         warmth=warmth,
         tint=tint,
         saturation=saturation,
+        color_noise=color_noise,
         max_dimension=max_dimension,
     ):
         return preview
@@ -109,6 +113,7 @@ def render_preview_image(
         warmth=warmth,
         tint=tint,
         saturation=saturation,
+        color_noise=color_noise,
     )
     return resize_preview(preview, max_dimension=max_dimension)
 
@@ -123,6 +128,7 @@ def _render_nikon_34713_preview_image(
     warmth: float,
     tint: float,
     saturation: float,
+    color_noise: float,
     max_dimension: int | None,
 ) -> PreviewRgbImage | None:
     if source_path.suffix.lower() not in NIKON_RAW_EXTENSIONS:
@@ -148,6 +154,7 @@ def _render_nikon_34713_preview_image(
         warmth=warmth,
         tint=tint,
         saturation=saturation,
+        color_noise=color_noise,
     )
     return PreviewRgbImage(
         width=rendered.width,

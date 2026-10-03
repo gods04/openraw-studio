@@ -51,6 +51,10 @@ class InteractivePhoto:
             },
         )
         rgb, backend = render_tone(self.pixels, params)
+        if adjustments.get("color_noise", 0) != 0:
+            from openraw_studio.raw.native.chroma import reduce_color_noise
+
+            rgb = reduce_color_noise(rgb, adjustments["color_noise"])
         image = _apply_exif_orientation(Image.fromarray(rgb), self.orientation)
         return image, backend
 

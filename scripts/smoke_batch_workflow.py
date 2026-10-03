@@ -70,7 +70,7 @@ def main():
                 raise TimeoutError(phase)
             if phase == "load" and app.last_preview_overrides is not None:
                 app.library_items = [(p, p.name, True) for p in sources]
-                app.session_store.save(sources[1], {"exposure": 0.6})
+                app.session_store.save(sources[1], {"exposure": 0.6, "color_noise": .4})
                 app.session_store.save(sources[2], {"exposure": -0.3})
                 app._set_busy(False)
                 app.inspector_tabs.select(2)
@@ -86,6 +86,8 @@ def main():
                     _load_recipe_adjustments(recipe, sources[1])["exposure"] == 0.6,
                     "Batch honors each photo's saved exposure",
                 )
+                require(_load_recipe_adjustments(recipe, sources[1])["color_noise"] == .4, "Saved-edits batch retains individual color-noise strength")
+                app.color_noise_var.set(.65)
                 start("Auto each photo")
                 state["phase"] = "auto"
             elif phase == "auto" and result:
@@ -93,6 +95,7 @@ def main():
                     result.exported == 3 and result.failed == 0,
                     "Per-photo Auto batch exports every photo",
                 )
+                require(all(_load_recipe_adjustments(ArtifactPlan.for_source(p, args.output).recipe_path, p)["color_noise"] == .65 for p in sources), "Auto batch preserves explicit color-noise strength")
                 start("Current adjustments")
                 app.cancel_batch_button.invoke()
                 state["phase"] = "cancel"

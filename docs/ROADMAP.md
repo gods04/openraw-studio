@@ -4,7 +4,7 @@
 
 Implemented: photo-first editor, continuous GPU/CPU preview, guarded Auto with
 strength control, original RAW comparison, undo/redo, local edit retention,
-native-pixel 100%/200% inspection, JPEG/TIFF export, and cancellable per-photo
+manual color-noise reduction, native-pixel 100%/200% inspection, JPEG/TIFF export, and cancellable per-photo
 batch modes. Supported compressed
 Nikon paths include F-series lossless, 12-bit D20 non-split (verified on 1 J5),
 and the verified Z f HE* 14-bit profile with approximate nonlinear mapping.
@@ -12,11 +12,37 @@ Local Windows EXE builds are available; this is not a public installer release.
 
 Next quality work: Auto under difficult lighting, broader camera calibration
 and gamut handling, edge-aware demosaic, actual sensor highlight reconstruction,
-and denoise. Further first-use initialization and broader verified HE profiles
+and sensor/luminance denoise. Further first-use initialization and broader verified HE profiles
 also remain open.
 Semantic portrait/scene AI and mobile remain later phases.
 
-Latest verified increment: supported compressed Nikon full-size export and
+Latest verified increment: optional `Adjust > Detail > Color noise` filters
+rendered color speckles on GPU, compiled CPU, or the NumPy fallback. Zero is an
+exact bypass and the default for old recipes. History, local saved edits,
+JPEG/TIFF, native inspection, and batch modes retain the setting; Auto preserves
+the manually selected amount without estimating noise. All 414 tests pass with
+GPU and CPU-only (four GPU-only skips). All 26 D500/Z f/1 J5 real-photo checks
+retain original hashes, stay within one 8-bit level across CPU/GPU, and match
+native regions to full export. A separate full-frame check at strength 75 stays
+within the existing clipping/shadow budgets. This is sample evidence, not a
+universal highlight-preservation guarantee. The filter is not sensor-domain,
+luminance, AI, or ISO-adaptive denoise; low-contrast color texture can soften,
+while large color blotches and luminance grain remain. Fit is approximate.
+
+Actual compact-window checks cover slider input/displayed pixels, undo/redo,
+Auto, edit retention, JPEG/TIFF, native detail, and all batch modes. With color
+noise at 75, separate source benchmarks measure 49 ms median slider response
+and 2.11 s export on Z f GPU; D500 CPU measures 113 ms and 4.36 s. The filter
+adds work, especially on CPU; these are local timings for different photos,
+not a direct hardware comparison or universal performance promise.
+The refreshed local EXE verifies saved amounts, exact native-detail pixels,
+unchanged originals, and cached CPU compilation. With color noise at 75, warm
+export measures 4.48 s D500 CPU and 1.64 s Z f GPU. First-use compilation still
+adds latency; no public ZIP or installer was generated or released.
+
+### Earlier Verification
+
+Supported compressed Nikon full-size export and
 100%/200% inspection use MHC gradient-corrected demosaic on GPU, compiled CPU,
 and the NumPy fallback. Full-size renders for 26 D500/Z f/1 J5 captures match
 the reference within one 8-bit level; native inspection matches export pixels.
@@ -31,8 +57,6 @@ exhaustive quality validation, or broader RAW support. Fit previews stay fast.
 The refreshed local EXE also verifies Auto, export, native inspection, and the
 two corrected outliers with unchanged originals. Warm D500 CPU export is 2.37 s;
 Z f GPU export is 1.49 s on this machine. First-use compilation still adds delay.
-
-### Earlier Verification
 
 Highlight-limited Auto tries a bounded shadow lift
 and requires measurable benefit at both proxy resolutions before accepting it.

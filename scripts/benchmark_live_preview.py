@@ -22,9 +22,12 @@ def main():
     parser.add_argument("--geometry", default="1080x720")
     parser.add_argument("--screenshot", action="store_true")
     parser.add_argument("--highlights", type=float, help="Exercise a fixed highlight correction while dragging exposure")
+    parser.add_argument("--color-noise", type=float, default=0.0)
     args = parser.parse_args()
     if args.highlights is not None and not -1 <= args.highlights <= 1:
         parser.error("--highlights must be within [-1, 1]")
+    if not 0 <= args.color_noise <= 1:
+        parser.error("--color-noise must be within [0, 1]")
     if args.cpu:
         os.environ["OPENRAW_GPU"] = "off"
     from PIL import Image, ImageTk
@@ -41,6 +44,7 @@ def main():
     report = {
         "source": str(args.source.resolve()),
         "highlights": args.highlights,
+        "color_noise": args.color_noise,
         "mode": "CPU" if args.cpu else "auto",
         "slider_to_display_ms": [],
         "errors": [],
@@ -82,12 +86,14 @@ def main():
             yield from descendants(child)
 
     def finish():
-        from openraw_studio.raw.native import compiled_bayer, compiled_tone
+        from openraw_studio.raw.native import compiled_bayer, compiled_chroma, compiled_tone
 
         report["compiled_cpu_bayer"] = bool(getattr(compiled_bayer.malvar_demosaic, "signatures", []))
         report["cpu_bayer_fallback_reason"] = compiled_bayer.last_error
         report["compiled_cpu_tone"] = bool(getattr(compiled_tone.tone, "signatures", []))
         report["cpu_tone_fallback_reason"] = compiled_tone.last_error
+        report["compiled_cpu_chroma"] = bool(getattr(compiled_chroma.chroma, "signatures", []))
+        report["cpu_chroma_fallback_reason"] = compiled_chroma.last_error
         report["source_unchanged"] = sha256_file(args.source) == checksum
         (args.output / "benchmark.json").write_text(
             json.dumps(report, indent=2), encoding="utf-8"
@@ -115,6 +121,7 @@ def main():
             report["backend"] = app.preview_state_var.get()
             if args.highlights is not None:
                 app.highlights_var.set(args.highlights)
+            app.color_noise_var.set(args.color_noise)
             slider = next(
                 w
                 for w in descendants(app.root)

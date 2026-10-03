@@ -13,7 +13,7 @@ from openraw_studio.raw.native.nikon import (
     _render_crop,
     render_decoded_nikon_34713_image,
 )
-from openraw_studio.raw.native.regions import oriented_size, sensor_region
+from openraw_studio.raw.native.regions import oriented_size, region_with_halo, sensor_region
 
 
 @dataclass
@@ -41,9 +41,13 @@ class LinearDetailPhoto:
 
     def render_region(self, adjustments, region):
         size = self.photo.pixels.shape[1::-1]
-        x, y, width, height = sensor_region(region, size, self.photo.orientation)
-        tile = replace(self.photo, pixels=self.photo.pixels[y:y + height, x:x + width].copy())
-        return tile.render(adjustments)[0]
+        source_region = sensor_region(region, size, self.photo.orientation)
+        crop, core = region_with_halo((0, 0, *size), source_region, radius=2 if adjustments.get("color_noise", 0) else 0)
+        x, y, width, height = crop
+        tile = replace(self.photo, pixels=self.photo.pixels[y:y + height, x:x + width].copy(), orientation=1)
+        from openraw_studio.raw.native.nikon import _apply_exif_orientation
+
+        return _apply_exif_orientation(tile.render(adjustments)[0].crop(core), self.photo.orientation)
 
 
 def prepare_detail_photo(processor, source):

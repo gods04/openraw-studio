@@ -325,6 +325,7 @@ def render_nikon_34713_to_file(
     warmth: float = 0.0,
     tint: float = 0.0,
     saturation: float = 0.0,
+    color_noise: float = 0.0,
     jpeg_quality: int = 92,
     jpeg_exif: Any | None = None,
     tiffinfo: Any | None = None,
@@ -344,6 +345,7 @@ def render_nikon_34713_to_file(
         warmth=warmth,
         tint=tint,
         saturation=saturation,
+        color_noise=color_noise,
         jpeg_quality=jpeg_quality,
         jpeg_exif=jpeg_exif,
         tiffinfo=tiffinfo,
@@ -363,6 +365,7 @@ def render_decoded_nikon_34713_to_file(
     warmth: float = 0.0,
     tint: float = 0.0,
     saturation: float = 0.0,
+    color_noise: float = 0.0,
     jpeg_quality: int = 92,
     jpeg_exif: Any | None = None,
     tiffinfo: Any | None = None,
@@ -381,6 +384,7 @@ def render_decoded_nikon_34713_to_file(
         warmth=warmth,
         tint=tint,
         saturation=saturation,
+        color_noise=color_noise,
         quality=quality,
     )
     try:
@@ -424,6 +428,7 @@ def render_decoded_nikon_34713_image(
     warmth: float = 0.0,
     tint: float = 0.0,
     saturation: float = 0.0,
+    color_noise: float = 0.0,
     quality: str = "fast",
     region: tuple[int, int, int, int] | None = None,
 ) -> NikonRenderedRgbImage:
@@ -435,7 +440,7 @@ def render_decoded_nikon_34713_image(
         if quality != "full" or max_dimension is not None:
             raise ValueError("Detail regions require unscaled full-resolution rendering")
         region = sensor_region(region, crop[2:], decoded.orientation)
-        crop, region_box = region_with_halo(crop, region, radius=2)
+        crop, region_box = region_with_halo(crop, region, radius=4 if color_noise != 0 else 2)
     camera_matrix = (
         decoded.camera_profile.camera_to_linear_srgb
         if decoded.camera_profile is not None
@@ -497,6 +502,13 @@ def render_decoded_nikon_34713_image(
     except ImportError as exc:
         raise NikonCompressionError("Pillow is required for Nikon 34713 rendering") from exc
 
+    if color_noise != 0:
+        import numpy as np
+
+        from openraw_studio.raw.native.chroma import reduce_color_noise
+
+        pixels = np.frombuffer(rgb, np.uint8).reshape(height, width, 3)
+        rgb = reduce_color_noise(pixels, color_noise).tobytes()
     image = Image.frombytes("RGB", (width, height), bytes(rgb))
     if region_box is not None:
         image = image.crop(region_box)

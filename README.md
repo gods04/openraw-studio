@@ -131,6 +131,9 @@ Then import `sample-data\openraw-synthetic.DNG` or
   joint exposure/contrast/highlight recovery retains useful corrections on difficult dim scenes
 - Highlight-limited Auto can add a bounded shadow lift, checking visible benefit
   and clipping at both preview sizes; low-key and predominantly dark scenes are excluded
+- Optional `Detail > Color noise` control for rendered chroma noise, with GPU/CPU
+  fallback, live preview, undo/redo, saved edits, and JPEG/TIFF export. It defaults
+  to off; Auto preserves the manual setting instead of guessing a noise level.
 - Supported compressed Nikon Auto also checks bounded original-size samples with
   the export renderer, catching some small highlights/noisy shadows hidden by
   preview averaging. Sampling is not an exhaustive full-image quality guarantee.
@@ -167,6 +170,9 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - QC currently checks rendered 8-bit preview clipping only; sensor-domain
   headroom, sharpness, noise, and color-accuracy checks are not implemented yet
 - No AI model weights included
+- Color-noise reduction is a local filter on rendered RGB8, not RAW sensor-domain,
+  luminance, ISO-adaptive, or AI denoise. Fine low-contrast color texture can soften;
+  larger color blotches and luminance grain remain. Inspect at 100%/200%.
 - Auto is a deterministic luminance/color heuristic, not semantic AI or
   sensor highlight recovery. It cannot reconstruct clipped detail.
 - MHC is linear gradient-corrected interpolation, not edge-adaptive demosaic or
@@ -297,11 +303,16 @@ the displayed rendered 8-bit image, not untouched sensor values.
 The same bounded rendered-preview clipping check is saved under `analysis.quality`
 and `qc` in the recipe. A warning is advisory and does not block export. Camera-authored
 embedded previews are excluded because they are not OpenRAW renders.
-The Exposure, Contrast, Highlights, Shadows, Temperature, Tint, and Saturation controls are
+The Exposure, Contrast, Highlights, Shadows, Temperature, Tint, Saturation, and Color noise controls are
 recorded in the recipe and applied to DNG and native-renderable Nikon preview/final export.
 Highlights and Shadows use a smooth tone-region adjustment; lowering Highlights
 cannot reconstruct sensor detail that was already fully clipped. Temperature and
 Tint are normalized manual balance controls rather than camera-calibrated Kelvin values.
+Color noise is a 0-100 control in `Adjust > Detail`; its recipe field is
+`adjustments.raw.color_noise` in `[0, 1]`, defaulting to zero for older recipes.
+It preserves rendered luminance while filtering local color differences. Fit
+remains a fast proxy; native inspection uses the same filter as full-size export.
+The CLI accepts `--color-noise 0.75` on `process` and `batch`.
 Nikon embedded
 previews are currently extracted as camera-authored JPEGs without applying
 those adjustments yet.
@@ -310,7 +321,7 @@ change after a preview render, the desktop app marks the preview as needing an
 update.
 If the selected output folder already contains a matching recipe for the photo,
 the desktop app restores the saved Exposure, Contrast, Highlights, Shadows,
-Temperature, Tint, and Saturation values.
+Temperature, Tint, Saturation, and Color noise values.
 The on-screen preview is capped at 2048 pixels on its longest side; export keeps
 the source dimensions supported by the current Native path.
 Generated previews, exports, and recipes are published atomically: an interrupted

@@ -97,6 +97,35 @@ __kernel void malvar(__global const ushort *src, __global uchar *dst,
     vstore3(convert_uchar3_sat_rte(calibrated_color(rgb,p)*255.0f),i,dst);
 }
 #undef MHC
+__kernel void chroma_noise(__global const uchar *src, __global uchar *dst,
+    __global const float *spatial, __global const float *light, __global const float *color_range,
+    int w, int h, float strength) {
+    int i=get_global_id(0), y=i/w, x=i%w;
+    int3 rgb=convert_int3(vload3(i,src));
+    int weighted=54*rgb.x+183*rgb.y+19*rgb.z, guide=(weighted+128)>>8;
+    float luma=(float)weighted/256.0f;
+    int u=rgb.x-rgb.y, v=rgb.z-rgb.y;
+    float su=0, sv=0, sw=0;
+    for(int dy=-2;dy<=2;dy++) {
+        int yy=clamp(y+dy,0,h-1);
+        for(int dx=-2;dx<=2;dx++) {
+            int xx=clamp(x+dx,0,w-1);
+            int3 n=convert_int3(vload3(yy*w+xx,src));
+            int nl=(54*n.x+183*n.y+19*n.z+128)>>8, nu=n.x-n.y, nv=n.z-n.y;
+            float weight=spatial[(dy+2)*5+dx+2]*light[abs(nl-guide)]*color_range[abs(nu-u)+abs(nv-v)];
+            sw+=weight; su+=weight*(float)nu; sv+=weight*(float)nv;
+        }
+    }
+    float fu=(float)u+strength*(su/sw-(float)u), fv=(float)v+strength*(sv/sw-(float)v);
+    float offset=(54.0f*fu+19.0f*fv)/256.0f;
+    float3 c=(float3)(fu-offset,-offset,fv-offset);
+    float scale=1.0f;
+    for(int ch=0;ch<3;ch++) {
+        if(c[ch]>0) scale=fmin(scale,(255.0f-luma)/c[ch]);
+        else if(c[ch]<0) scale=fmin(scale,-luma/c[ch]);
+    }
+    vstore3(convert_uchar3_sat_rte((float3)(luma)+scale*c),i,dst);
+}
 """
 
 
@@ -158,6 +187,8 @@ class OpenClRenderer:
         self.bayer_kernel = cl.Kernel(self.program, "bayer")
         self.malvar_kernel = cl.Kernel(self.program, "malvar")
         self._malvar_validated = False
+        self.chroma_kernel = cl.Kernel(self.program, "chroma_noise")
+        self._chroma_validated = False
         self._cached_pixels = None
         self._pixel_buffer = None
 
@@ -183,6 +214,32 @@ class OpenClRenderer:
             self._pixel_buffer,
             destination,
             self.buffer(params),
+        )
+        self.cl.enqueue_copy(self.queue, output, destination).wait()
+        return output
+
+    def chroma(self, pixels, strength):
+        if not self._chroma_validated:
+            from openraw_studio.raw.native.chroma import _reference_chunk
+
+            sample = np.random.default_rng(215).integers(0, 256, (9, 11, 3), dtype=np.uint8)
+            expected = _reference_chunk(sample, 0, 9, .73)
+            actual = self._chroma(sample, .73)
+            if actual.shape != expected.shape or np.max(np.abs(actual.astype(int) - expected.astype(int))) > 1:
+                raise RuntimeError("GPU color-noise validation failed")
+            self._chroma_validated = True
+        return self._chroma(pixels, strength)
+
+    def _chroma(self, pixels, strength):
+        from openraw_studio.raw.native.chroma import COLOR, LIGHT, SPATIAL
+
+        height, width, _ = pixels.shape
+        output = np.empty_like(pixels)
+        destination = self.cl.Buffer(self.context, self.cl.mem_flags.WRITE_ONLY, output.nbytes)
+        self.chroma_kernel(
+            self.queue, (height * width,), None, self.buffer(pixels), destination,
+            self.buffer(SPATIAL), self.buffer(LIGHT), self.buffer(COLOR),
+            np.int32(width), np.int32(height), np.float32(strength),
         )
         self.cl.enqueue_copy(self.queue, output, destination).wait()
         return output

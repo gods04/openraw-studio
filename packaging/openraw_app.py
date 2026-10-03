@@ -8,7 +8,7 @@ from pathlib import Path
 from time import perf_counter
 
 
-def smoke_test(source: Path, output: Path) -> int:
+def smoke_test(source: Path, output: Path, *, color_noise=0.0) -> int:
     """Exercise frozen runtime imports, GPU/JIT, adjustment and full export."""
     from openraw_studio.core.files import sha256_file
     from openraw_studio.decision.auto_adjust import (
@@ -18,6 +18,7 @@ def smoke_test(source: Path, output: Path) -> int:
     from openraw_studio.pipeline.local import LocalPhotoPipeline
     from openraw_studio.raw.native import (
         compiled_bayer,
+        compiled_chroma,
         compiled_decode,
         compiled_he,
         compiled_he_transform,
@@ -64,19 +65,24 @@ def smoke_test(source: Path, output: Path) -> int:
         report["auto_seconds"] = perf_counter() - started
         report["auto"] = suggestion.as_overrides()
         report["auto_metrics"] = suggestion.metrics
+        edits = {**suggestion.as_overrides(), "color_noise": color_noise}
+        report["color_noise"] = color_noise
         started = perf_counter()
         result = pipeline.process(
-            PipelineRequest(source, output, overrides=suggestion.as_overrides())
+            PipelineRequest(source, output, overrides=edits)
         )
         report["export_seconds"] = perf_counter() - started
         report["compiled_cpu_bayer"] = bool(getattr(compiled_bayer.malvar_demosaic, "signatures", []))
         report["cpu_bayer_fallback_reason"] = compiled_bayer.last_error
         report["cpu_bayer_cache_disabled_reason"] = compiled_bayer.cache_disabled_reason
+        report["compiled_cpu_chroma"] = bool(getattr(compiled_chroma.chroma, "signatures", []))
+        report["cpu_chroma_fallback_reason"] = compiled_chroma.last_error
+        report["cpu_chroma_cache_disabled_reason"] = compiled_chroma.cache_disabled_reason
         report["export_size"] = [result.exports[0].width, result.exports[0].height]
         started = perf_counter()
         detail = prepare_detail_photo(pipeline.raw_processor, source)
         region = DetailView((512, 384)).region(detail.size)
-        detail_image = detail.render_region(suggestion.as_overrides(), region)
+        detail_image = detail.render_region(edits, region)
         report["detail_seconds"] = perf_counter() - started
         report["detail_native_size"] = detail.size
         report["detail_region"] = region
@@ -102,11 +108,14 @@ def main() -> int:
     parser.add_argument("source", nargs="?", type=Path)
     parser.add_argument("--smoke-test", action="store_true")
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--color-noise", type=float, default=0.0)
     args = parser.parse_args()
     if args.smoke_test:
         if args.source is None or args.output is None:
             parser.error("--smoke-test requires a RAW source and --output directory")
-        return smoke_test(args.source, args.output)
+        if not 0 <= args.color_noise <= 1:
+            parser.error("--color-noise must be within [0, 1]")
+        return smoke_test(args.source, args.output, color_noise=args.color_noise)
     app = launch_desktop_app(run_mainloop=False)
     if args.source is not None:
         app.root.after(

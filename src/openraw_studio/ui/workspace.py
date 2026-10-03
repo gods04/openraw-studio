@@ -404,6 +404,7 @@ def build_workspace(app, filedialog, messagebox):
 
     light = section("Light")
     color = section("Color", expanded=False)
+    detail = section("Detail", expanded=False)
     for parent, key, title, minimum, maximum in (
         (light, "exposure", "Exposure", -2, 2),
         (light, "contrast", "Contrast", -1, 1),
@@ -412,6 +413,7 @@ def build_workspace(app, filedialog, messagebox):
         (color, "warmth", "Temperature", -1, 1),
         (color, "tint", "Tint", -1, 1),
         (color, "saturation", "Saturation", -1, 1),
+        (detail, "color_noise", "Color noise", 0, 1),
     ):
         row = ttk.Frame(parent)
         row.pack(fill="x")

@@ -21,7 +21,10 @@ def main():
     parser.add_argument("--source", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--geometry", default="1280x820")
+    parser.add_argument("--color-noise", type=float, default=0)
     args = parser.parse_args()
+    if not 0 <= args.color_noise <= 1:
+        parser.error("--color-noise must be within [0, 1]")
     args.output.mkdir(parents=True, exist_ok=True)
     source = args.source or write_synthetic_dng(
         args.output / "sample.DNG", width=80, height=60
@@ -57,6 +60,11 @@ def main():
 
     def frame_current():
         return app.last_preview_overrides == app._current_overrides()
+
+    def descendants(widget):
+        for child in widget.winfo_children():
+            yield child
+            yield from descendants(child)
 
     def drag_scale(scale, value):
         start = scale.coords()
@@ -110,6 +118,29 @@ def main():
             )
             state["phase"] = "redo"
         elif phase == "redo" and frame_current():
+            if args.color_noise:
+                state['before_noise_pixels'] = ImageTk.getimage(app.after_photo).tobytes()
+                header = next(w for w in descendants(app.root) if w.winfo_class() == "TCheckbutton" and str(w.cget("text")) == "Detail")
+                header.invoke()
+                app.root.update_idletasks()
+                app.controls_canvas.yview_moveto(1)
+                app.root.update_idletasks()
+                scale = next(w for w in app.edit_scales if str(w.cget("variable")) == str(app.color_noise_var))
+                require(app.controls_canvas.winfo_rooty() <= scale.winfo_rooty() < app.controls_canvas.winfo_rooty() + app.controls_canvas.winfo_height(), "Color-noise slider is accessible in compact window")
+                drag_scale(scale,args.color_noise)
+                require(abs(app.color_noise_var.get()-args.color_noise)<.02,"Pointer dragging changes color-noise strength")
+                state['noise']=app._current_overrides()['color_noise']
+                state['phase']='noise'
+            else:
+                state['phase']='start_auto'
+        elif phase == 'noise' and frame_current():
+            require(ImageTk.getimage(app.after_photo).tobytes() != state['before_noise_pixels'], 'Color-noise edit changes displayed pixels')
+            app.undo_button.invoke()
+            require(app.color_noise_var.get()==0,'Undo restores color-noise strength')
+            app.redo_button.invoke()
+            require(app.color_noise_var.get()==state['noise'],'Redo restores color-noise strength')
+            state['phase']='start_auto'
+        elif phase == 'start_auto' and frame_current():
             app.auto_adjust_button.invoke()
             state["auto_started"] = perf_counter()
             state["phase"] = "auto"
@@ -126,9 +157,10 @@ def main():
             app.auto_strength_var.set(0)
             app._change_auto_strength()
             require(
-                all(v == 0 for v in app._current_overrides().values()),
-                "Zero Auto strength restores original settings",
+                all(v == 0 for k,v in app._current_overrides().items() if k != 'color_noise'),
+                "Zero Auto strength restores original tone settings",
             )
+            require(app.color_noise_var.get()==state.get('noise',0),'Auto strength preserves manual color-noise setting')
             app.auto_strength_var.set(100)
             app._change_auto_strength()
             app._commit_edit()

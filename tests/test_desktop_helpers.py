@@ -355,6 +355,7 @@ class DesktopHelperTests(unittest.TestCase):
             "warmth": "0.25",
             "tint": -1.3,
             "saturation": 1.4,
+            "color_noise": 3,
         }
 
         self.assertEqual(
@@ -367,6 +368,7 @@ class DesktopHelperTests(unittest.TestCase):
                 "warmth": 0.25,
                 "tint": -1.0,
                 "saturation": 1.0,
+                "color_noise": 1.0,
             },
         )
 
@@ -397,6 +399,7 @@ class DesktopHelperTests(unittest.TestCase):
                 "warmth": -0.1,
                 "tint": 0.0,
                 "saturation": 0.3,
+                "color_noise": 0.0,
             },
         )
 
@@ -630,7 +633,7 @@ class DesktopHelperTests(unittest.TestCase):
 
     def test_manual_overrides_collects_tone_controls(self) -> None:
         self.assertEqual(
-            _manual_overrides(0.5, -0.25, -0.3, 0.4, 0.75, -0.15, 0.2),
+            _manual_overrides(0.5, -0.25, -0.3, 0.4, 0.75, -0.15, 0.2, .65),
             {
                 "exposure": 0.5,
                 "contrast": -0.25,
@@ -639,6 +642,7 @@ class DesktopHelperTests(unittest.TestCase):
                 "warmth": 0.75,
                 "tint": -0.15,
                 "saturation": 0.2,
+                "color_noise": .65,
             },
         )
 

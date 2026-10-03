@@ -18,6 +18,7 @@ ADJUSTMENT_KEYS = (
     "warmth",
     "tint",
     "saturation",
+    "color_noise",
 )
 
 
@@ -28,7 +29,8 @@ def clean_adjustments(values):
         if not math.isfinite(value):
             raise ValueError("Adjustment must be finite")
         limit = 2 if key == "exposure" else 1
-        result[key] = round(max(-limit, min(limit, value)), 4)
+        minimum = 0 if key == "color_noise" else -limit
+        result[key] = round(max(minimum, min(limit, value)), 4)
     return result
 
 
