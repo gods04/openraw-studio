@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import numpy as np
 
+last_error = None
+cache_disabled_reason = None
+
 try:
     from numba import njit
     from numba.core.errors import NumbaError
-except (ImportError, OSError):
+except (ImportError, OSError) as error:
+    last_error = f"{type(error).__name__}: {error}"
     njit = None
     NumbaError = RuntimeError
 
@@ -18,21 +22,25 @@ def _decode(payload, width, height, table, initial, maximum):
     byte_pos = 0
     bit_buffer = 0
     bit_count = 0
+    prefix_bits = 8
+    while (1 << prefix_bits) < len(table):
+        prefix_bits += 1
+    prefix_mask = len(table) - 1
     for row in range(height):
         even = vertical[row & 1, 0]
         odd = vertical[row & 1, 1]
         for column in range(width):
-            while bit_count < 8 and byte_pos < len(payload):
+            while bit_count < prefix_bits and byte_pos < len(payload):
                 bit_buffer = (bit_buffer << 8) | int(payload[byte_pos])
                 byte_pos += 1
                 bit_count += 8
             if bit_count <= 0:
                 return output, 1
             prefix = (
-                (bit_buffer << (8 - bit_count))
-                if bit_count < 8
-                else (bit_buffer >> (bit_count - 8))
-            ) & 255
+                (bit_buffer << (prefix_bits - bit_count))
+                if bit_count < prefix_bits
+                else (bit_buffer >> (bit_count - prefix_bits))
+            ) & prefix_mask
             packed = table[prefix]
             length = packed & 15
             if length <= 0:
@@ -78,22 +86,34 @@ except RuntimeError:
 
 
 def decode_samples(payload, width, height, table, initial, maximum):
-    global decode
+    global decode, last_error, cache_disabled_reason
     if decode is None:
         return None
+    arguments = (
+        np.frombuffer(payload, dtype=np.uint8),
+        width,
+        height,
+        np.asarray(table, dtype=np.int64),
+        np.asarray(initial, dtype=np.int64),
+        maximum,
+    )
     try:
-        output, error = decode(
-            np.frombuffer(payload, dtype=np.uint8),
-            width,
-            height,
-            np.asarray(table, dtype=np.int64),
-            np.asarray(initial, dtype=np.int64),
-            maximum,
-        )
-    except (NumbaError, OSError, RuntimeError):
+        try:
+            output, error = decode(*arguments)
+        except OSError as cache_error:
+            if njit is None:
+                raise
+            # Read-only/redirected Windows cache folders must not disable JIT.
+            uncached = njit(nogil=True)(_decode)
+            output, error = uncached(*arguments)
+            decode = uncached
+            cache_disabled_reason = f"{type(cache_error).__name__}: {cache_error}"
+    except (NumbaError, OSError, RuntimeError) as error:
         # Unsupported compiler/cache environments retain the reference decoder.
+        last_error = f"{type(error).__name__}: {error}"
         decode = None
         return None
+    last_error = None
     if error:
         raise ValueError(
             "Nikon compressed bitstream ended early"

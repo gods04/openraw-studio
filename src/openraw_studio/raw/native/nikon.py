@@ -21,6 +21,10 @@ NIKON_MAKER_TIFF_OFFSET = 10
 NIKON_COMPRESSED_RAW = 34713
 
 _NIKON_HUFFMAN_TABLES = {
+    0: (
+        (0, 1, 5, 1, 1, 1, 1, 1, 1, 2, 0, 0, 0, 0, 0, 0),
+        (5, 4, 3, 6, 2, 7, 1, 0, 8, 9, 11, 10, 12, 0),
+    ),
     2: (
         (0, 1, 4, 2, 3, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0),
         (5, 4, 6, 3, 7, 2, 8, 1, 9, 0, 10, 11, 12),
@@ -81,6 +85,7 @@ class NikonCompressionSetup:
     initial_predictors: tuple[tuple[int, int], tuple[int, int]]
     active_area: tuple[int, ...] | None = None
     compression_mode: int | None = None
+    linearization: tuple[int, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -175,7 +180,11 @@ def extract_nikon_as_shot_white_balance(metadata: DngMetadata) -> NikonWhiteBala
 
 
 def decode_nikon_34713_lossless(path: str | Path, metadata: DngMetadata | None = None) -> NikonDecodedPixelData:
-    """Decode Nikon 34713 lossless Huffman Bayer data to 16-bit little-endian samples."""
+    """Decode supported Nikon Huffman data; the legacy API name is retained.
+
+    F-series lossless and 12-bit D20 non-split lossy streams are supported.
+    D20 samples are linearized before any black-level or color processing.
+    """
 
     source_path = Path(path)
     data = source_path.read_bytes()
@@ -213,6 +222,14 @@ def decode_nikon_34713_lossless(path: str | Path, metadata: DngMetadata | None =
         maximum=(1 << bits_per_sample) - 1,
     )
     white_level = (1 << bits_per_sample) - 1
+    if setup.linearization is not None:
+        import numpy as np
+
+        curve = np.asarray(setup.linearization, dtype=np.uint16)
+        indices = np.frombuffer(samples, dtype=np.uint16)
+        samples = array("H")
+        samples.frombytes(curve[indices].tobytes())
+        white_level = int(curve[-1])
     black_levels = _nikon_black_levels(
         source_metadata,
         samples,
@@ -238,7 +255,9 @@ def decode_nikon_34713_lossless(path: str | Path, metadata: DngMetadata | None =
         samples_per_pixel=samples_per_pixel,
         byte_order="little",
         raw_bytes=output.tobytes(),
-        storage_layout="nikon-34713-lossless-strips",
+        storage_layout="nikon-34713-lossy-strips"
+        if setup.linearization
+        else "nikon-34713-lossless-strips",
         strip_offsets=strip_offsets,
         strip_byte_counts=strip_byte_counts,
         rows_per_strip=_optional_int(pixel_ifd, 278),
@@ -395,6 +414,7 @@ def render_decoded_nikon_34713_image(
             white_level=decoded.white_level,
             channel_gains=tuple(gain * exposure_scale for gain in base_gains),  # type: ignore[arg-type]
             camera_to_linear_srgb=camera_matrix,
+            highlight_ceiling=min(base_gains) * exposure_scale,
             contrast=contrast,
             highlights=highlights,
             shadows=shadows,
@@ -488,16 +508,41 @@ def _nikon_compression_setup(metadata: DngMetadata, bits_per_sample: int) -> Nik
 
     v0 = compression_payload[0]
     v1 = compression_payload[1]
-    if v0 != 0x46:
+    is_d20 = (v0, v1) == (0x44, 0x20) and bits_per_sample == 12
+    if v0 != 0x46 and not is_d20:
         raise NikonCompressionError(f"unsupported Nikon compression table version: 0x{v0:02x} 0x{v1:02x}")
 
-    huffman_select = 2
+    huffman_select = 0 if is_d20 else 2
     if bits_per_sample == 14:
         huffman_select += 3
     if huffman_select not in _NIKON_HUFFMAN_TABLES:
         raise NikonCompressionError(f"unsupported Nikon Huffman table: {huffman_select}")
 
     unpack_u16 = _u16_unpacker(byte_order)
+    linearization = None
+    if is_d20:
+        # D20 stores evenly spaced linearization knots and an optional split row.
+        if len(compression_payload) < 564:
+            raise NikonCompressionError("Nikon D20 compression table is too short")
+        if unpack_u16(compression_payload[562:564]) != 0:
+            raise NikonCompressionError(
+                "Nikon D20 split-row compression is not supported yet"
+            )
+        count = unpack_u16(compression_payload[10:12])
+        if count < 2 or count > 257 or 4096 % (count - 1) or 12 + count * 2 > 562:
+            raise NikonCompressionError("invalid Nikon D20 linearization knot count")
+        knots = [
+            unpack_u16(compression_payload[12 + i * 2 : 14 + i * 2])
+            for i in range(count)
+        ]
+        if knots[-1] <= knots[0] or any(a > b for a, b in zip(knots, knots[1:])):
+            raise NikonCompressionError("invalid Nikon D20 linearization curve")
+        step = 4096 // (count - 1)
+        linearization = tuple(
+            (knots[i // step] * (step - i % step) + knots[i // step + 1] * (i % step))
+            // step
+            for i in range(4096)
+        )
     initial_predictors = (
         (unpack_u16(compression_payload[2:4]), unpack_u16(compression_payload[6:8])),
         (unpack_u16(compression_payload[4:6]), unpack_u16(compression_payload[8:10])),
@@ -508,6 +553,7 @@ def _nikon_compression_setup(metadata: DngMetadata, bits_per_sample: int) -> Nik
         initial_predictors=initial_predictors,
         active_area=_tag_int_tuple(maker_ifd, 0x0045),
         compression_mode=_tag_int(maker_ifd, 0x0093),
+        linearization=linearization,
     )
 
 
@@ -546,6 +592,8 @@ def _decode_nikon_lossless_samples_python(
     setup: NikonCompressionSetup, maximum: int,
 ) -> array:
     table = _build_huffman_lookup(setup.huffman_select)
+    prefix_bits = (len(table) - 1).bit_length()
+    prefix_mask = len(table) - 1
     try:
         output = array("H", [0]) * (width * height)
     except MemoryError as exc:
@@ -570,16 +618,16 @@ def _decode_nikon_lossless_samples_python(
             even_predictor = row0_even
             odd_predictor = row0_odd
         for column in range(width):
-            while bit_count < 8 and byte_pos < data_length:
+            while bit_count < prefix_bits and byte_pos < data_length:
                 bit_buffer = (bit_buffer << 8) | data[byte_pos]
                 byte_pos += 1
                 bit_count += 8
             if bit_count <= 0:
                 raise NikonCompressionError("Nikon compressed bitstream ended early")
-            if bit_count < 8:
-                prefix = (bit_buffer << (8 - bit_count)) & 0xFF
+            if bit_count < prefix_bits:
+                prefix = (bit_buffer << (prefix_bits - bit_count)) & prefix_mask
             else:
-                prefix = (bit_buffer >> (bit_count - 8)) & 0xFF
+                prefix = (bit_buffer >> (bit_count - prefix_bits)) & prefix_mask
 
             packed_code = table[prefix]
             code_length = packed_code & 0x0F
@@ -682,6 +730,12 @@ def _nikon_black_levels(
     levels = _tag_int_tuple(maker_ifd, 0x003D) if maker_ifd is not None else None
     if levels is not None and len(levels) == 4:
         validated = tuple(int(value) for value in levels)
+        # J5 MakerNotes express black in 14-bit units even in a 12-bit NEF.
+        if (
+            metadata.summary.get("model") == "NIKON 1 J5"
+            and metadata.summary.get("bits_per_sample") == 12
+        ):
+            validated = tuple(value >> 2 for value in validated)
         if all(0 <= value < white_level for value in validated):
             return validated  # type: ignore[return-value]
 
@@ -712,7 +766,13 @@ def _render_crop(decoded: NikonDecodedPixelData) -> tuple[int, int, int, int]:
             height -= height % 2
             if width > 1 and height > 1:
                 return left, top, width, height
-    return 0, 0, decoded.width - (decoded.width % 2), decoded.height - (decoded.height % 2)
+    height = decoded.height
+    if decoded.camera_model == "NIKON 1 J5" and (decoded.width, decoded.height) == (
+        5584,
+        3726,
+    ):
+        height = 3724
+    return 0, 0, decoded.width - (decoded.width % 2), height - (height % 2)
 
 
 def _bayer_blocks_to_rgb8(
@@ -1032,7 +1092,11 @@ def _linear_color_luts(
         span = max(1.0, white_level - channel_black)
         values = array("f")
         values.extend(
-            _clamp_float((value - channel_black) / span, 0.0, 1.0) * channel_scale * exposure_scale
+            min(
+                _clamp_float((value - channel_black) / span, 0.0, 1.0) * channel_scale,
+                min(red_scale, green_scale, blue_scale),
+            )
+            * exposure_scale
             for value in range(65536)
         )
         camera_values.append(values)
@@ -1089,7 +1153,7 @@ def _apply_tonal_regions(value: float, *, highlights: float, shadows: float) -> 
     if highlights == 0.0 and shadows == 0.0:
         return value
     position = _clamp_float(value, 0.0, 1.0)
-    shadow_weight = (1.0 - position) ** 2
+    shadow_weight = 4.0 * position * (1.0 - position) ** 2
     highlight_weight = position**2
     return value + (shadows * 0.3 * shadow_weight) + (highlights * 0.3 * highlight_weight)
 
@@ -1108,16 +1172,17 @@ def _clamp_float(value: float, minimum: float, maximum: float) -> float:
 
 def _build_huffman_lookup(huffman_select: int) -> tuple[int, ...]:
     counts, values = _NIKON_HUFFMAN_TABLES[huffman_select]
-    lookup = [0] * 256
+    prefix_bits = max(8, max(index + 1 for index, count in enumerate(counts) if count))
+    lookup = [0] * (1 << prefix_bits)
     code = 0
     value_index = 0
     for code_length, count in enumerate(counts, start=1):
         for _ in range(count):
             value = values[value_index]
             value_index += 1
-            if code_length <= 8:
-                prefix = code << (8 - code_length)
-                fill = 1 << (8 - code_length)
+            if code_length <= prefix_bits:
+                prefix = code << (prefix_bits - code_length)
+                fill = 1 << (prefix_bits - code_length)
                 for table_index in range(prefix, prefix + fill):
                     lookup[table_index] = (value << 4) | code_length
             code += 1

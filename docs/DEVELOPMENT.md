@@ -2,9 +2,9 @@
 
 ## Current Architecture Status
 
-The code currently defines contracts plus a first CLI/dry-run pipeline skeleton.
-That is deliberate. The V0.1 goal is to turn this skeleton into a real vertical
-slice while keeping the engines replaceable.
+The native desktop editor now imports supported DNG/Nikon files, keeps local
+non-destructive edits, previews adjustments continuously, and exports JPEG/TIFF.
+Support is intentionally format-specific; the README lists verified paths.
 
 ## Recommended V0.1 Build Order
 
@@ -101,3 +101,45 @@ The compiled Nikon decoder is tested against the reference implementation.
 OpenCL rendering is compared with CPU output within one 8-bit code value, across
 Bayer layouts/crop offsets. Hardware checks skip when no GPU is available; the
 CPU fallback and pending-request/source-change behavior are tested independently.
+
+## Editor And Private Photo Checks
+
+```powershell
+.\.venv\Scripts\python.exe scripts\smoke_desktop_workflow.py --source "E:\Photos\sample.NEF" --output output\editor-check --geometry 800x600
+.\.venv\Scripts\python.exe scripts\smoke_batch_workflow.py --output output\batch-check
+.\.venv\Scripts\python.exe scripts\validate_photo_set.py --browse "E:\Photos" --output output\candidates
+.\.venv\Scripts\python.exe scripts\validate_photo_set.py --source "E:\Photos\sample.NEF" --output output\photo-check --export
+```
+
+The editor smoke test uses actual Tk pointer events, verifies displayed pixels,
+undo/redo, Auto strength, original comparison, zoom/pan, JPEG/TIFF, and edit restore.
+The batch check covers saved edits, independent Auto, cancellation, and scrollable
+small-window export controls. Both isolate local edit records from normal use.
+Contact sheets, source paths, exports, and screenshots stay in ignored `output/`.
+Never publish these private artifacts as fixtures or README screenshots.
+
+Nine private D500/J5 photos were checked locally across foliage, backlight, blue
+lighting, portraits, strong overexposure, and a sparse bright night subject. Seven
+J5 visible sensor arrays (145,563,712 samples total) matched an independent
+development decoder exactly. This does not certify all Nikon files or color fidelity.
+No third-party RAW decoder is imported by the app or included in the Windows build.
+
+Auto uses luminance quantiles and near-neutral midtones, not semantic recognition.
+Its optional render callback must use the same unedited proxy and sampling as the
+input preview. Clipping checks concern rendered pixels, not recovered sensor detail.
+The shadow curve is now black-anchored; Nikon highlights use a neutral white-balance
+ceiling before the color matrix to prevent false magenta in clipped regions.
+Existing recipes with shadows/highlights may render differently from older builds.
+
+The Nikon D20 implementation currently accepts only 12-bit, non-split streams
+with validated monotonic linearization knots. Legacy `*_34713_lossless` function
+names remain for compatibility but also handle this explicitly guarded D20 path.
+Format references: [NEF compression research](https://photonstophotos.net/NikonInfo/NEF_Compression.htm)
+and [published Nikon Huffman tables](https://github.com/LibRaw/LibRaw/blob/master/src/decoders/decoders_dcraw.cpp).
+The bitstream loop and linearization implementation are OpenRAW-owned.
+
+Frozen Windows testing also covers a redirected/unwritable Numba disk cache:
+cache-write failures retry in-memory JIT before using the Python fallback.
+This keeps a cache permission/cross-volume error from turning RAW import into a
+slow interpreted decode. The packaged diagnostic distinguishes compilation
+from disk-cache availability.

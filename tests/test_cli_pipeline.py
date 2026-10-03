@@ -428,7 +428,7 @@ class CliPipelineTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertIn("Preview: supported", text)
         self.assertIn("Native render: supported", text)
-        self.assertIn("Nikon 34713 lossless", text)
+        self.assertIn("Nikon 34713", text)
 
     def test_cli_inspect_reports_nikon_raw_embedded_preview(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

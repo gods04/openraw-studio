@@ -33,6 +33,7 @@ class InteractivePhoto:
             self.matrix,
             gains,
             linear_saturation=self.linear_saturation,
+            highlight_ceiling=None if self.linear_saturation else min(gains),
             **{
                 k: adjustments.get(k, 0)
                 for k in ("contrast", "highlights", "shadows", "saturation")

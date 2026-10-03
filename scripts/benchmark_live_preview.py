@@ -31,9 +31,10 @@ def main():
 
     args.output.mkdir(parents=True, exist_ok=True)
     checksum = sha256_file(args.source)
-    app = launch_desktop_app(run_mainloop=False)
+    app = launch_desktop_app(run_mainloop=False, session_dir=args.output / "sessions")
     app.root.geometry(args.geometry)
     app.output_dir = args.output
+    app.messagebox.askyesno = lambda *_args, **_kwargs: True
     report = {
         "mode": "CPU" if args.cpu else "auto",
         "slider_to_display_ms": [],

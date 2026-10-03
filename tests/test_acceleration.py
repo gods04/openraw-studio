@@ -32,6 +32,45 @@ from openraw_studio.raw.native.synthetic import write_synthetic_dng
 
 
 class AccelerationTests(unittest.TestCase):
+    def test_unwritable_decoder_cache_keeps_compiled_processing(self):
+        if compiled_decode.njit is None:
+            self.skipTest("Numba is unavailable")
+        values = (500, 510, 480, 490)
+        payload = pack_nikon_34713_lossless(values, width=2, height=2, bits_per_sample=12)
+        setup = NikonCompressionSetup("F0", 2, ((512, 512), (512, 512)))
+        with patch.object(compiled_decode, "decode", side_effect=OSError("cache cannot be replaced")):
+            actual = _decode_nikon_lossless_samples(payload, width=2, height=2, setup=setup, maximum=4095)
+            self.assertEqual(tuple(actual), values)
+            self.assertTrue(compiled_decode.decode.signatures)
+            self.assertIsNone(compiled_decode.last_error)
+
+    def test_clipped_camera_highlights_do_not_turn_magenta(self):
+        from openraw_studio.raw.native.profiles import find_camera_color_profile
+
+        matrix = find_camera_color_profile("NIKON CORPORATION", "NIKON 1 J5").camera_to_linear_srgb
+        pixels = np.array([[[1, 1, 1], [.1, .2, .3]]], dtype=np.float32)
+        params = color_parameters(matrix, (2.05, 1, 1.44), highlight_ceiling=1)
+        cpu = tone_cpu(pixels, params)
+        gpu, _ = render_tone(pixels, params)
+        np.testing.assert_array_equal(cpu[0, 0], [255, 255, 255])
+        self.assertLessEqual(np.abs(cpu.astype(int) - gpu.astype(int)).max(), 1)
+        unchanged = tone_cpu(pixels, color_parameters(matrix, (2.05, 1, 1.44)))
+        np.testing.assert_array_equal(cpu[0, 1], unchanged[0, 1])
+
+    def test_shadow_lift_keeps_true_black_and_opens_dark_detail(self):
+        from openraw_studio.raw.native.tone import _apply_tonal_regions
+        from openraw_studio.raw.native.nikon import _apply_tonal_regions as nikon_tone
+
+        for function in (_apply_tonal_regions, nikon_tone):
+            self.assertEqual(function(0, highlights=0, shadows=1), 0)
+            self.assertGreater(function(.05, highlights=0, shadows=.5), .05)
+        pixels = np.array([[[0, 0, 0], [.05, .05, .05]]], dtype=np.float32)
+        params = color_parameters(np.eye(3), (1, 1, 1), shadows=.5)
+        cpu = tone_cpu(pixels, params)
+        accelerated, _ = render_tone(pixels, params)
+        np.testing.assert_array_equal(cpu[0, 0], [0, 0, 0])
+        self.assertLessEqual(np.abs(cpu.astype(int) - accelerated.astype(int)).max(), 1)
+
     def test_dng_live_tones_match_existing_renderer(self):
         with tempfile.TemporaryDirectory() as temp:
             source = write_synthetic_dng(Path(temp) / "sample.DNG", width=16, height=12)
@@ -164,6 +203,7 @@ class AccelerationTests(unittest.TestCase):
                 highlights=-0.3,
                 shadows=0.2,
                 saturation=0.4,
+                highlight_ceiling=0.9,
             )
             cpu = render_bayer_full_resolution_rgb8(**args, use_gpu=False)
             accelerated = render_bayer_full_resolution_rgb8(**args, use_gpu=True)

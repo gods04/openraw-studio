@@ -270,13 +270,13 @@ def _nikon_import_details(
 
 def _nikon_render_success_detail(summary: Mapping[str, Any]) -> str:
     if _scalar_int(summary.get("compression"), default=1) == NIKON_COMPRESSED_RAW:
-        return "Render: native Nikon 34713 lossless sensor decode"
+        return "Render: native Nikon 34713 sensor decode"
     return "Render: native TIFF-style sensor decode"
 
 
 def _nikon_render_success_reason(summary: Mapping[str, Any]) -> str:
     if _scalar_int(summary.get("compression"), default=1) == NIKON_COMPRESSED_RAW:
-        return "Supported by OpenRAW Native V0.1 Nikon 34713 lossless sensor decode."
+        return "Supported by OpenRAW Native Nikon 34713 sensor decode."
     return "Supported by OpenRAW Native V0.1 guarded Nikon sensor decode."
 
 
@@ -385,8 +385,12 @@ def _evaluate_nikon_summary(
         issues = [issue for issue in issues if "compression" not in issue.lower()]
         issues = [issue for issue in issues if issue != "Missing scalar black level."]
         issues = [issue for issue in issues if issue != "Missing scalar white level."]
-        details.append("Compression: Nikon 34713 lossless Huffman")
-        details.append("Levels: Nikon 14-bit range with MakerNote black level or inactive-border fallback")
+        details.append(
+            "Compression: Nikon 34713 Huffman (F lossless / 12-bit D20 non-split)"
+        )
+        details.append(
+            "Levels: native sample range with MakerNote black level or inactive-border fallback"
+        )
         details.append("Render: native Nikon 34713 sensor decode")
     return issues, details
 

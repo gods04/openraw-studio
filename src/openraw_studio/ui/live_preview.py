@@ -20,6 +20,7 @@ class LiveFrame:
     elapsed_ms: float = 0
     error: str | None = None
     reference: bool = False
+    original_image: object = None
 
 
 class LivePreviewWorker:
@@ -74,7 +75,7 @@ class LivePreviewWorker:
             self._condition.notify()
 
     def _run(self):
-        key = photo = None
+        key = photo = original = None
         while True:
             with self._condition:
                 self._condition.wait_for(
@@ -93,6 +94,7 @@ class LivePreviewWorker:
                             revision, source, adjustments, requested_at
                         )
                     photo = self.prepare(self.processor, source)
+                    original, _backend = photo.render({})
                     key = current_key
                 with self._condition:
                     if revision != self._revision or self._closed:
@@ -105,6 +107,7 @@ class LivePreviewWorker:
                     image,
                     backend,
                     (perf_counter() - requested_at) * 1000,
+                    original_image=original,
                 )
             except Exception as exc:
                 frame = LiveFrame(revision, source, adjustments, error=str(exc))
@@ -120,11 +123,14 @@ class LivePreviewWorker:
         from PIL import Image
 
         from openraw_studio.raw.native.dng import DngMetadataReader
+        from openraw_studio.raw.native.nikon import _apply_exif_orientation
 
         try:
             embedded = DngMetadataReader().read_embedded_jpeg_preview(source)
             with Image.open(BytesIO(embedded.data)) as opened:
                 image = opened.convert("RGB")
+            orientation = DngMetadataReader().read(source).summary.get("orientation", 1)
+            image = _apply_exif_orientation(image, orientation)
             image.thumbnail((960, 960))
         except (OSError, ValueError):
             return

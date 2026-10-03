@@ -120,7 +120,7 @@ def _apply_tonal_regions(value: float, *, highlights: float, shadows: float) -> 
     if highlights == 0.0 and shadows == 0.0:
         return value
     position = _clamp01(value)
-    shadow_weight = (1.0 - position) ** 2
+    shadow_weight = 4.0 * position * (1.0 - position) ** 2
     highlight_weight = position**2
     return value + (shadows * 0.3 * shadow_weight) + (highlights * 0.3 * highlight_weight)
 

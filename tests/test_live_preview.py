@@ -25,6 +25,8 @@ class LivePreviewWorkerTests(unittest.TestCase):
 
         class Photo:
             def render(self, adjustments):
+                if not adjustments:
+                    return "original", "CPU"
                 first = adjustments["exposure"] == 0
                 (entered if first else next_entered).set()
                 (release if first else next_release).wait(3)
@@ -67,6 +69,8 @@ class LivePreviewWorkerTests(unittest.TestCase):
 
         class Photo:
             def render(self, adjustments):
+                if not adjustments:
+                    return "original", "CPU"
                 renders.append(adjustments["exposure"])
                 return adjustments["exposure"], "CPU"
 
@@ -94,6 +98,7 @@ class LivePreviewWorkerTests(unittest.TestCase):
                 self.assertIsNotNone(frame)
                 self.assertEqual(frame.revision, revision)
                 self.assertEqual(frame.image, 29)
+                self.assertEqual(frame.original_image, "original")
                 self.assertEqual(renders, [29])
                 self.assertEqual(prepared, [source])
                 worker.invalidate()

@@ -92,6 +92,10 @@ class BatchResult:
         return sum(1 for item in self.items if item.status == "failed")
 
     @property
+    def cancelled(self) -> int:
+        return sum(1 for item in self.items if item.status == "cancelled")
+
+    @property
     def processed(self) -> int:
         return self.exported + self.previewed
 
@@ -104,6 +108,7 @@ class BatchResult:
             "previewed": self.previewed,
             "skipped": self.skipped,
             "failed": self.failed,
+            "cancelled": self.cancelled,
             "items": [item.as_dict() for item in self.items],
         }
 
@@ -137,6 +142,8 @@ def run_batch_export(
     export_quality: int = 92,
     progress_callback: ProgressCallback | None = None,
     pipeline: LocalPhotoPipeline | None = None,
+    should_cancel: Callable[[], bool] | None = None,
+    adjustments_for_source: Callable[[Path], Mapping[str, Any]] | None = None,
 ) -> BatchResult:
     """Process supported sources one by one through the normal local pipeline."""
 
@@ -148,6 +155,12 @@ def run_batch_export(
     normalized_sources = tuple(Path(source) for source in sources)
 
     for index, source in enumerate(normalized_sources, start=1):
+        if should_cancel is not None and should_cancel():
+            items.extend(
+                BatchItemResult(path, "cancelled", "Cancelled before processing")
+                for path in normalized_sources[index - 1 :]
+            )
+            break
         support = inspect_native_support(source)
         if not support.can_render and not (preview_only and support.can_preview):
             item = BatchItemResult(
@@ -161,6 +174,7 @@ def run_batch_export(
                 source,
                 destination,
                 overrides=overrides or {},
+                adjustments_for_source=adjustments_for_source,
                 processing_profile=processing_profile,
                 creative_look=creative_look,
                 auto_strength=auto_strength,
@@ -187,8 +201,11 @@ def _process_batch_item(
     preview_only: bool,
     export_format: str,
     export_quality: int,
+    adjustments_for_source: Callable[[Path], Mapping[str, Any]] | None = None,
 ) -> BatchItemResult:
     try:
+        if adjustments_for_source is not None:
+            overrides = adjustments_for_source(source)
         result = pipeline.process(
             PipelineRequest(
                 source_path=source,
@@ -202,7 +219,13 @@ def _process_batch_item(
                 export_quality=export_quality,
             )
         )
-    except (BackendUnavailableError, PipelineError, OSError, ValueError) as exc:
+    except (
+        BackendUnavailableError,
+        PipelineError,
+        OSError,
+        ValueError,
+        RuntimeError,
+    ) as exc:
         return BatchItemResult(source_path=source, status="failed", message=str(exc))
 
     recipe_path = result.diagnostics.get("recipe_path")

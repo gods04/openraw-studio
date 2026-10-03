@@ -21,7 +21,7 @@ The UI should keep the image workspace first:
 - preview current/stale state
 - built-in synthetic sample DNG/NEF creation
 - before/after comparison
-- native Nikon result/camera-preview comparison
+- unedited native RAW/current-edit comparison
 - rendered-preview RGB/luminance histogram that follows Before/Camera Preview/After view
 - rendered-preview shadow/highlight clipping percentages
 - AUTO action
@@ -40,6 +40,8 @@ The UI should keep the image workspace first:
 - open embedded preview JPEG action for preview-only Nikon files
 - open output folder action
 - saved recipe detection for restoring basic adjustments
+- automatic local edit retention, undo/redo, Auto strength, and preview zoom/pan
+- per-photo Auto or saved-edit batch export with between-photo cancellation
 
 The UI uses the pipeline and recipe contracts for saved artifacts and export.
 `LivePreviewWorker` separately requests an in-memory, scene-linear display proxy
@@ -57,6 +59,8 @@ keeping advanced controls for later stages. Preview-only Nikon files can expose
 an `Open Preview JPEG` action after automatic preview loading, while final export
 controls stay disabled until native sensor rendering supports that file. Inline
 before/after comparison remains on lightweight preview paths. Native Nikon
-34713 results use the camera-authored embedded JPEG as an instant reference, so
-the desktop does not decode the large sensor payload a second time. This JPEG is
-comparison-only and is never treated as the source for OpenRAW export.
+34713 files can show the camera-authored JPEG while the RAW loads. Once loaded,
+comparison uses a cached unedited RAW render from the same linear proxy as the
+edited image. The camera JPEG is never treated as the source for OpenRAW export.
+`workspace.py` owns the photo-first layout; `editing.py` owns bounded history and
+atomic local edit persistence. Worker callbacks enter Tk through a main-thread queue.

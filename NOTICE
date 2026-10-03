@@ -9,10 +9,10 @@ This product includes DNG technology under license by Adobe.
 The public DNG specification and its patent license are published by Adobe:
 https://helpx.adobe.com/camera-raw/desktop/dng-and-file-formats/digital-negative.html
 
-Nikon D500 Camera Calibration Data
-----------------------------------
+Nikon Camera Calibration Data
+-----------------------------
 
-OpenRAW Native includes nine numeric Nikon D500 camera-calibration constants
+OpenRAW Native includes numeric Nikon D500 and Nikon 1 J5 camera-calibration constants
 published as Adobe DNG Converter profile data. The OpenRAW transform and render
 implementation is project-authored. LibRaw was used as a development reference
 and validation oracle; no LibRaw code or binary is bundled as a runtime
@@ -20,6 +20,22 @@ dependency.
 
 Reference table:
 https://github.com/LibRaw/LibRaw/blob/master/src/tables/colordata.cpp
+
+Nikon Compression Format Data
+----------------------------
+
+The native Huffman tables are numeric file-format constants. D20 decoding uses
+OpenRAW's own bitstream reader and validates/interpolates the curve stored in
+the input NEF. Independent development comparisons do not introduce a LibRaw
+runtime dependency. Format-data reference:
+https://github.com/LibRaw/LibRaw/blob/master/src/decoders/decoders_dcraw.cpp
+
+Lucide Icons
+------------
+
+UI PNG icons are rendered from Lucide. The complete upstream ISC/MIT attribution
+is retained in src/openraw_studio/ui/icons/LICENSE.txt and bundled with the UI.
+https://github.com/lucide-icons/lucide
 
 NumPy
 -----

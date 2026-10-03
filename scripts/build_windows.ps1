@@ -1,5 +1,6 @@
 param(
-    [switch]$SkipTests
+    [switch]$SkipTests,
+    [switch]$SkipZip
 )
 
 $ErrorActionPreference = "Stop"
@@ -35,29 +36,40 @@ if (-not (Test-Path $PythonExe)) {
         $pythonArgs = $systemPython[1..($systemPython.Length - 1)]
     }
     & $pythonCommand @pythonArgs -m venv $BuildVenvDir
+    if ($LASTEXITCODE -ne 0) { throw "Could not create the build environment." }
 }
 
 Push-Location $RepoRoot
 try {
     Write-Host "Installing packaging dependencies..."
     & $PythonExe -m pip install --upgrade pip
+    if ($LASTEXITCODE -ne 0) { throw "Could not update pip." }
     & $PythonExe -m pip install -e ".[packaging]"
+    if ($LASTEXITCODE -ne 0) { throw "Could not install packaging dependencies." }
 
     if (-not $SkipTests) {
         Write-Host "Running tests before packaging..."
         & $PythonExe -m unittest discover -s tests
+        if ($LASTEXITCODE -ne 0) { throw "Tests failed; refusing to package." }
     }
 
     Write-Host "Building Windows app bundle..."
+    $ResolvedAppDir = [IO.Path]::GetFullPath($AppDir)
+    $ResolvedDistRoot = [IO.Path]::GetFullPath($DistDir).TrimEnd('\') + '\'
+    if (-not $ResolvedAppDir.StartsWith($ResolvedDistRoot, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Build destination must stay inside the repository dist folder."
+    }
     & $PythonExe -m PyInstaller `
         --noconfirm `
         --clean `
         --windowed `
         --name $AppName `
         --collect-submodules "openraw_studio" `
+        --collect-data "openraw_studio.ui" `
         --paths "src" `
         --specpath "build\pyinstaller-spec" `
         "packaging\openraw_app.py"
+    if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed; no release was produced." }
 
     if (-not (Test-Path $AppDir)) {
         throw "PyInstaller did not create the expected app folder: $AppDir"
@@ -103,13 +115,15 @@ try {
     }
     Copy-Item -LiteralPath (Join-Path $RepoRoot "packaging\licenses\siphash24") -Destination $ThirdPartyRoot -Recurse -Force
 
-    if (Test-Path $ZipPath) {
-        Remove-Item -LiteralPath $ZipPath -Force
+    if (-not $SkipZip) {
+        if (Test-Path $ZipPath) {
+            Remove-Item -LiteralPath $ZipPath -Force
+        }
+        Write-Host "Creating zip package..."
+        Compress-Archive -LiteralPath $AppDir -DestinationPath $ZipPath -Force
+        Write-Host "Windows package: $ZipPath"
     }
-
-    Write-Host "Creating zip package..."
-    Compress-Archive -LiteralPath $AppDir -DestinationPath $ZipPath -Force
-    Write-Host "Windows package: $ZipPath"
+    Write-Host "Desktop executable: $(Join-Path $AppDir ($AppName + '.exe'))"
 }
 finally {
     Pop-Location

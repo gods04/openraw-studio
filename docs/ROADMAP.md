@@ -1,5 +1,17 @@
 # Roadmap
 
+## Current Desktop Milestone
+
+Implemented: photo-first editor, continuous GPU/CPU preview, guarded Auto with
+strength control, original RAW comparison, undo/redo, local edit retention,
+JPEG/TIFF export, and cancellable per-photo batch modes. Supported compressed
+Nikon paths include F-series lossless and 12-bit D20 non-split (verified on 1 J5).
+Local Windows EXE builds are available; this is not a public installer release.
+
+Next quality work: Z f encoding support, broader camera calibration, edge-aware
+demosaic, actual sensor highlight reconstruction, denoise, and full-resolution
+inspection. Semantic portrait/scene AI and mobile remain later phases.
+
 ## Phase 0 - Foundation
 
 Status: in progress.

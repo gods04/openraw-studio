@@ -62,9 +62,24 @@ camera preview as a finished RAW export.
 ### Automatic Acceleration And Live Preview
 
 For renderable photos, moving a slider updates the image automatically, including
-during continuous dragging. Detailed photo information can be expanded with
-`Photo details`. Adjustments remain in memory until export; the screen-size
-preview is never used as the full-resolution export source.
+during continuous dragging. Metadata and support details are in the `Info` tab.
+The screen-size preview is never used as the full-resolution export source.
+
+`Auto` suggests a conservative correction; `Auto strength` varies it from 0 to
+100%. Light and Color groups contain manual sliders. The comparison icon switches
+between an unedited RAW render and the current edit. Undo/redo buttons (Ctrl+Z /
+Ctrl+Y) restore edits during the current photo session. Fit/2x/4x zoom and dragging
+allow closer preview inspection, not full-resolution 1:1 pixel inspection.
+
+Edits save automatically after a short idle interval, on slider release, and on
+normal close. Windows stores them under `%LOCALAPPDATA%\OpenRAW Studio\edits`.
+These local records are keyed by source path, size, and modification time; moved
+or externally modified files do not inherit stale edits. Exported recipe sidecars
+remain portable artifacts. No edit operation modifies the source RAW.
+
+Nikon 1 J5 12-bit D20 non-split compressed files are also supported, with an
+exact camera color profile and a 5584 x 3724 output for the tested landscape files.
+The tested Z f encoding and D20 split-row streams remain preview-only.
 
 The app probes installed OpenCL GPU devices and validates a small render before
 using one. A working discrete GPU is preferred; integrated GPUs are also eligible.
@@ -88,11 +103,13 @@ Remove that environment variable or start a new terminal to restore automatic
 selection. GPU acceleration currently covers the interactive tone renderer and
 the supported full-resolution Nikon lossless path, not every RAW stage/format.
 
-`Export Folder` processes currently renderable files from the imported folder
-using the current basic adjustments and reports skipped/preview-only/import-only/failed files.
+In the `Export` tab, `Export folder` processes renderable photos with current
+adjustments, each photo's saved edits, or an independent Auto correction.
+`Stop batch` finishes the current photo before stopping. Existing derivatives
+require replacement confirmation. Small windows can scroll the inspector tabs.
 
-To try the app without using a private photo, click `Create Sample DNG` or
-`Create Sample NEF` inside the desktop app.
+To try the app without using a private photo, open `Library` > `Sample photos`
+and choose a sample DNG or NEF.
 
 You can also generate the same synthetic samples from the command line:
 
@@ -127,6 +144,12 @@ Maintainers and testers can build the current desktop app package locally:
 ```powershell
 .\scripts\build_windows.ps1
 ```
+
+For a local executable without producing a ZIP, use
+`.\scripts\build_windows.ps1 -SkipZip`. Then double-click
+`dist\OpenRAW Studio\OpenRAW Studio.exe`. Keep its `_internal` folder beside the
+EXE; moving only the EXE will break the app. You may create a Windows shortcut to
+that EXE, or drag a RAW file onto it to open the photo.
 
 The output is:
 

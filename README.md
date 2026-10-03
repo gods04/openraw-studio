@@ -38,8 +38,12 @@ The script creates `.venv`, installs OpenRAW Studio locally, and opens the app.
 When release builds are published, this section will link to GitHub Releases
 with a normal Windows download.
 
-To try the app without using a private photo, click `Create Sample DNG` or
-`Create Sample NEF` inside the app. You can also generate the same tiny
+Maintainers can build a local EXE with `.\scripts\build_windows.ps1 -SkipZip`,
+then open `dist\OpenRAW Studio\OpenRAW Studio.exe`. Keep the adjacent `_internal`
+folder with it. This local build does not publish a GitHub release.
+
+To try the app without using a private photo, open `Library` > `Sample photos`
+and choose a sample DNG or NEF. You can also generate the same tiny
 synthetic samples from the command line:
 
 ```powershell
@@ -72,9 +76,11 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - Native Nikon 34713 lossless Huffman sensor decoding with optional Numba
   compilation of OpenRAW's own decoder, MakerNote black levels with inactive-border
   fallback, and full-resolution bilinear RGB export for supported files
+- Native Nikon 1 J5 12-bit D20 non-split compressed NEF decoding, linearization,
+  corrected black levels, exact camera profile, and full-size JPEG/TIFF export
 - Automatic OpenCL GPU selection for live adjustments and full-resolution Nikon
   rendering, with CPU fallback when a GPU/driver is unavailable
-- Camera-aware Nikon D500 rendering with standard as-shot white balance, an
+- Camera-aware Nikon D500 and 1 J5 rendering with standard as-shot white balance, an
   exact camera-to-linear-sRGB profile, and EXIF orientation handling
 - Native extraction for simple uncompressed DNG 12/14-bit packed strip payloads
   and 16-bit strip/tile pixel payloads
@@ -101,6 +107,12 @@ Then import `sample-data\openraw-synthetic.DNG` or
   refreshes and export do not repeatedly decode or regenerate unchanged work
 - Automatic, in-memory live preview during slider dragging, with one replaceable
   pending edit instead of a growing render queue; no refresh button is required
+- Photo-first workspace with Adjust/Library/Export/Info tabs, original-RAW
+  comparison, zoom/pan, undo/redo, and automatic local edit retention
+- Auto strength control, luminance-aware exposure, conservative color correction,
+  black-preserving shadows, and rendered-highlight checks
+- Folder export using current adjustments, per-photo saved edits, or Auto per
+  photo; stopping finishes the current photo and cancels the remainder
 - Saved recipe detection that restores basic desktop adjustments for the same
   photo
 - Synthetic DNG/Nikon NEF generators for safe local smoke tests
@@ -115,16 +127,19 @@ Then import `sample-data\openraw-synthetic.DNG` or
   gamut mapping are not implemented yet
 - OpenRAW Native has a first optimized Nikon 34713 lossless decode/render path,
   with a half-resolution preview and full-resolution bilinear final export.
-  Camera-aware color is exact for the D500 and generic for other models;
+  Camera profiles are provided for the D500 and 1 J5, with generic color for other models;
   first-use compiler/GPU initialization still adds latency, while edge-aware
   demosaic quality, further speed work, and more profiles remain
 - Other compressed/proprietary Nikon `.NEF` / `.NRW` sensor payload variants
-  are not decoded yet
+  are not decoded yet. J5 D20 support is limited to 12-bit, non-split streams;
+  the tested Z f samples remain preview-only. Check each file with `openraw inspect`.
 - Broad proprietary RAW rendering support is not implemented yet
 - TIFF export is currently 8-bit sRGB; 16-bit linear/working-space TIFF is not implemented yet
 - QC currently checks rendered 8-bit preview clipping only; sensor-domain
   headroom, sharpness, noise, and color-accuracy checks are not implemented yet
 - No AI model weights included
+- Auto is a deterministic luminance/color heuristic, not semantic AI or
+  sensor highlight recovery. It cannot reconstruct clipped detail.
 - No portrait retouching algorithms yet
 - No film engine implementation yet
 - No public test photo dataset yet
@@ -205,13 +220,18 @@ Import a supported DNG for preview/export, import a Nikon `.NEF` / `.NRW` to
 read metadata, show an embedded JPEG preview when the file provides one, or
 render through the guarded native Nikon sensor path when the file exposes a
 supported uncompressed Bayer payload. Import a folder to browse RAW-like files,
-or click `Create Sample DNG` / `Create Sample NEF`, then click `Auto Adjust`
+or choose `Library` > `Sample photos`, then click `Auto`
 for a conservative starter look.
 The preview appears automatically after import and follows adjustment sliders
 while you drag. The preview status shows the active GPU or CPU. Choose
-JPEG or TIFF in the Output section, then click the matching Export button. After importing a folder, click
-`Export Folder` to export every currently supported file using the current basic
-adjustments; unsupported files are skipped and reported.
+JPEG or TIFF in the `Export` tab, then click the top-right Export button. After
+importing a folder, choose a folder-processing mode and click `Export folder`.
+Unsupported files are skipped and reported. `Stop batch` stops between photos.
+
+Edits save automatically on this computer without changing the RAW. Undo/redo
+works within the current photo session. The comparison icon shows the original
+RAW render, not the camera JPEG. `Fit`, `2x`, and `4x` control display zoom;
+zoomed images can be dragged. This is preview zoom, not full-resolution 1:1 inspection.
 The status area shows animated progress for a single photo and exact item
 progress for a folder export. Completed previews and exports report their pixel
 dimensions and file size.

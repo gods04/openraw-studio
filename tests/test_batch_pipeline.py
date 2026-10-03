@@ -9,6 +9,21 @@ from openraw_studio.raw.native.synthetic import write_synthetic_dng
 
 
 class BatchPipelineTests(unittest.TestCase):
+    def test_batch_per_photo_adjustments_and_cancellation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            sources = [write_synthetic_dng(root / f"{n}.DNG", width=4, height=4) for n in range(3)]
+            processed = []
+            def progress(done, total, item):
+                processed.append(item)
+            result = run_batch_export(sources, root / "out", progress_callback=progress,
+                should_cancel=lambda: bool(processed), adjustments_for_source=lambda path: {"exposure": .35})
+            self.assertEqual(result.exported, 1)
+            self.assertEqual(result.cancelled, 2)
+            recipe = json.loads((root / "out/recipes/0.DNG.recipe.json").read_text())
+            self.assertEqual(recipe["adjustments"]["raw"]["exposure"], .35)
+            self.assertFalse((root / "out/exports/1.auto.jpg").exists())
+
     def test_discover_batch_sources_lists_raw_like_files_with_support(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

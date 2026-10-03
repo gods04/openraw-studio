@@ -6,6 +6,7 @@ import json
 from io import BytesIO
 import math
 import os
+import queue
 from pathlib import Path, PurePosixPath, PureWindowsPath
 import subprocess
 import sys
@@ -26,12 +27,12 @@ from openraw_studio.pipeline.batch import BatchItemResult, BatchResult, run_batc
 from openraw_studio.pipeline.errors import BackendUnavailableError, PipelineError, SourceFileError
 from openraw_studio.pipeline.interfaces import PipelineRequest
 from openraw_studio.pipeline.local import LocalPhotoPipeline
-from openraw_studio.qc.histogram import HistogramAnalysis, analyze_rgb_bytes, analyze_rgb_pixels
+from openraw_studio.qc.histogram import HistogramAnalysis, analyze_rgb_bytes
 from openraw_studio.raw.native.dng import DngMetadataReader
-from openraw_studio.raw.native.preview import render_preview_image
 from openraw_studio.raw.native.support import NativeSupportReport, inspect_native_support
 from openraw_studio.raw.native.synthetic import write_synthetic_dng, write_synthetic_nikon_nef
 from openraw_studio.ui.live_preview import LivePreviewWorker
+from openraw_studio.ui.editing import EditHistory, SessionStore, clean_adjustments
 
 
 MAX_LIBRARY_FILES = 200
@@ -300,6 +301,8 @@ def _batch_progress_text(done: int, total: int, item: BatchItemResult) -> str:
 def _batch_result_status(result: BatchResult) -> str:
     if result.total == 0:
         return "No RAW files to export"
+    if result.cancelled:
+        return f"Batch stopped: {result.processed} processed, {result.cancelled} cancelled"
     if result.failed:
         return f"Batch finished with {result.failed} failed, {result.processed} processed, {result.skipped} skipped"
     return f"Batch finished: {result.processed} processed, {result.skipped} skipped"
@@ -632,7 +635,7 @@ def _open_in_system(path: Path) -> None:
         subprocess.Popen([command, str(path)])
 
 
-def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
+def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = None) -> Any:
     """Launch the first beginner-facing desktop workflow."""
 
     import tkinter as tk
@@ -642,8 +645,8 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
         def __init__(self, root: Any) -> None:
             self.root = root
             self.root.title("OpenRAW Studio")
-            self.root.geometry("1080x720")
-            self.root.minsize(760, 540)
+            self.root.geometry("1280x820")
+            self.root.minsize(800, 560)
             self.source_path: Path | None = None
             self.output_dir: Path | None = None
             self.preview_photo: Any = None
@@ -672,23 +675,45 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
             self.last_saved_preview_overrides = None
             self.last_live_latency_ms = None
             self.live_image = None
+            self.source_orientation = 1
             self.reference_image = None
             self.resize_after_id = None
             self.info_width = 700
+            self.history = EditHistory()
+            self.session_store = SessionStore(session_dir)
+            self.edit_after_id = None
+            self.last_auto_suggestion = None
+            self.pan_origin = None
+            self.pan_offset = [0.0, 0.0]
+            self.callbacks = queue.SimpleQueue()
+            self.closing = False
+            self.batch_cancel = threading.Event()
+            self.batch_running = False
             self.root.protocol("WM_DELETE_WINDOW", self._close)
 
             self.source_var = tk.StringVar(value="No RAW photo selected")
-            self.output_var = tk.StringVar(value="Output folder will be chosen automatically")
-            self.library_status_var = tk.StringVar(value="Import a folder to browse photos")
+            self.output_var = tk.StringVar(
+                value="Output folder will be chosen automatically"
+            )
+            self.library_status_var = tk.StringVar(
+                value="Import a folder to browse photos"
+            )
             self.photo_info_var = tk.StringVar(value="No photo selected")
-            self.output_info_var = tk.StringVar(value="Output plan appears after import")
+            self.output_info_var = tk.StringVar(
+                value="Output plan appears after import"
+            )
             self.photo_info_display_var = tk.StringVar(value="No photo selected")
             self.output_info_display_var = tk.StringVar(
                 value="Output plan appears after import"
             )
             self.details_var = tk.BooleanVar(value=False)
-            self.photo_info_var.trace_add("write", self._sync_information_labels)
-            self.output_info_var.trace_add("write", self._sync_information_labels)
+            self.edit_status_var = tk.StringVar(value="")
+            self.zoom_var = tk.StringVar(value="Fit")
+            self.view_var = tk.StringVar(value="Edited")
+            self.auto_strength_var = tk.DoubleVar(value=70)
+            self.auto_strength_label_var = tk.StringVar(value="70%")
+            self.auto_summary_var = tk.StringVar(value="")
+            self.batch_mode_var = tk.StringVar(value="Current adjustments")
             self.status_var = tk.StringVar(value="Choose a RAW photo to begin")
             self.preview_state_var = tk.StringVar(value="No preview yet")
             self.histogram_status_var = tk.StringVar(value="No histogram yet")
@@ -704,492 +729,71 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
             self.jpeg_quality_label_var = tk.StringVar(value="92")
             self.exposure_label_var = tk.StringVar(value=_format_exposure_label(0.0))
             self.contrast_label_var = tk.StringVar(value=_format_adjustment_label(0.0))
-            self.highlights_label_var = tk.StringVar(value=_format_adjustment_label(0.0))
+            self.highlights_label_var = tk.StringVar(
+                value=_format_adjustment_label(0.0)
+            )
             self.shadows_label_var = tk.StringVar(value=_format_adjustment_label(0.0))
             self.warmth_label_var = tk.StringVar(value=_format_adjustment_label(0.0))
             self.tint_label_var = tk.StringVar(value=_format_adjustment_label(0.0))
-            self.saturation_label_var = tk.StringVar(value=_format_adjustment_label(0.0))
+            self.saturation_label_var = tk.StringVar(
+                value=_format_adjustment_label(0.0)
+            )
             self._build_style(ttk)
             self._build_layout(tk, ttk, filedialog, messagebox)
             self.live_poll_id = self.root.after(8, self._poll_live_preview)
+            self.callback_poll_id = self.root.after(16, self._poll_callbacks)
+            self.root.bind("<Control-z>", lambda _e: self._undo())
+            self.root.bind("<Control-y>", lambda _e: self._redo())
+            self.root.bind("<Control-Shift-Z>", lambda _e: self._redo())
+            self.root.bind("<Control-o>", lambda _e: self._choose_source())
+            self.root.bind("<Control-s>", lambda _e: self._commit_edit())
 
         def _build_style(self, ttk_module: Any) -> None:
-            style = ttk_module.Style(self.root)
-            try:
-                style.theme_use("vista")
-            except tk.TclError:
-                pass
-            style.configure("App.TFrame", background="#f5f5f7")
-            style.configure("Panel.TFrame", background="#ffffff")
-            style.configure("Title.TLabel", background="#f5f5f7", foreground="#1d1d1f", font=("Segoe UI", 24, "bold"))
-            style.configure("Subtitle.TLabel", background="#f5f5f7", foreground="#6e6e73", font=("Segoe UI", 10))
-            style.configure("Panel.TLabel", background="#ffffff", foreground="#1d1d1f", font=("Segoe UI", 10))
-            style.configure("Muted.TLabel", background="#ffffff", foreground="#6e6e73", font=("Segoe UI", 9))
-            style.configure("Warning.TLabel", background="#ffffff", foreground="#9c3d10", font=("Segoe UI", 9))
-            style.configure("Primary.TButton", font=("Segoe UI", 10, "bold"), padding=(18, 10))
-            style.configure("Secondary.TButton", padding=(12, 8))
-            style.configure(
-                "Processing.Horizontal.TProgressbar",
-                troughcolor="#e5e5ea",
-                background="#0071e3",
-                lightcolor="#0071e3",
-                darkcolor="#0071e3",
-                thickness=4,
-            )
+            from openraw_studio.ui.workspace import configure_style
 
-        def _build_layout(self, tk_module: Any, ttk_module: Any, filedialog: Any, messagebox: Any) -> None:
-            self.root.configure(background="#f5f5f7")
-            shell = ttk_module.Frame(self.root, style="App.TFrame", padding=28)
-            shell.pack(fill="both", expand=True)
-            shell.columnconfigure(1, weight=1)
-            shell.rowconfigure(1, weight=1)
+            configure_style(self.root)
 
-            ttk_module.Label(shell, text="OpenRAW Studio", style="Title.TLabel").grid(row=0, column=0, columnspan=2, sticky="w")
-            ttk_module.Label(shell, text="A calm, local-first workspace for your RAW photos.", style="Subtitle.TLabel").grid(
-                row=0, column=1, sticky="e", padx=(20, 0), pady=(10, 0)
-            )
+        def _post(self, callback) -> None:
+            if not self.closing:
+                self.callbacks.put(callback)
 
-            controls_panel = ttk_module.Frame(shell, style="Panel.TFrame")
-            controls_panel.grid(row=1, column=0, sticky="ns", pady=(24, 0), padx=(0, 18))
-            controls_panel.columnconfigure(0, weight=1)
-            controls_panel.rowconfigure(0, weight=1)
-            controls_canvas = tk_module.Canvas(
-                controls_panel,
-                width=288,
-                background="#ffffff",
-                borderwidth=0,
-                highlightthickness=0,
-            )
-            controls_scroll = ttk_module.Scrollbar(controls_panel, orient="vertical", command=controls_canvas.yview)
-            controls_canvas.configure(yscrollcommand=controls_scroll.set)
-            controls_canvas.grid(row=0, column=0, sticky="nsew")
-            controls_scroll.grid(row=0, column=1, sticky="ns")
-            controls = ttk_module.Frame(controls_canvas, style="Panel.TFrame", padding=22)
-            controls_window = controls_canvas.create_window((0, 0), window=controls, anchor="nw")
-            controls.bind("<Configure>", lambda _event: controls_canvas.configure(scrollregion=controls_canvas.bbox("all")))
-            controls_canvas.bind("<Configure>", lambda event: controls_canvas.itemconfigure(controls_window, width=event.width))
-            controls_canvas.bind("<Enter>", lambda _event: controls_canvas.bind_all("<MouseWheel>", self._scroll_controls))
-            controls_canvas.bind("<Leave>", lambda _event: controls_canvas.unbind_all("<MouseWheel>"))
-            self.controls_canvas = controls_canvas
+        def _poll_callbacks(self) -> None:
+            for _ in range(20):
+                try:
+                    callback = self.callbacks.get_nowait()
+                except queue.Empty:
+                    break
+                try:
+                    callback()
+                except Exception:
+                    import sys
 
-            preview = ttk_module.Frame(shell, style="Panel.TFrame", padding=18)
-            preview.grid(row=1, column=1, sticky="nsew", pady=(24, 0))
-            preview.columnconfigure(0, weight=1)
-            preview.rowconfigure(1, weight=1)
+                    self.root.report_callback_exception(*sys.exc_info())
+                if self.closing:
+                    return
+            if not self.closing:
+                self.callback_poll_id = self.root.after(16, self._poll_callbacks)
 
-            ttk_module.Label(controls, text="PHOTO", style="Muted.TLabel").pack(anchor="w")
-            ttk_module.Label(controls, textvariable=self.source_var, style="Panel.TLabel", wraplength=236).pack(anchor="w", pady=(8, 14))
-            ttk_module.Button(controls, text="Import RAW", style="Secondary.TButton", command=self._choose_source).pack(fill="x")
-            ttk_module.Button(controls, text="Import Folder", style="Secondary.TButton", command=self._choose_library_folder).pack(
-                fill="x", pady=(8, 0)
-            )
-            ttk_module.Button(controls, text="Create Sample DNG", style="Secondary.TButton", command=self._create_sample_source).pack(
-                fill="x", pady=(8, 0)
-            )
-            ttk_module.Button(
-                controls,
-                text="Create Sample NEF",
-                style="Secondary.TButton",
-                command=self._create_sample_nikon_source,
-            ).pack(fill="x", pady=(8, 0))
+        def _build_layout(
+            self, tk_module: Any, ttk_module: Any, filedialog: Any, messagebox: Any
+        ) -> None:
+            from openraw_studio.ui.workspace import build_workspace
 
-            ttk_module.Label(controls, text="FOLDER", style="Muted.TLabel").pack(anchor="w", pady=(20, 0))
-            library_frame = ttk_module.Frame(controls, style="Panel.TFrame")
-            library_frame.pack(fill="x", pady=(8, 6))
-            self.library_listbox = tk_module.Listbox(
-                library_frame,
-                height=5,
-                activestyle="none",
-                exportselection=False,
-                borderwidth=0,
-                highlightthickness=1,
-                highlightbackground="#d2d2d7",
-                selectbackground="#1d1d1f",
-                selectforeground="#ffffff",
-                font=("Segoe UI", 9),
-            )
-            library_scroll = ttk_module.Scrollbar(library_frame, orient="vertical", command=self.library_listbox.yview)
-            self.library_listbox.configure(yscrollcommand=library_scroll.set)
-            self.library_listbox.pack(side="left", fill="both", expand=True)
-            library_scroll.pack(side="right", fill="y")
-            self.library_listbox.bind("<<ListboxSelect>>", self._select_library_item)
-            ttk_module.Label(controls, textvariable=self.library_status_var, style="Muted.TLabel", wraplength=236).pack(anchor="w")
-
-            ttk_module.Label(controls, text="OUTPUT", style="Muted.TLabel").pack(anchor="w", pady=(20, 0))
-            ttk_module.Label(controls, textvariable=self.output_var, style="Panel.TLabel", wraplength=236).pack(anchor="w", pady=(8, 14))
-            ttk_module.Button(controls, text="Choose Folder", style="Secondary.TButton", command=self._choose_output).pack(fill="x")
-            self.batch_output_slot = ttk_module.Frame(controls, style="Panel.TFrame")
-            self.batch_output_slot.pack(fill="x", pady=(8, 0))
-
-            export_format_row = ttk_module.Frame(controls, style="Panel.TFrame")
-            export_format_row.pack(fill="x", pady=(12, 0))
-            ttk_module.Label(export_format_row, text="Format", style="Panel.TLabel").pack(side="left")
-            self.export_format_combo = ttk_module.Combobox(
-                export_format_row,
-                textvariable=self.export_format_var,
-                values=("JPEG", "TIFF"),
-                state="readonly",
-                width=8,
-            )
-            self.export_format_combo.pack(side="right")
-            self.export_format_combo.bind("<<ComboboxSelected>>", self._sync_export_options)
-
-            jpeg_quality_header = ttk_module.Frame(controls, style="Panel.TFrame")
-            jpeg_quality_header.pack(fill="x", pady=(10, 0))
-            ttk_module.Label(jpeg_quality_header, text="JPEG Quality", style="Panel.TLabel").pack(side="left")
-            ttk_module.Label(
-                jpeg_quality_header,
-                textvariable=self.jpeg_quality_label_var,
-                style="Muted.TLabel",
-            ).pack(side="right")
-            self.jpeg_quality_scale = ttk_module.Scale(
-                controls,
-                from_=60,
-                to=100,
-                variable=self.jpeg_quality_var,
-                orient="horizontal",
-                command=self._sync_export_options,
-            )
-            self.jpeg_quality_scale.pack(fill="x", pady=(6, 0))
-
-            ttk_module.Separator(controls).pack(fill="x", pady=20)
-            ttk_module.Label(controls, text="HISTOGRAM", style="Muted.TLabel").pack(anchor="w")
-            self.histogram_canvas = tk_module.Canvas(
-                controls,
-                width=244,
-                height=92,
-                background="#f5f5f7",
-                borderwidth=0,
-                highlightthickness=1,
-                highlightbackground="#e5e5ea",
-            )
-            self.histogram_canvas.pack(fill="x", pady=(8, 6))
-            self.histogram_canvas.bind("<Configure>", self._resize_histogram)
-            self.histogram_status_label = ttk_module.Label(
-                controls,
-                textvariable=self.histogram_status_var,
-                style="Muted.TLabel",
-                wraplength=244,
-            )
-            self.histogram_status_label.pack(anchor="w")
-
-            ttk_module.Separator(controls).pack(fill="x", pady=20)
-            ttk_module.Label(controls, text="ADJUSTMENTS", style="Muted.TLabel").pack(anchor="w")
-            exposure_header = ttk_module.Frame(controls, style="Panel.TFrame")
-            exposure_header.pack(fill="x", pady=(8, 0))
-            ttk_module.Label(exposure_header, text="Exposure", style="Panel.TLabel").pack(side="left")
-            ttk_module.Label(exposure_header, textvariable=self.exposure_label_var, style="Muted.TLabel").pack(side="right")
-            ttk_module.Scale(
-                controls,
-                from_=-2.0,
-                to=2.0,
-                variable=self.exposure_var,
-                orient="horizontal",
-                command=self._sync_adjustment_labels,
-            ).pack(fill="x", pady=(6, 8))
-
-            contrast_header = ttk_module.Frame(controls, style="Panel.TFrame")
-            contrast_header.pack(fill="x")
-            ttk_module.Label(contrast_header, text="Contrast", style="Panel.TLabel").pack(side="left")
-            ttk_module.Label(contrast_header, textvariable=self.contrast_label_var, style="Muted.TLabel").pack(side="right")
-            ttk_module.Scale(
-                controls,
-                from_=-1.0,
-                to=1.0,
-                variable=self.contrast_var,
-                orient="horizontal",
-                command=self._sync_adjustment_labels,
-            ).pack(fill="x", pady=(6, 8))
-
-            highlights_header = ttk_module.Frame(controls, style="Panel.TFrame")
-            highlights_header.pack(fill="x")
-            ttk_module.Label(highlights_header, text="Highlights", style="Panel.TLabel").pack(side="left")
-            ttk_module.Label(highlights_header, textvariable=self.highlights_label_var, style="Muted.TLabel").pack(side="right")
-            ttk_module.Scale(
-                controls,
-                from_=-1.0,
-                to=1.0,
-                variable=self.highlights_var,
-                orient="horizontal",
-                command=self._sync_adjustment_labels,
-            ).pack(fill="x", pady=(6, 8))
-
-            shadows_header = ttk_module.Frame(controls, style="Panel.TFrame")
-            shadows_header.pack(fill="x")
-            ttk_module.Label(shadows_header, text="Shadows", style="Panel.TLabel").pack(side="left")
-            ttk_module.Label(shadows_header, textvariable=self.shadows_label_var, style="Muted.TLabel").pack(side="right")
-            ttk_module.Scale(
-                controls,
-                from_=-1.0,
-                to=1.0,
-                variable=self.shadows_var,
-                orient="horizontal",
-                command=self._sync_adjustment_labels,
-            ).pack(fill="x", pady=(6, 8))
-
-            warmth_header = ttk_module.Frame(controls, style="Panel.TFrame")
-            warmth_header.pack(fill="x")
-            ttk_module.Label(warmth_header, text="Temperature", style="Panel.TLabel").pack(side="left")
-            ttk_module.Label(warmth_header, textvariable=self.warmth_label_var, style="Muted.TLabel").pack(side="right")
-            ttk_module.Scale(
-                controls,
-                from_=-1.0,
-                to=1.0,
-                variable=self.warmth_var,
-                orient="horizontal",
-                command=self._sync_adjustment_labels,
-            ).pack(fill="x", pady=(6, 8))
-
-            tint_header = ttk_module.Frame(controls, style="Panel.TFrame")
-            tint_header.pack(fill="x")
-            ttk_module.Label(tint_header, text="Tint", style="Panel.TLabel").pack(side="left")
-            ttk_module.Label(tint_header, textvariable=self.tint_label_var, style="Muted.TLabel").pack(side="right")
-            ttk_module.Scale(
-                controls,
-                from_=-1.0,
-                to=1.0,
-                variable=self.tint_var,
-                orient="horizontal",
-                command=self._sync_adjustment_labels,
-            ).pack(fill="x", pady=(6, 8))
-
-            saturation_header = ttk_module.Frame(controls, style="Panel.TFrame")
-            saturation_header.pack(fill="x")
-            ttk_module.Label(saturation_header, text="Saturation", style="Panel.TLabel").pack(side="left")
-            ttk_module.Label(saturation_header, textvariable=self.saturation_label_var, style="Muted.TLabel").pack(side="right")
-            ttk_module.Scale(
-                controls,
-                from_=-1.0,
-                to=1.0,
-                variable=self.saturation_var,
-                orient="horizontal",
-                command=self._sync_adjustment_labels,
-            ).pack(fill="x", pady=(6, 8))
-
-            ttk_module.Button(controls, text="Reset Adjustments", style="Secondary.TButton", command=self._reset_adjustments).pack(fill="x")
-
-            info_bar = ttk_module.Frame(preview, style="Panel.TFrame")
-            info_bar.grid(row=0, column=0, sticky="ew", pady=(0, 14))
-            info_bar.columnconfigure(0, weight=1)
-            info_bar.columnconfigure(1, weight=1)
-            ttk_module.Checkbutton(
-                info_bar,
-                text="Photo details",
-                variable=self.details_var,
-                command=self._sync_information_labels,
-            ).grid(row=0, column=0, sticky="w")
-            self.output_info_heading = ttk_module.Label(
-                info_bar, text="OUTPUT PLAN", style="Muted.TLabel"
-            )
-            self.output_info_heading.grid(row=0, column=1, sticky="w", padx=(24, 0))
-            self.photo_info_label = ttk_module.Label(
-                info_bar,
-                textvariable=self.photo_info_display_var,
-                style="Muted.TLabel",
-                wraplength=320,
-                justify="left",
-            )
-            self.photo_info_label.grid(row=1, column=0, sticky="nw", pady=(6, 0))
-            self.output_info_label = ttk_module.Label(
-                info_bar,
-                textvariable=self.output_info_display_var,
-                style="Muted.TLabel",
-                wraplength=360,
-                justify="left",
-            )
-            self.output_info_label.grid(
-                row=1, column=1, sticky="nw", padx=(24, 0), pady=(6, 0)
-            )
-            info_bar.bind("<Configure>", lambda event: self._resize_info(event.width))
-
-            self.preview_label = tk_module.Label(
-                preview,
-                text="Your preview will appear here",
-                background="#f5f5f7",
-                foreground="#6e6e73",
-                font=("Segoe UI", 14),
-                width=1,
-                height=1,
-            )
-            self.preview_label.grid(row=1, column=0, sticky="nsew")
-            self.preview_label.bind("<Configure>", self._queue_preview_resize)
-            status_bar = ttk_module.Frame(preview, style="Panel.TFrame")
-            status_bar.grid(row=2, column=0, sticky="ew", pady=(14, 0))
-            status_bar.columnconfigure(0, weight=1)
-            status_bar.columnconfigure(1, weight=1)
-            status_bar.rowconfigure(1, minsize=12)
-            ttk_module.Label(
-                status_bar,
-                textvariable=self.status_var,
-                style="Muted.TLabel",
-                wraplength=360,
-            ).grid(row=0, column=0, sticky="w")
-            ttk_module.Label(
-                status_bar,
-                textvariable=self.preview_state_var,
-                style="Muted.TLabel",
-                wraplength=300,
-                justify="right",
-            ).grid(row=0, column=1, sticky="e")
-            self.progress_bar = ttk_module.Progressbar(
-                status_bar,
-                mode="determinate",
-                maximum=100,
-                value=0,
-                style="Processing.Horizontal.TProgressbar",
-            )
-            self.progress_bar.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0))
-            self.progress_bar.grid_remove()
-            workflow_actions = ttk_module.Frame(preview, style="Panel.TFrame")
-            workflow_actions.grid(row=3, column=0, sticky="ew", pady=(12, 0))
-            for column in range(4):
-                workflow_actions.columnconfigure(column, weight=1)
-            self.auto_adjust_button = ttk_module.Button(
-                workflow_actions,
-                text="Auto Adjust",
-                style="Secondary.TButton",
-                command=self._auto_adjust,
-                state="disabled",
-            )
-            self.auto_adjust_button.grid(row=0, column=0, sticky="ew", padx=(0, 8))
-            self.preview_button = ttk_module.Button(
-                workflow_actions,
-                text="Refresh Preview",
-                style="Secondary.TButton",
-                command=self._update_preview,
-                state="disabled",
-            )
-            self.preview_button.grid(row=0, column=1, sticky="ew", padx=(0, 8))
-            self.process_button = ttk_module.Button(
-                workflow_actions,
-                text="Export JPEG",
-                style="Primary.TButton",
-                command=self._export_photo,
-                state="disabled",
-            )
-            self.process_button.grid(row=0, column=2, sticky="ew", padx=(0, 8))
-            self.batch_button = ttk_module.Button(
-                self.batch_output_slot,
-                text="Export Folder",
-                style="Secondary.TButton",
-                command=self._export_folder,
-                state="disabled",
-            )
-            self.batch_button.pack(fill="x")
-            workflow_actions.bind(
-                "<Configure>",
-                lambda event: self._layout_workflow(workflow_actions, event.width),
-            )
-            self.export_label = ttk_module.Label(preview, text="", style="Muted.TLabel", wraplength=680)
-            self.export_label.grid(row=4, column=0, sticky="w", pady=(8, 0))
-            preview_actions = ttk_module.Frame(preview, style="Panel.TFrame")
-            preview_actions.grid(row=5, column=0, sticky="ew", pady=(12, 0))
-            preview_actions.columnconfigure(1, weight=1)
-            self.compare_button = ttk_module.Button(
-                preview_actions,
-                text="Show Before",
-                style="Secondary.TButton",
-                command=self._toggle_compare,
-                state="disabled",
-            )
-            self.compare_button.grid(row=0, column=0, sticky="w")
-            self.open_folder_button = ttk_module.Button(
-                preview_actions,
-                text="Open Output Folder",
-                style="Secondary.TButton",
-                command=self._open_output_folder,
-                state="disabled",
-            )
-            self.open_folder_button.grid(row=0, column=2, sticky="e")
-            self.open_export_button = ttk_module.Button(
-                preview_actions,
-                text="Open Export",
-                style="Secondary.TButton",
-                command=self._open_export,
-                state="disabled",
-            )
-            self.open_export_button.grid(row=0, column=1)
-            preview_actions.bind("<Configure>", lambda event: self._layout_preview_actions(preview_actions,event.width))
-
-            self.filedialog = filedialog
-            self.messagebox = messagebox
-            self._sync_export_options(update_status=False)
-
-        def _sync_information_labels(self, *_args) -> None:
-            full_photo = self.photo_info_var.get()
-            full_output = self.output_info_var.get()
-            if hasattr(self, "photo_info_label"):
-                hide = self.info_width < 520 and not self.details_var.get()
-                for widget in (
-                    self.photo_info_label,
-                    self.output_info_label,
-                    self.output_info_heading,
-                ):
-                    if hide:
-                        widget.grid_remove()
-                    else:
-                        widget.grid()
-            if self.details_var.get():
-                self.photo_info_display_var.set(full_photo)
-                self.output_info_display_var.set(full_output)
-                return
-            photo_lines = full_photo.splitlines()
-            compact = [
-                line
-                for line in photo_lines
-                if line.startswith(("Dimensions:", "Camera:", "Support:"))
-            ]
-            self.photo_info_display_var.set(
-                "\n".join(compact) if compact else full_photo
-            )
-            lines = full_output.splitlines()
-            self.output_info_display_var.set(
-                "\n".join(
-                    line
-                    for line in lines
-                    if not line.startswith(("Preview:", "Recipe:", "Saved recipe:"))
-                )
-            )
-
-        def _resize_info(self, width) -> None:
-            self.info_width = width
-            wrap = max(110, (width - 30) // 2)
-            self.photo_info_label.configure(wraplength=wrap)
-            self.output_info_label.configure(wraplength=wrap)
-            self._sync_information_labels()
-
-        def _layout_workflow(self, frame, width) -> None:
-            columns = 2
-            for index in range(4):
-                frame.columnconfigure(index, weight=1 if index < columns else 0)
-            self.preview_button.grid_remove()
-            buttons = (self.auto_adjust_button, self.process_button)
-            for index, button in enumerate(buttons):
-                button.grid(
-                    row=index // columns,
-                    column=index % columns,
-                    sticky="ew",
-                    padx=(0, 8 if index % columns < columns - 1 else 0),
-                    pady=(0, 4),
-                )
-
-        def _layout_preview_actions(self, frame, width) -> None:
-            narrow = width < 520
-            self.compare_button.grid(row=0, column=0, sticky="w")
-            self.open_export_button.grid(row=0, column=1, sticky="e")
-            self.open_folder_button.grid(
-                row=1 if narrow else 0,
-                column=1 if narrow else 2,
-                sticky="e",
-                pady=(4 if narrow else 0, 0),
-            )
+            build_workspace(self, filedialog, messagebox)
 
         def _scroll_controls(self, event: Any) -> None:
-            delta = -1 if event.delta > 0 else 1
-            self.controls_canvas.yview_scroll(delta, "units")
+            target = str(event.widget)
+            for canvas in (self.controls_canvas, self.export_canvas):
+                if target.startswith(str(canvas)) and canvas.yview() != (0.0, 1.0):
+                    canvas.yview_scroll(-1 if event.delta > 0 else 1, "units")
+                    return
 
         def _resize_histogram(self, event: Any) -> None:
-            self._draw_histogram(self.current_histogram, width=max(2, event.width), height=max(2, event.height))
+            self._draw_histogram(
+                self.current_histogram,
+                width=max(2, event.width),
+                height=max(2, event.height),
+            )
 
         def _draw_histogram(
             self,
@@ -1207,7 +811,9 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
             if analysis is None:
                 return
 
-            luminance_points = _histogram_coordinates(analysis.luminance, width=width, height=height)
+            luminance_points = _histogram_coordinates(
+                analysis.luminance, width=width, height=height
+            )
             canvas.create_polygon(
                 0,
                 baseline,
@@ -1223,17 +829,27 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
                 (analysis.green, "#3a9b65"),
                 (analysis.blue, "#4f7fd9"),
             ):
-                points = _histogram_coordinates(counts, width=width, height=height, peak=channel_peak)
+                points = _histogram_coordinates(
+                    counts, width=width, height=height, peak=channel_peak
+                )
                 canvas.create_line(*points, fill=color, width=1.4, smooth=True)
 
-        def _show_histogram(self, analysis: HistogramAnalysis | None, *, view: str) -> None:
+        def _show_histogram(
+            self, analysis: HistogramAnalysis | None, *, view: str
+        ) -> None:
             self.current_histogram = analysis
             self.histogram_status_var.set(_histogram_status_text(analysis, view=view))
-            style = "Warning.TLabel" if analysis is not None and analysis.has_significant_clipping() else "Muted.TLabel"
+            style = (
+                "Warning.TLabel"
+                if analysis is not None and analysis.has_significant_clipping()
+                else "Muted.TLabel"
+            )
             self.histogram_status_label.configure(style=style)
             self._draw_histogram(analysis)
 
         def _choose_source(self) -> None:
+            if self.is_busy:
+                return
             selected = self.filedialog.askopenfilename(
                 title="Import RAW photo",
                 filetypes=[
@@ -1248,28 +864,35 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
             self._select_source(Path(selected), ready_status="Ready to process")
 
         def _choose_library_folder(self) -> None:
+            if self.is_busy:
+                return
             selected = self.filedialog.askdirectory(title="Import folder")
             if not selected:
                 return
             self._start_library_scan(Path(selected))
 
         def _start_library_scan(self, folder: Path) -> None:
+            if self.is_busy:
+                return
+            self._set_busy(True)
             self.library_scan_counter += 1
             scan_id = self.library_scan_counter
             self.library_dir = folder
             self.library_items = []
             self.library_listbox.delete(0, "end")
             self.library_status_var.set("Scanning folder...")
-            threading.Thread(target=self._library_scan_worker, args=(scan_id, folder), daemon=True).start()
+            threading.Thread(
+                target=self._library_scan_worker, args=(scan_id, folder), daemon=True
+            ).start()
 
         def _library_scan_worker(self, scan_id: int, folder: Path) -> None:
             try:
                 items = _scan_library_folder(folder)
             except OSError as exc:
                 message = _friendly_error_message(exc)
-                self.root.after(0, lambda: self._show_library_error(scan_id, message))
+                self._post(lambda: self._show_library_error(scan_id, message))
                 return
-            self.root.after(0, lambda: self._show_library_items(scan_id, folder, items))
+            self._post(lambda: self._show_library_items(scan_id, folder, items))
 
         def _show_library_error(self, scan_id: int, message: str) -> None:
             if scan_id != self.library_scan_counter:
@@ -1277,21 +900,31 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
             self.library_status_var.set(message)
             self._set_busy(False)
 
-        def _show_library_items(self, scan_id: int, folder: Path, items: tuple[tuple[Path, str, bool], ...]) -> None:
+        def _show_library_items(
+            self, scan_id: int, folder: Path, items: tuple[tuple[Path, str, bool], ...]
+        ) -> None:
             if scan_id != self.library_scan_counter:
                 return
             self.library_items = list(items)
             self.library_listbox.delete(0, "end")
             for _path, label, _can_render in self.library_items:
                 self.library_listbox.insert("end", label)
-            self.library_status_var.set(_folder_status_text(folder, len(self.library_items)))
+            self.library_status_var.set(
+                _folder_status_text(folder, len(self.library_items))
+            )
             self._set_busy(False)
             if self.library_items:
-                first_supported = next((index for index, item in enumerate(self.library_items) if item[2]), 0)
+                first_supported = next(
+                    (index for index, item in enumerate(self.library_items) if item[2]),
+                    0,
+                )
                 self.library_listbox.selection_set(first_supported)
                 self.library_listbox.activate(first_supported)
                 self.library_listbox.see(first_supported)
-                self._select_source(self.library_items[first_supported][0], ready_status="Folder imported")
+                self._select_source(
+                    self.library_items[first_supported][0],
+                    ready_status="Folder imported",
+                )
 
         def _select_library_item(self, _event: Any = None) -> None:
             selection = self.library_listbox.curselection()
@@ -1300,7 +933,9 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
             index = int(selection[0])
             if index < 0 or index >= len(self.library_items):
                 return
-            self._select_source(self.library_items[index][0], ready_status="Photo selected from folder")
+            self._select_source(
+                self.library_items[index][0], ready_status="Photo selected from folder"
+            )
 
         def _create_sample_source(self) -> None:
             try:
@@ -1312,7 +947,9 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
 
         def _create_sample_nikon_source(self) -> None:
             try:
-                sample_path = write_synthetic_nikon_nef(_default_sample_nikon_nef_path())
+                sample_path = write_synthetic_nikon_nef(
+                    _default_sample_nikon_nef_path()
+                )
             except (OSError, ValueError) as exc:
                 self._show_error(_friendly_error_message(exc))
                 return
@@ -1320,6 +957,8 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
 
         def _select_source(self, source: Path, *, ready_status: str) -> None:
             if self.is_busy:
+                return
+            if not self._commit_edit():
                 return
             self.live_worker.invalidate()
             if self.live_after_id is not None:
@@ -1330,6 +969,11 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
                 self.histogram_after_id = None
             self.run_counter += 1
             self.source_path = source
+            self.source_orientation = 1
+            self.zoom_var.set("Fit")
+            self.pan_offset = [0.0, 0.0]
+            self.last_auto_suggestion = None
+            self.auto_summary_var.set("")
             self.current_can_preview = None
             self.current_can_render = None
             self.source_var.set(source.name)
@@ -1339,21 +983,36 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
                 self.output_var.set(str(self.output_dir))
             self._refresh_output_info()
             self._clear_result()
-            self._set_adjustment_values(_manual_overrides(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0))
+            self._set_adjustment_values(
+                _manual_overrides(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+            )
             recipe_status = self._restore_recipe_if_available()
+            saved = self.session_store.load(source)
+            if saved is not None:
+                self._set_adjustment_values(saved)
+                recipe_status = "Edits restored"
+            self.history.reset(self._current_overrides())
+            self.edit_status_var.set(
+                "Edits saved" if saved is not None else "Original RAW"
+            )
+            self._refresh_history_buttons()
             self._set_busy(False)
             self.status_var.set(recipe_status or ready_status)
-            threading.Thread(target=self._photo_info_worker, args=(source,), daemon=True).start()
+            threading.Thread(
+                target=self._photo_info_worker,
+                args=(source, self.run_counter),
+                daemon=True,
+            ).start()
 
         def _choose_output(self) -> None:
+            if self.is_busy:
+                return
             selected = self.filedialog.askdirectory(title="Choose output folder")
             if selected:
                 self.output_dir = Path(selected)
                 self.output_var.set(str(self.output_dir))
                 self._refresh_output_info()
-                if recipe_status := self._restore_recipe_if_available():
-                    self.status_var.set(recipe_status)
-                elif self.source_path is not None:
+                if self.source_path is not None:
                     self.status_var.set("Output folder updated")
                 self.last_saved_preview_overrides = None
                 self._schedule_live_preview()
@@ -1401,7 +1060,9 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
                 return None
             try:
                 overrides = _load_recipe_adjustments(recipe_path, self.source_path)
-                export_format, export_quality = _load_recipe_export_options(recipe_path, self.source_path)
+                export_format, export_quality = _load_recipe_export_options(
+                    recipe_path, self.source_path
+                )
             except (OSError, ValueError):
                 return "Saved recipe could not be loaded"
             self._set_adjustment_values(overrides)
@@ -1411,24 +1072,36 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
             self._refresh_preview_state()
             return "Saved recipe loaded"
 
-        def _photo_info_worker(self, source: Path) -> None:
+        def _photo_info_worker(self, source: Path, run_id: int) -> None:
             try:
                 info, support = _read_photo_info_with_support(source)
             except OSError:
                 info = "Photo info unavailable"
                 support = None
-            self.root.after(0, lambda: self._show_photo_info(source, info, support))
+            self._post(
+                lambda: self._show_photo_info(source, info, support, run_id=run_id)
+            )
 
-        def _show_photo_info(self, source: Path, info: str, support: NativeSupportReport | None) -> None:
-            if self.source_path != source:
+        def _show_photo_info(
+            self,
+            source: Path,
+            info: str,
+            support: NativeSupportReport | None,
+            *,
+            run_id: int,
+        ) -> None:
+            if self.source_path != source or run_id != self.run_counter:
                 return
             if support is not None:
+                self.source_orientation = support.metadata.get("orientation", 1)
                 self.current_can_preview = support.can_preview or support.can_render
                 self.current_can_render = support.can_render
                 if support.can_preview and not support.can_render:
                     self.status_var.set("RAW preview ready; export support is next")
                 elif support.can_inspect and not support.can_render:
-                    self.status_var.set("RAW metadata imported; preview/export support is next")
+                    self.status_var.set(
+                        "RAW metadata imported; preview/export support is next"
+                    )
                 self._set_busy(False)
             self.photo_info_var.set(info)
             if self.current_can_render:
@@ -1437,18 +1110,146 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
                 self._start_pipeline(preview_only=True)
 
         def _sync_adjustment_labels(self, *_: Any, update_status: bool = True) -> None:
-            self.exposure_label_var.set(_format_exposure_label(float(self.exposure_var.get())))
-            self.contrast_label_var.set(_format_adjustment_label(float(self.contrast_var.get())))
-            self.highlights_label_var.set(_format_adjustment_label(float(self.highlights_var.get())))
-            self.shadows_label_var.set(_format_adjustment_label(float(self.shadows_var.get())))
-            self.warmth_label_var.set(_format_adjustment_label(float(self.warmth_var.get())))
-            self.tint_label_var.set(_format_adjustment_label(float(self.tint_var.get())))
-            self.saturation_label_var.set(_format_adjustment_label(float(self.saturation_var.get())))
+            self.exposure_label_var.set(
+                _format_exposure_label(float(self.exposure_var.get()))
+            )
+            self.contrast_label_var.set(
+                _format_adjustment_label(float(self.contrast_var.get()))
+            )
+            self.highlights_label_var.set(
+                _format_adjustment_label(float(self.highlights_var.get()))
+            )
+            self.shadows_label_var.set(
+                _format_adjustment_label(float(self.shadows_var.get()))
+            )
+            self.warmth_label_var.set(
+                _format_adjustment_label(float(self.warmth_var.get()))
+            )
+            self.tint_label_var.set(
+                _format_adjustment_label(float(self.tint_var.get()))
+            )
+            self.saturation_label_var.set(
+                _format_adjustment_label(float(self.saturation_var.get()))
+            )
             if update_status and self.source_path is not None and not self.is_busy:
                 preview_state = self._refresh_preview_state()
-                self.status_var.set(preview_state if preview_state == "Preview needs update" else "Adjustments changed")
+                self.status_var.set(
+                    preview_state
+                    if preview_state == "Preview needs update"
+                    else "Adjustments changed"
+                )
             if update_status:
+                if not self.showing_after:
+                    self.showing_after = True
+                    self.view_var.set("Edited")
+                if self.source_path is not None:
+                    if self.edit_after_id is not None:
+                        self.root.after_cancel(self.edit_after_id)
+                    self.edit_status_var.set("Unsaved edits")
+                    self.edit_after_id = self.root.after(450, self._commit_edit)
                 self._schedule_live_preview()
+
+        def _refresh_history_buttons(self) -> None:
+            self.undo_button.configure(
+                state="normal"
+                if self.history.can_undo and not self.is_busy
+                else "disabled"
+            )
+            self.redo_button.configure(
+                state="normal"
+                if self.history.can_redo and not self.is_busy
+                else "disabled"
+            )
+
+        def _commit_edit(self) -> bool:
+            if self.edit_after_id is not None:
+                self.root.after_cancel(self.edit_after_id)
+                self.edit_after_id = None
+            if self.source_path is None or not self.current_can_render:
+                return True
+            self.history.commit(self._current_overrides())
+            self._refresh_history_buttons()
+            try:
+                self.session_store.save(self.source_path, self._current_overrides())
+                self.edit_status_var.set("Edits saved")
+                return True
+            except (OSError, ValueError):
+                self.edit_status_var.set("Could not save edits")
+                return False
+
+        def _undo(self) -> None:
+            if self.is_busy:
+                return
+            self._commit_edit()
+            self._set_adjustment_values(self.history.undo())
+            self._sync_adjustment_labels()
+            self._commit_edit()
+
+        def _redo(self) -> None:
+            if self.is_busy:
+                return
+            self._commit_edit()
+            self._set_adjustment_values(self.history.redo())
+            self._sync_adjustment_labels()
+            self._commit_edit()
+
+        def _reset_one(self, key: str) -> str:
+            if not self.is_busy:
+                self._commit_edit()
+                getattr(self, key + "_var").set(0)
+                self._sync_adjustment_labels()
+                self._commit_edit()
+            return "break"
+
+        def _change_auto_strength(self, *_args) -> None:
+            amount = round(self.auto_strength_var.get())
+            self.auto_strength_label_var.set(f"{amount}%")
+            if self.last_auto_suggestion is not None and not self.is_busy:
+                self._set_adjustment_values(
+                    {
+                        key: value * amount / 100
+                        for key, value in self.last_auto_suggestion.as_overrides().items()
+                    }
+                )
+                self._sync_adjustment_labels()
+
+        def _zoom_changed(self, _event=None) -> None:
+            self.pan_offset = [0.0, 0.0]
+            self._fit_live_image()
+
+        def _zoom_toggle(self, _event=None) -> str:
+            self.zoom_var.set("2x" if self.zoom_var.get() == "Fit" else "Fit")
+            self._zoom_changed()
+            return "break"
+
+        def _pan_start(self, event) -> None:
+            self.pan_origin = (event.x, event.y, *self.pan_offset)
+
+        def _pan_move(self, event) -> None:
+            if self.pan_origin is not None and self.zoom_var.get() != "Fit":
+                x, y, ox, oy = self.pan_origin
+                width, height = (
+                    self.live_image.size if self.live_image is not None else (1, 1)
+                )
+                area_width, area_height = (
+                    self.preview_label.winfo_width(),
+                    self.preview_label.winfo_height(),
+                )
+                scale = min(area_width / width, area_height / height) * {
+                    "2x": 2,
+                    "4x": 4,
+                }.get(self.zoom_var.get(), 1)
+                bounds = (
+                    max(0, (width * scale - area_width) / 2),
+                    max(0, (height * scale - area_height) / 2),
+                )
+                self.pan_offset = [
+                    max(-bound, min(bound, value))
+                    for bound, value in zip(
+                        bounds, (ox + event.x - x, oy + event.y - y)
+                    )
+                ]
+                self._fit_live_image()
 
         def _selected_export_format(self) -> str:
             return normalize_export_format(self.export_format_var.get())
@@ -1466,12 +1267,19 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
             else:
                 self.jpeg_quality_label_var.set("Lossless 8-bit")
                 self.jpeg_quality_scale.configure(state="disabled")
-            self.process_button.configure(text=f"Export {export_display_name(export_format)}")
+            self.process_button.configure(
+                text=f"Export {export_display_name(export_format)}"
+            )
             self._refresh_output_info()
             if update_status and self.source_path is not None and not self.is_busy:
-                self.status_var.set(f"{export_display_name(export_format)} export selected")
+                self.status_var.set(
+                    f"{export_display_name(export_format)} export selected"
+                )
 
         def _reset_adjustments(self) -> None:
+            if self.is_busy or not self.current_can_render:
+                return
+            self._commit_edit()
             self.exposure_var.set(0.0)
             self.contrast_var.set(0.0)
             self.highlights_var.set(0.0)
@@ -1480,16 +1288,24 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
             self.tint_var.set(0.0)
             self.saturation_var.set(0.0)
             self._sync_adjustment_labels()
+            self._commit_edit()
 
         def _auto_adjust(self) -> None:
+            if self.is_busy or not self.current_can_render:
+                return
             if self.source_path is None:
                 self.messagebox.showinfo("OpenRAW Studio", "Import a RAW photo first.")
                 return
             self.run_counter += 1
+            self._commit_edit()
             run_id = self.run_counter
             self._set_busy(True)
             self.status_var.set("Auto adjusting...")
-            threading.Thread(target=self._auto_adjust_worker, args=(run_id, self.source_path), daemon=True).start()
+            threading.Thread(
+                target=self._auto_adjust_worker,
+                args=(run_id, self.source_path),
+                daemon=True,
+            ).start()
 
         def _auto_adjust_worker(self, run_id: int, source: Path) -> None:
             try:
@@ -1500,7 +1316,9 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
                 preview = PreviewRgbImage(
                     image.width, image.height, tuple(image.getdata()), "gamma-2.2"
                 )
-                suggestion = suggest_auto_adjustments_from_preview(preview)
+                suggestion = suggest_auto_adjustments_from_preview(
+                    preview, render=lambda settings: photo.render(settings)[0]
+                )
             except (
                 PipelineError,
                 OSError,
@@ -1509,24 +1327,30 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
                 NotImplementedError,
             ) as exc:
                 message = _friendly_error_message(exc)
-                self.root.after(0, lambda: self._show_error(message, run_id=run_id))
+                self._post(lambda: self._show_error(message, run_id=run_id))
                 return
-            self.root.after(0, lambda: self._apply_auto_adjustment(suggestion, run_id=run_id))
+            self._post(lambda: self._apply_auto_adjustment(suggestion, run_id=run_id))
 
-        def _apply_auto_adjustment(self, suggestion: AutoAdjustSuggestion, *, run_id: int) -> None:
+        def _apply_auto_adjustment(
+            self, suggestion: AutoAdjustSuggestion, *, run_id: int
+        ) -> None:
             if run_id != self.run_counter:
                 return
-            self.exposure_var.set(suggestion.exposure)
-            self.contrast_var.set(suggestion.contrast)
-            self.highlights_var.set(suggestion.highlights)
-            self.shadows_var.set(suggestion.shadows)
-            self.warmth_var.set(suggestion.warmth)
-            self.tint_var.set(suggestion.tint)
-            self.saturation_var.set(suggestion.saturation)
-            self._sync_adjustment_labels()
+            self.last_auto_suggestion = suggestion
+            self.auto_summary_var.set(
+                suggestion.scene + " | Color preserved"
+                if not suggestion.warmth and not suggestion.tint
+                else suggestion.scene + " | Neutral balance"
+            )
             self._set_busy(False)
+            self._change_auto_strength()
+            self._commit_edit()
             preview_state = self._refresh_preview_state()
-            self.status_var.set(_auto_adjust_status(suggestion) if preview_state != "Preview current" else "Auto Adjust applied")
+            self.status_var.set(
+                _auto_adjust_status(suggestion)
+                if preview_state != "Preview current"
+                else "Auto Adjust applied"
+            )
             self._schedule_live_preview()
 
         def _clear_result(self) -> None:
@@ -1542,10 +1366,11 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
             self.live_image = None
             self.reference_image = None
             self.showing_after = True
-            self.preview_label.configure(image="", text="Your preview will appear here")
+            self.preview_label.configure(image="", text="Loading photo...")
             self.preview_state_var.set("No preview yet")
             self.export_label.configure(text="")
-            self.compare_button.configure(state="disabled", text="Show Before")
+            self.compare_button.configure(state="disabled", text="")
+            self.view_var.set("Edited")
             self.open_folder_button.configure(state="disabled")
             self.open_export_button.configure(state="disabled", text="Open Export")
             self._show_histogram(None, view="After")
@@ -1590,13 +1415,17 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
                         self.reference_image = image
                         self._fit_live_image()
                         self.before_view_name = "Camera Preview"
-                        self.compare_button.configure(
-                            state="normal", text="Show Camera Preview"
-                        )
+                        self.compare_button.configure(state="disabled", text="")
                         self.preview_state_var.set("Camera preview | Preparing RAW...")
                         self.live_poll_id = self.root.after(8, self._poll_live_preview)
                         return
                     self.last_preview_overrides = dict(frame.adjustments)
+                    if frame.original_image is not None:
+                        if self.reference_image is not frame.original_image:
+                            self.reference_image = frame.original_image
+                            self.before_histogram = None
+                        self.before_view_name = "Original"
+                        self.compare_button.configure(state="normal", text="")
                     self.last_live_latency_ms = frame.elapsed_ms
                     self.preview_state_var.set(
                         f"Live | {frame.backend} | {frame.elapsed_ms:.0f} ms"
@@ -1610,9 +1439,7 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
                     if self.reference_image is None:
                         self.reference_image = image
                         self.before_view_name = "Initial Preview"
-                        self.compare_button.configure(
-                            state="normal", text="Show Initial Preview"
-                        )
+                        self.compare_button.configure(state="normal", text="")
                     self._fit_live_image()
                     if self.histogram_after_id is not None:
                         self.root.after_cancel(self.histogram_after_id)
@@ -1627,21 +1454,50 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
             self.resize_after_id = self.root.after_idle(self._fit_live_image)
 
         def _fit_live_image(self) -> None:
-            from PIL import ImageTk
+            from PIL import Image, ImageTk
 
             self.resize_after_id = None
             size = (
                 max(1, self.preview_label.winfo_width() - 2),
                 max(1, self.preview_label.winfo_height() - 2),
             )
+            zoom = {"Fit": 1, "2x": 2, "4x": 4}.get(self.zoom_var.get(), 1)
+
+            def display_image(image):
+                width, height = image.size
+                scale = min(size[0] / width, size[1] / height) * zoom
+                draw_width = min(size[0], max(1, round(width * scale)))
+                draw_height = min(size[1], max(1, round(height * scale)))
+                crop_width, crop_height = (
+                    min(width, draw_width / scale),
+                    min(height, draw_height / scale),
+                )
+                left = max(
+                    0,
+                    min(
+                        width - crop_width,
+                        (width - crop_width) / 2 - self.pan_offset[0] / scale,
+                    ),
+                )
+                top = max(
+                    0,
+                    min(
+                        height - crop_height,
+                        (height - crop_height) / 2 - self.pan_offset[1] / scale,
+                    ),
+                )
+                return ImageTk.PhotoImage(
+                    image.resize(
+                        (draw_width, draw_height),
+                        Image.Resampling.BILINEAR,
+                        box=(left, top, left + crop_width, top + crop_height),
+                    )
+                )
+
             if self.live_image is not None:
-                image = self.live_image.copy()
-                image.thumbnail(size)
-                self.after_photo = ImageTk.PhotoImage(image)
+                self.after_photo = display_image(self.live_image)
             if self.reference_image is not None:
-                reference = self.reference_image.copy()
-                reference.thumbnail(size)
-                self.before_photo = ImageTk.PhotoImage(reference)
+                self.before_photo = display_image(self.reference_image)
             if self.after_photo is not None:
                 self.preview_photo = (
                     self.after_photo if self.showing_after else self.before_photo
@@ -1663,7 +1519,13 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
             if self.is_busy:
                 self.status_var.set("Please wait for the current export to finish")
                 return
+            if not self._commit_edit() and not self.messagebox.askyesno(
+                "Unsaved edits", "Edits could not be saved. Close anyway?"
+            ):
+                return
             self.live_worker.close()
+            self.closing = True
+            self.root.after_cancel(self.callback_poll_id)
             for callback in (
                 self.live_after_id,
                 self.live_poll_id,
@@ -1678,10 +1540,14 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
             self._start_pipeline(preview_only=False)
 
         def _export_folder(self) -> None:
+            if self.is_busy:
+                return
             sources = _library_sources(self.library_items)
             supported_sources = _supported_library_sources(self.library_items)
             if not supported_sources:
-                self.messagebox.showinfo("OpenRAW Studio", "Import a folder with supported DNG files first.")
+                self.messagebox.showinfo(
+                    "OpenRAW Studio", "Import a folder with supported RAW files first."
+                )
                 return
             if self.source_path is None:
                 self.messagebox.showinfo("OpenRAW Studio", "Select a photo first.")
@@ -1695,6 +1561,22 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
             overrides = self._current_overrides()
             export_format = self._selected_export_format()
             export_quality = self._selected_export_quality()
+            existing = sum(
+                ArtifactPlan.for_source(
+                    path, output_dir, export_format=export_format
+                ).export_path.exists()
+                for path in supported_sources
+            )
+            if existing and not self.messagebox.askyesno(
+                "Replace exports?",
+                f"Replace {existing} existing export(s) in this folder?",
+            ):
+                return
+            self._commit_edit()
+            self.batch_cancel.clear()
+            self.batch_running = True
+            mode = self.batch_mode_var.get()
+            strength = self.auto_strength_var.get() / 100
             self._set_busy(True)
             self._set_batch_progress(0, len(sources))
             self.status_var.set(
@@ -1704,7 +1586,16 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
             self.export_label.configure(text="")
             threading.Thread(
                 target=self._batch_export_worker,
-                args=(run_id, sources, output_dir, overrides, export_format, export_quality),
+                args=(
+                    run_id,
+                    sources,
+                    output_dir,
+                    overrides,
+                    export_format,
+                    export_quality,
+                    mode,
+                    strength,
+                ),
                 daemon=True,
             ).start()
 
@@ -1716,27 +1607,70 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
             overrides: dict[str, float],
             export_format: str,
             export_quality: int,
+            mode: str,
+            strength: float,
         ) -> None:
+            def adjustments(source):
+                if mode == "Saved edits":
+                    saved = self.session_store.load(source)
+                    if saved is not None:
+                        return saved
+                    recipe = ArtifactPlan.for_source(source, output_dir).recipe_path
+                    return (
+                        _load_recipe_adjustments(recipe, source)
+                        if recipe.is_file()
+                        else {}
+                    )
+                if mode == "Auto each photo":
+                    photo = prepare_interactive_photo(
+                        self.pipeline.raw_processor, source, max_dimension=256
+                    )
+                    image, _ = photo.render({})
+                    preview = PreviewRgbImage(
+                        image.width, image.height, tuple(image.getdata()), "gamma-2.2"
+                    )
+                    suggested = suggest_auto_adjustments_from_preview(
+                        preview, render=lambda settings: photo.render(settings)[0]
+                    )
+                    return {
+                        key: value * strength
+                        for key, value in suggested.as_overrides().items()
+                    }
+                return overrides
+
             def on_progress(done: int, total: int, item: BatchItemResult) -> None:
                 text = _batch_progress_text(done, total, item)
-                self.root.after(
-                    0,
-                    lambda run_id=run_id, text=text, done=done, total=total: self._show_batch_progress(
-                        run_id, text, done, total
+                self._post(
+                    lambda run_id=run_id, text=text, done=done, total=total: (
+                        self._show_batch_progress(run_id, text, done, total)
                     ),
                 )
 
-            result = run_batch_export(
-                sources,
-                output_dir,
-                overrides=overrides,
-                export_format=export_format,
-                export_quality=export_quality,
-                progress_callback=on_progress,
+            try:
+                result = run_batch_export(
+                    sources,
+                    output_dir,
+                    overrides=overrides,
+                    export_format=export_format,
+                    export_quality=export_quality,
+                    progress_callback=on_progress,
+                    pipeline=self.pipeline,
+                    should_cancel=self.batch_cancel.is_set,
+                    adjustments_for_source=adjustments,
+                )
+            except Exception as error:
+                message = _friendly_error_message(error)
+                self._post(lambda: self._show_error(message, run_id=run_id))
+                return
+            self._post(
+                lambda run_id=run_id, result=result: self._show_batch_result(
+                    run_id, result
+                )
             )
-            self.root.after(0, lambda run_id=run_id, result=result: self._show_batch_result(run_id, result))
 
-        def _show_batch_progress(self, run_id: int, text: str, done: int, total: int) -> None:
+        def _show_batch_progress(
+            self, run_id: int, text: str, done: int, total: int
+        ) -> None:
             if run_id != self.run_counter:
                 return
             self.status_var.set(text)
@@ -1745,13 +1679,24 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
         def _show_batch_result(self, run_id: int, result: BatchResult) -> None:
             if run_id != self.run_counter:
                 return
+            self.batch_running = False
             self._set_busy(False)
             self.status_var.set(_batch_result_status(result))
-            self.preview_state_var.set(_preview_state_text(self.last_preview_overrides, self._current_overrides()))
+            self.preview_state_var.set(
+                _preview_state_text(
+                    self.last_preview_overrides, self._current_overrides()
+                )
+            )
             self.export_label.configure(text=_format_batch_result_summary(result))
             self._refresh_output_info()
             if result.processed:
                 self.open_folder_button.configure(state="normal")
+
+        def _cancel_batch(self) -> None:
+            if self.batch_running:
+                self.batch_cancel.set()
+                self.status_var.set("Stopping after the current photo...")
+                self.cancel_batch_button.configure(state="disabled")
 
         def _start_pipeline(self, *, preview_only: bool) -> None:
             if self.is_busy:
@@ -1767,6 +1712,17 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
             run_id = self.run_counter
             export_format = self._selected_export_format()
             export_quality = self._selected_export_quality()
+            destination = ArtifactPlan.for_source(
+                self.source_path, output_dir, export_format=export_format
+            ).export_path
+            if (
+                not preview_only
+                and destination.exists()
+                and not self.messagebox.askyesno(
+                    "Replace export?", f"{destination.name} already exists. Replace it?"
+                )
+            ):
+                return
             self._set_busy(True)
             export_name = export_display_name(export_format)
             overrides = self._current_overrides()
@@ -1775,11 +1731,15 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
                 and self.last_saved_preview_overrides is not None
                 and self.last_saved_preview_overrides == overrides
             )
-            self.status_var.set("Updating preview..." if preview_only else f"Exporting {export_name}...")
+            self.status_var.set(
+                "Updating preview..." if preview_only else f"Exporting {export_name}..."
+            )
             if preview_only:
                 preview_status = "Updating preview..."
             elif reuse_existing_preview:
-                preview_status = f"Exporting {export_name} from current preview settings..."
+                preview_status = (
+                    f"Exporting {export_name} from current preview settings..."
+                )
             else:
                 preview_status = f"Exporting preview and {export_name}..."
             self.preview_state_var.set(preview_status)
@@ -1826,9 +1786,13 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
                 )
             except (PipelineError, OSError, ValueError) as exc:
                 message = _friendly_error_message(exc)
-                self.root.after(0, lambda: self._show_error(message, run_id=run_id))
+                self._post(lambda: self._show_error(message, run_id=run_id))
                 return
-            self.root.after(0, lambda: self._show_result(result, source, overrides=overrides, run_id=run_id))
+            self._post(
+                lambda: self._show_result(
+                    result, source, overrides=overrides, run_id=run_id
+                )
+            )
 
         def _set_busy(self, busy: bool) -> None:
             self.is_busy = busy
@@ -1841,15 +1805,39 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
                 self.progress_bar.stop()
                 self.progress_bar.configure(mode="determinate", maximum=100, value=0)
                 self.progress_bar.grid_remove()
-            can_preview = self.current_can_preview is True or self.current_can_render is True
+            can_preview = (
+                self.current_can_preview is True or self.current_can_render is True
+            )
             can_render = self.current_can_render is True
-            preview_state = "normal" if not busy and self.source_path is not None and can_preview else "disabled"
-            render_state = "normal" if not busy and self.source_path is not None and can_render else "disabled"
+            preview_state = (
+                "normal"
+                if not busy and self.source_path is not None and can_preview
+                else "disabled"
+            )
+            render_state = (
+                "normal"
+                if not busy and self.source_path is not None and can_render
+                else "disabled"
+            )
             self.auto_adjust_button.configure(state=render_state)
             self.preview_button.configure(state=preview_state)
             self.process_button.configure(state=render_state)
-            batch_state = "disabled" if busy or not _supported_library_sources(self.library_items) else "normal"
+            batch_state = (
+                "disabled"
+                if busy or not _supported_library_sources(self.library_items)
+                else "normal"
+            )
             self.batch_button.configure(state=batch_state)
+            for scale in self.edit_scales:
+                scale.configure(state=render_state)
+            self.auto_strength_scale.configure(state=render_state)
+            self.import_button.configure(state="disabled" if busy else "normal")
+            self.import_folder_button.configure(state="disabled" if busy else "normal")
+            self._refresh_history_buttons()
+            self.cancel_batch_button.configure(
+                state="normal" if busy and self.batch_running else "disabled"
+            )
+            self.batch_mode_combo.configure(state="disabled" if busy else "readonly")
 
         def _set_batch_progress(self, done: int, total: int) -> None:
             self.progress_bar.stop()
@@ -1860,30 +1848,37 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
             )
 
         def _current_overrides(self) -> dict[str, float]:
-            return _manual_overrides(
-                float(self.exposure_var.get()),
-                float(self.contrast_var.get()),
-                float(self.highlights_var.get()),
-                float(self.shadows_var.get()),
-                float(self.warmth_var.get()),
-                float(self.tint_var.get()),
-                float(self.saturation_var.get()),
+            return clean_adjustments(
+                _manual_overrides(
+                    float(self.exposure_var.get()),
+                    float(self.contrast_var.get()),
+                    float(self.highlights_var.get()),
+                    float(self.shadows_var.get()),
+                    float(self.warmth_var.get()),
+                    float(self.tint_var.get()),
+                    float(self.saturation_var.get()),
+                )
             )
 
         def _refresh_preview_state(self) -> str:
-            preview_state = _preview_state_text(self.last_preview_overrides, self._current_overrides())
+            preview_state = _preview_state_text(
+                self.last_preview_overrides, self._current_overrides()
+            )
             self.preview_state_var.set(preview_state)
             return preview_state
 
         def _show_error(self, message: str, *, run_id: int | None = None) -> None:
             if run_id is not None and run_id != self.run_counter:
                 return
+            self.batch_running = False
             self._set_busy(False)
             self.status_var.set("Processing failed")
             self._refresh_preview_state()
             self.messagebox.showerror("OpenRAW Studio", message)
 
-        def _show_result(self, result: Any, source: Path, *, overrides: dict[str, float], run_id: int) -> None:
+        def _show_result(
+            self, result: Any, source: Path, *, overrides: dict[str, float], run_id: int
+        ) -> None:
             if run_id != self.run_counter:
                 return
             self._set_busy(False)
@@ -1896,17 +1891,20 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
             ):
                 self.last_preview_overrides = dict(overrides)
                 try:
-                    from PIL import Image, ImageTk
+                    from PIL import Image
+                    from openraw_studio.raw.native.nikon import _apply_exif_orientation
 
                     with Image.open(result.preview.path) as opened:
                         image = opened.convert("RGB")
+                    image = _apply_exif_orientation(image, self.source_orientation)
                     self.after_histogram = _analyze_pillow_preview(image)
-                    image.thumbnail((700, 520))
-                    self.after_photo = ImageTk.PhotoImage(image)
-                    self.preview_photo = self.after_photo
-                    self.preview_label.configure(image=self.preview_photo, text="")
+                    image.thumbnail((1600, 1600))
+                    self.live_image = image
+                    self.reference_image = None
                     self.showing_after = True
-                    self._show_histogram(self.after_histogram, view="After")
+                    self.view_var.set("Camera")
+                    self._fit_live_image()
+                    self._show_histogram(self.after_histogram, view="Camera")
                 except (OSError, RuntimeError, ValueError, NotImplementedError):
                     self.before_photo = None
                     self.after_photo = None
@@ -1914,35 +1912,17 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
                     self.before_histogram = None
                     self.after_histogram = None
                     self.before_view_name = "Before"
-                    self.compare_button.configure(state="disabled", text="Show Before")
+                    self.compare_button.configure(state="disabled", text="")
                     self._show_histogram(None, view="After")
-                    self.preview_label.configure(text="Preview created. Open the output folder to view it.", image="")
+                    self.preview_label.configure(
+                        text="Preview created. Open the output folder to view it.",
+                        image="",
+                    )
                 else:
                     self.before_photo = None
                     self.before_histogram = None
-                    self.before_view_name = "Before"
-                    self.compare_button.configure(state="disabled", text="Show Before")
-                    try:
-                        if _can_build_inline_before_preview(result):
-                            before = render_preview_image(source, apply_color=False, max_dimension=700)
-                            self.before_histogram = analyze_rgb_pixels(before.pixels)
-                            before_image = Image.frombytes(
-                                "RGB",
-                                (before.width, before.height),
-                                _flatten_rgb_pixels(before.pixels),
-                            )
-                            before_image.thumbnail((700, 520))
-                            self.before_photo = ImageTk.PhotoImage(before_image)
-                        elif _can_use_embedded_camera_preview(result):
-                            before_image, self.before_histogram = _load_embedded_camera_preview(source, Image)
-                            self.before_photo = ImageTk.PhotoImage(before_image)
-                            self.before_view_name = "Camera Preview"
-                    except (OSError, RuntimeError, ValueError, NotImplementedError):
-                        self.before_photo = None
-                        self.before_histogram = None
-                        self.before_view_name = "Before"
-                    if self.before_photo is not None:
-                        self.compare_button.configure(state="normal", text=f"Show {self.before_view_name}")
+                    self.before_view_name = "Camera Preview"
+                    self.compare_button.configure(state="disabled", text="")
             self._refresh_preview_state()
             if result.exports:
                 exported = result.exports[0]
@@ -1964,19 +1944,30 @@ def launch_desktop_app(*, run_mainloop: bool = True) -> Any:
             if target_path is not None:
                 self.last_export_path = target_path
                 self.open_export_button.configure(state="normal")
-            if self.current_can_render:
+            if (
+                self.current_can_render
+                and self.last_preview_overrides != self._current_overrides()
+            ):
                 self._schedule_live_preview()
 
         def _toggle_compare(self) -> None:
             if self.after_photo is None or self.before_photo is None:
                 return
             self.showing_after = not self.showing_after
-            self.preview_photo = self.after_photo if self.showing_after else self.before_photo
+            self.preview_photo = (
+                self.after_photo if self.showing_after else self.before_photo
+            )
             self.preview_label.configure(image=self.preview_photo)
-            button_text = f"Show {self.before_view_name}" if self.showing_after else "Show After"
-            self.compare_button.configure(text=button_text)
-            histogram = self.after_histogram if self.showing_after else self.before_histogram
-            self._show_histogram(histogram, view="After" if self.showing_after else self.before_view_name)
+            self.view_var.set("Edited" if self.showing_after else self.before_view_name)
+            self.compare_button.state(
+                ["!pressed"] if self.showing_after else ["pressed"]
+            )
+            histogram = (
+                self.after_histogram if self.showing_after else self.before_histogram
+            )
+            self._show_histogram(
+                histogram, view="After" if self.showing_after else self.before_view_name
+            )
 
         def _open_output_folder(self) -> None:
             if self.output_dir is None or not self.output_dir.exists():

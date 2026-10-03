@@ -35,6 +35,7 @@ def render_bayer_full_resolution_rgb8(
     saturation: float = 0.0,
     chunk_rows: int = 256,
     use_gpu: bool = True,
+    highlight_ceiling: float | None = None,
 ) -> FullResolutionRgbImage:
     """Demosaic a little-endian Bayer buffer with chunked bilinear interpolation."""
 
@@ -47,6 +48,8 @@ def render_bayer_full_resolution_rgb8(
         raise ValueError("white_level must be greater than zero")
     if chunk_rows <= 0:
         raise ValueError("chunk_rows must be greater than zero")
+    if highlight_ceiling is not None and (not math.isfinite(highlight_ceiling) or highlight_ceiling < 0):
+        raise ValueError("highlight_ceiling must be finite and non-negative")
     if len(black_levels) != 4:
         raise ValueError("full-resolution Bayer rendering needs four position black levels")
     if len(channel_gains) != 3 or any(
@@ -80,8 +83,13 @@ def render_bayer_full_resolution_rgb8(
         if gpu is not None:
             try:
                 params = color_parameters(
-                    matrix, channel_gains, contrast=contrast, highlights=highlights,
-                    shadows=shadows, saturation=saturation,
+                    matrix,
+                    channel_gains,
+                    contrast=contrast,
+                    highlights=highlights,
+                    shadows=shadows,
+                    saturation=saturation,
+                    highlight_ceiling=highlight_ceiling,
                 )
                 rendered = gpu.bayer(raw_bytes, source_width, crop, pattern, black_levels, white_level, params)
                 return FullResolutionRgbImage(width, height, rendered.tobytes())
@@ -127,6 +135,9 @@ def render_bayer_full_resolution_rgb8(
             interpolated = _normalized_convolution(np, sparse, mask, kernel)
             camera_planes.append(interpolated[core_offset : core_offset + core_count])
 
+        if highlight_ceiling is not None:
+            for plane in camera_planes:
+                np.minimum(plane, highlight_ceiling, out=plane)
         red, green, blue = _camera_to_output_planes(np, camera_planes, matrix)
         _tone_encode_planes(
             np,
@@ -222,7 +233,7 @@ def _tone_encode_planes(
         if shadow_value != 0.0 or highlight_value != 0.0:
             position = np.clip(channel, 0.0, 1.0)
             if shadow_value != 0.0:
-                channel += shadow_value * 0.3 * ((1.0 - position) ** 2)
+                channel += shadow_value * 1.2 * position * ((1.0 - position) ** 2)
             if highlight_value != 0.0:
                 channel += highlight_value * 0.3 * (position**2)
         np.clip(channel, 0.0, 1.0, out=channel)

@@ -11,7 +11,7 @@ _KERNELS = r"""
 float3 finish_color(float3 c, __global const float *p) {
     c = (c - 0.18f) * p[12] + 0.18f;
     float3 pos = clamp(c, 0.0f, 1.0f);
-    c += p[13] * 0.3f * pos * pos + p[14] * 0.3f * (1-pos) * (1-pos);
+    c += p[13] * 0.3f * pos * pos + p[14] * 1.2f * pos * (1-pos) * (1-pos);
     if (p[16] > 0) {
         float l = dot(c, (float3)(0.2126f,0.7152f,0.0722f));
         c = l + (c-l) * p[15];
@@ -25,6 +25,7 @@ float3 finish_color(float3 c, __global const float *p) {
 }
 float3 color(float3 c, __global const float *p) {
     c *= (float3)(p[9],p[10],p[11]);
+    if (p[17] >= 0) c = fmin(c, (float3)(p[17]));
     return finish_color((float3)(dot(c,vload3(0,p)),dot(c,vload3(1,p)),dot(c,vload3(2,p))),p);
 }
 __kernel void tone(__global const float *src, __global uchar *dst, __global const float *p) {
@@ -67,6 +68,7 @@ def color_parameters(
     shadows=0.0,
     saturation=0.0,
     linear_saturation=False,
+    highlight_ceiling=None,
 ):
     return np.asarray(
         [
@@ -77,16 +79,20 @@ def color_parameters(
             np.clip(shadows, -1, 1),
             1 + np.clip(saturation, -1, 1) * 0.75,
             int(linear_saturation),
+            -1 if highlight_ceiling is None else highlight_ceiling,
         ],
         dtype=np.float32,
     )
 
 
 def tone_cpu(pixels, params):
-    rgb = (pixels * params[9:12]) @ params[:9].reshape(3, 3).T
+    camera = pixels * params[9:12]
+    if params[17] >= 0:
+        np.minimum(camera, params[17], out=camera)
+    rgb = camera @ params[:9].reshape(3, 3).T
     rgb = (rgb - 0.18) * params[12] + 0.18
     pos = np.clip(rgb, 0, 1)
-    rgb += params[13] * 0.3 * pos**2 + params[14] * 0.3 * (1 - pos) ** 2
+    rgb += params[13] * 0.3 * pos**2 + params[14] * 1.2 * pos * (1 - pos) ** 2
     if params[16]:
         luma = (rgb * np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)).sum(
             axis=-1, keepdims=True

@@ -27,6 +27,23 @@ To skip tests during a quick local packaging experiment:
 
 Do not use `-SkipTests` for release builds.
 
+Use `-SkipZip` to build only the local executable at
+`dist\OpenRAW Studio\OpenRAW Studio.exe`. This does not publish a release.
+The adjacent `_internal` folder is required. Lucide icon data and its full license
+are collected with `openraw_studio.ui`.
+
+Verify the packaged runtime, not only the development virtual environment:
+
+```powershell
+$app = '.\dist\OpenRAW Studio\OpenRAW Studio.exe'
+Start-Process -FilePath $app -WindowStyle Hidden -Wait -ArgumentList '--smoke-test "E:\Photos\sample.NEF" --output "E:\Photos\packaged-check"'
+```
+
+Inspect `packaged-smoke.json` for `ok`, unchanged source, full export dimensions,
+and the actual GPU/CPU backend. A supported compressed NEF should also report
+`compiled_decoder: true`. First-use JIT compilation is distinct from export time.
+Smoke exports contain private photo content; do not upload them.
+
 ## GitHub Actions
 
 The `Build Windows App` workflow creates the same ZIP package on
@@ -50,9 +67,9 @@ Before creating a GitHub Release:
 - run the full test suite locally
 - build the Windows ZIP locally or through GitHub Actions
 - open the packaged app on Windows
-- click `Create Sample DNG`
+- choose `Library` > `Sample photos` > `Create sample DNG`
 - process the synthetic DNG through the packaged app
-- click `Create Sample NEF`
+- choose `Library` > `Sample photos` > `Create sample NEF`
 - process the synthetic Nikon NEF through the packaged app
 - confirm preview PNG, selected JPEG/TIFF export, and recipe JSON are created
 - confirm README still describes the true current limitations

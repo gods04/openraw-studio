@@ -51,6 +51,18 @@ _PROFILES = {
     (_NIKON_D500.make, _NIKON_D500.model): _NIKON_D500,
 }
 
+_NIKON_1_J5 = CameraColorProfile(
+    make="NIKON CORPORATION",
+    model="NIKON 1 J5",
+    xyz_to_camera=(
+        (0.7520, -0.2518, -0.0645),
+        (-0.3844, 1.2102, 0.1945),
+        (-0.0913, 0.2249, 0.6835),
+    ),
+    source="Adobe DNG Converter camera calibration",
+)
+_PROFILES[(_NIKON_1_J5.make, _NIKON_1_J5.model)] = _NIKON_1_J5
+
 
 def find_camera_color_profile(make: str | None, model: str | None) -> CameraColorProfile | None:
     """Return an exact camera profile without guessing model aliases."""
