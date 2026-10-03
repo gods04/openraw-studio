@@ -415,7 +415,57 @@ Auto settings. The difficult sea photo takes 1.70 s for Auto and 5.08 s for expo
 on CPU; fallback performance remains slower than the GPU path. The build still
 does not generate or publish a public ZIP release.
 
-Next: full-resolution inspection, better highlight tone rendering, reduced import latency, and
+### Native-Pixel Inspection
+
+The desktop zoom menu now separates Fit/2x/4x proxy zoom from true 100%/200%
+inspection. Double-clicking Fit centers inspection around the chosen point;
+changing native scale preserves the viewed position. Dragging pans immediately
+with a temporary proxy while the worker renders the new tile. No derivative or
+JPEG intermediate is written to inspect detail.
+
+`raw/native/regions.py` maps oriented viewport rectangles into the active sensor
+crop. Nikon's existing full renderer accepts a bounded region with a one-pixel
+bilinear interpolation halo, then trims that halo before applying EXIF orientation.
+This retains full-export pixels at boundaries without demosaicing the whole image
+on every pan. `raw/native/detail.py` reuses the processor's decoded Nikon cache.
+The generic DNG fallback still prepares a full linear image before cropping;
+large-DNG preparation has not received the same bounded-memory optimization.
+
+The live worker retains one native original tile across adjustment changes.
+Source and Fit/detail transitions invalidate old generations; viewport identity
+rejects obsolete pan/resize frames. The full-photo unedited proxy remains available
+for Auto, which does not analyze the currently viewed crop. Histograms explicitly
+identify visible detail. 100% has exact 1:1 pixel pitch; 200% repeats pixels 2x
+and crops any odd viewport edge, without fractional resampling. Fit and detail
+can differ because Fit uses a downsized, half-resolution preview path.
+
+Synthetic tests verify every EXIF orientation, all four Bayer patterns, active
+crops, one-pixel borders, GPU/CPU region equality, invalid regions, small images,
+odd viewport sizes, original-tile reuse, stale mode changes, and error recovery.
+All 313 tests pass with GPU auto-selection and CPU fallback (one GPU-only skip).
+
+`scripts/smoke_detail_workflow.py` checks actual Tk image pixels, pointer pan and
+exposure changes, Auto, original comparison, return to Fit, and click-centered
+inspection against full-resolution RAW renders. The real D500 moon, D500 sea
+(CPU-only), and portrait Z f each pass 22 checks, preserving source hashes.
+At tested 1280x820/900x650 window sizes, first detail after Fit takes 88-181 ms;
+pan and edit updates take 46-80 ms. These exclude first RAW import and are not
+universal latency guarantees. A separate Fit regression retains 53 ms median
+slider latency, 49 frames during 50 edits, and 1.77 s cached D500 JPEG export.
+The existing 16-check desktop and seven-check batch workflows also pass.
+
+The refreshed local EXE passes Z f portrait GPU and D500 CPU-only smoke checks,
+including full-size export, native 512x384 inspection, and source preservation.
+The Z f run exports in 2.10-2.36 s and renders its detail region in 123-126 ms.
+After first-build compiler initialization (6.80 s), a separate process prepares
+the same file in 2.32 s with cached HE kernels active. The D500 CPU run exports
+in 4.83 s and renders detail in 64 ms. These are different samples and region
+sizes, not a GPU/CPU speedup comparison. No public ZIP was built or published.
+
+Inspection uses the current bilinear renderer; it does not add edge-aware
+demosaicing, denoise, 16-bit export, or support for unverified camera profiles.
+
+Next: better highlight tone rendering, reduced import latency, and
 expand verified profiles only with real samples. The reference decoder, wrapper, binaries, private
 images, and comparison reports stay in ignored `output/`; none is a runtime or
 distributed dependency. Primary algorithm references include

@@ -41,13 +41,16 @@ The UI should keep the image workspace first:
 - open output folder action
 - saved recipe detection for restoring basic adjustments
 - automatic local edit retention, undo/redo, Auto strength, and preview zoom/pan
+- true 100%/200% native detail, with click-centered zoom and original comparison
 - per-photo Auto or saved-edit batch export with between-photo cancellation
 
 The UI uses the pipeline and recipe contracts for saved artifacts and export.
 `LivePreviewWorker` separately requests an in-memory, scene-linear display proxy
 from the native RAW layer. It owns one background worker and a replaceable pending
 request. Slider events are throttled (not debounced); an in-flight frame can be
-displayed while a newer edit is pending, but switching photos invalidates old work.
+displayed while a newer edit is pending, but switching photos or Fit/detail modes
+invalidates old work. Native tiles also carry a viewport identity, so stale pan
+or resize results cannot replace the current view.
 Tk display changes happen only on the main thread. GPU failures fall back to CPU.
 The current
 shell can preview/export supported DNG files, guarded TIFF-style Nikon sensor
@@ -57,10 +60,17 @@ through the current preview path. The shell can also extract embedded JPEG
 previews from preview-only Nikon RAW files and import Nikon RAW metadata while
 keeping advanced controls for later stages. Preview-only Nikon files can expose
 an `Open Preview JPEG` action after automatic preview loading, while final export
-controls stay disabled until native sensor rendering supports that file. Inline
-before/after comparison remains on lightweight preview paths. Native Nikon
+controls stay disabled until native sensor rendering supports that file. Native Nikon
 34713 files can show the camera-authored JPEG while the RAW loads. Once loaded,
 comparison uses a cached unedited RAW render from the same linear proxy as the
 edited image. The camera JPEG is never treated as the source for OpenRAW export.
+In 100%/200% modes, the worker requests a native sensor rectangle instead of an
+enlarged proxy. Nikon uses its cached decoded sensor and the full export renderer
+with a one-pixel interpolation halo; the original tile is retained across edits.
+The generic DNG path prepares a full linear image before cropping. Pan displays a
+temporary proxy while the requested native tile loads. 200% uses integer nearest
+neighbor scaling, including odd viewport edges. Detail histograms describe the
+visible region, but Auto always uses the full-photo proxy. Fit/2x/4x retain the
+fast display path. `viewport.py` owns native viewport geometry.
 `workspace.py` owns the photo-first layout; `editing.py` owns bounded history and
 atomic local edit persistence. Worker callbacks enter Tk through a main-thread queue.

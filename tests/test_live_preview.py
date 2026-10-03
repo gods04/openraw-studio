@@ -5,9 +5,110 @@ import unittest
 from pathlib import Path
 
 from openraw_studio.ui.live_preview import LivePreviewWorker
+from openraw_studio.ui.viewport import DetailView
 
 
 class LivePreviewWorkerTests(unittest.TestCase):
+    def test_inflight_detail_cannot_replace_new_fit_view(self):
+        entered, release = threading.Event(), threading.Event()
+
+        class Photo:
+            def render(self, values):
+                return "fit", "CPU"
+
+        class Detail:
+            size = (6000, 4000)
+
+            def render_region(self, values, region):
+                entered.set()
+                release.wait(3)
+                return "detail"
+
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "sample.DNG"
+            source.write_bytes(b"sample")
+            worker = LivePreviewWorker(None, prepare=lambda *_: Photo(), prepare_detail=lambda *_: Detail())
+            try:
+                worker.submit(source, {}, detail_view=DetailView((800, 600)))
+                self.assertTrue(entered.wait(2))
+                latest = worker.submit(source, {})
+                release.set()
+                frame = self.wait_for_frame(worker)
+                self.assertEqual(frame.revision, latest)
+                self.assertEqual(frame.image, "fit")
+                self.assertIsNone(frame.detail_view)
+            finally:
+                release.set()
+                worker.close()
+                worker._thread.join(3)
+
+    def test_detail_frames_reuse_original_region_and_leave_fit_proxy_available(self):
+        calls, prepared = [], []
+
+        class Photo:
+            def render(self, edits):
+                return "fit", "CPU"
+
+        class Detail:
+            size = (6000, 4000)
+
+            def render_region(self, edits, region):
+                calls.append((dict(edits), region))
+                return (edits.get("exposure", 0), region)
+
+        def prepare_detail(*_):
+            prepared.append(True)
+            return Detail()
+
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "sample.DNG"
+            source.write_bytes(b"sample")
+            worker = LivePreviewWorker(None, prepare=lambda *_: Photo(), prepare_detail=prepare_detail)
+            try:
+                view = DetailView((800, 600))
+                worker.submit(source, {"exposure": 1}, detail_view=view)
+                first = self.wait_for_frame(worker)
+                self.assertEqual(first.region, (2600, 1700, 800, 600))
+                self.assertEqual(first.native_size, (6000, 4000))
+                self.assertEqual(first.detail_view, view)
+                self.assertIsNotNone(worker.get_prepared_photo(source))
+                worker.submit(source, {"exposure": 2}, detail_view=view)
+                second = self.wait_for_frame(worker)
+                self.assertIs(first.original_image, second.original_image)
+                self.assertEqual(len(calls), 3)
+                self.assertEqual(len(prepared), 1)
+                worker.submit(source, {"exposure": 2})
+                self.assertIsNone(self.wait_for_frame(worker).detail_view)
+            finally:
+                worker.close()
+                worker._thread.join(3)
+
+    def test_detail_failure_keeps_request_identity_and_fit_recovers(self):
+        class Photo:
+            def render(self, edits):
+                return "fit", "CPU"
+
+        def fail(*_):
+            raise ValueError("unsupported detail")
+
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "sample.DNG"
+            source.write_bytes(b"sample")
+            worker = LivePreviewWorker(None, prepare=lambda *_: Photo(), prepare_detail=fail)
+            try:
+                view = DetailView((800, 600))
+                worker.submit(source, {}, detail_view=view)
+                frame = self.wait_for_frame(worker)
+                self.assertEqual(frame.detail_view, view)
+                self.assertEqual(frame.error, "unsupported detail")
+                worker.submit(source, {})
+                frame = self.wait_for_frame(worker)
+                self.assertEqual(frame.image, "fit")
+                self.assertIsNone(frame.error)
+            finally:
+                worker.close()
+                worker._thread.join(3)
+
     def wait_for_frame(self, worker):
         deadline = time.monotonic() + 3
         while time.monotonic() < deadline:

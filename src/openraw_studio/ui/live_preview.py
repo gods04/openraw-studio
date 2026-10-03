@@ -7,7 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
 
+from openraw_studio.raw.native.detail import prepare_detail_photo
 from openraw_studio.raw.native.interactive import prepare_interactive_photo
+from openraw_studio.ui.viewport import DetailView
 
 
 @dataclass(frozen=True)
@@ -21,16 +23,21 @@ class LiveFrame:
     error: str | None = None
     reference: bool = False
     original_image: object = None
+    detail_view: DetailView | None = None
+    native_size: tuple[int, int] | None = None
+    region: tuple[int, int, int, int] | None = None
 
 
 class LivePreviewWorker:
-    def __init__(self, processor, *, prepare=prepare_interactive_photo):
+    def __init__(self, processor, *, prepare=prepare_interactive_photo, prepare_detail=prepare_detail_photo):
         self.processor = processor
         self.prepare = prepare
+        self.prepare_detail = prepare_detail
         self._condition = threading.Condition()
         self._revision = 0
         self._generation = 0
         self._source = None
+        self._detail_mode = False
         self._pending = None
         self._completed = None
         self._prepared = None
@@ -40,14 +47,17 @@ class LivePreviewWorker:
         )
         self._thread.start()
 
-    def submit(self, source, adjustments):
+    def submit(self, source, adjustments, *, detail_view=None):
         with self._condition:
             source = Path(source)
-            if source != self._source:
+            detail_mode = detail_view is not None
+            if source != self._source or detail_mode != self._detail_mode:
                 self._generation += 1
                 self._completed = None
-                self._prepared = None
+                if source != self._source:
+                    self._prepared = None
                 self._source = source
+                self._detail_mode = detail_mode
             self._revision += 1
             self._pending = (
                 self._revision,
@@ -55,6 +65,7 @@ class LivePreviewWorker:
                 dict(adjustments),
                 perf_counter(),
                 self._generation,
+                detail_view,
             )
             self._condition.notify()
             return self._revision
@@ -93,6 +104,7 @@ class LivePreviewWorker:
 
     def _run(self):
         key = photo = original = None
+        detail_photo = detail_original = detail_region = None
         while True:
             with self._condition:
                 self._condition.wait_for(
@@ -100,7 +112,7 @@ class LivePreviewWorker:
                 )
                 if self._closed:
                     return
-                revision, source, adjustments, requested_at, generation = self._pending
+                revision, source, adjustments, requested_at, generation, detail_view = self._pending
                 self._pending = None
             try:
                 stat = source.stat()
@@ -113,12 +125,26 @@ class LivePreviewWorker:
                     photo = self.prepare(self.processor, source)
                     original, _backend = photo.render({})
                     key = current_key
+                    detail_photo = detail_original = detail_region = None
                 with self._condition:
                     if generation == self._generation and not self._closed:
                         self._prepared = (key, photo)
                     if revision != self._revision or self._closed:
                         continue
-                image, backend = photo.render(adjustments)
+                if detail_view is not None:
+                    if detail_photo is None:
+                        detail_photo = self.prepare_detail(self.processor, source)
+                    region = detail_view.region(detail_photo.size)
+                    if region != detail_region:
+                        detail_original = detail_photo.render_region({}, region)
+                        detail_region = region
+                    image = (
+                        detail_photo.render_region(adjustments, region)
+                        if any(adjustments.values()) else detail_original
+                    )
+                    backend = "Native detail"
+                else:
+                    image, backend = photo.render(adjustments)
                 frame = LiveFrame(
                     revision,
                     source,
@@ -126,10 +152,13 @@ class LivePreviewWorker:
                     image,
                     backend,
                     (perf_counter() - requested_at) * 1000,
-                    original_image=original,
+                    original_image=detail_original if detail_view is not None else original,
+                    detail_view=detail_view,
+                    native_size=detail_photo.size if detail_view is not None else None,
+                    region=region if detail_view is not None else None,
                 )
             except Exception as exc:  # noqa: BLE001 - Report worker failures to the UI.
-                frame = LiveFrame(revision, source, adjustments, error=str(exc))
+                frame = LiveFrame(revision, source, adjustments, error=str(exc), detail_view=detail_view)
             with self._condition:
                 # A finished frame is useful during a drag even if a newer edit is
                 # pending. Source changes/invalidation still reject all old work.

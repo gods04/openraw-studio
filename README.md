@@ -112,7 +112,8 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - Automatic, in-memory live preview during slider dragging, with one replaceable
   pending edit instead of a growing render queue; no refresh button is required
 - Photo-first workspace with Adjust/Library/Export/Info tabs, original-RAW
-  comparison, zoom/pan, undo/redo, and automatic local edit retention
+  comparison, native 100%/200% detail inspection, zoom/pan, undo/redo, and automatic
+  local edit retention
 - Auto strength control, luminance-aware exposure, conservative color correction,
   black-preserving shadows, and rendered-highlight checks that also guard small
   bright subjects and individual color channels at two preview resolutions;
@@ -240,8 +241,13 @@ Unsupported files are skipped and reported. `Stop batch` stops between photos.
 
 Edits save automatically on this computer without changing the RAW. Undo/redo
 works within the current photo session. The comparison icon shows the original
-RAW render, not the camera JPEG. `Fit`, `2x`, and `4x` control display zoom;
-zoomed images can be dragged. This is preview zoom, not full-resolution 1:1 inspection.
+RAW render, not the camera JPEG. `Fit`, `2x`, and `4x` control fast preview zoom.
+For supported RAWs, `100%` shows one native image pixel per display pixel and
+`200%` doubles those pixels without smoothing. Double-click a point in Fit view
+to inspect it at 100%; double-click again to return to Fit. Drag to pan.
+Native Nikon detail renders only the visible sensor region, using the same
+full-resolution renderer as export. The histogram describes that visible detail;
+Auto still analyzes the whole photo. Preview-only files do not offer native zoom.
 The status area shows animated progress for a single photo and exact item
 progress for a folder export. Completed previews and exports report their pixel
 dimensions and file size.
@@ -257,12 +263,10 @@ folder. Nikon preview-only runs write a `.preview.jpg` file and recipe JSON.
 After `Update Preview`, the desktop app enables `Open Preview JPEG` for those
 preview-only Nikon files so you can open the camera-authored embedded preview
 directly without treating it as a finished RAW export.
-After preview or export, `Show Before` lets supported lightweight RAW paths
-compare the basic demosaiced image with the OpenRAW color-treated result. Native
-Nikon 34713 renders instead offer `Show Camera Preview`, which compares the
-OpenRAW result with the camera-authored embedded JPEG without decoding the large
-sensor payload twice. The camera preview is a reference only; OpenRAW still
-exports from native sensor data.
+The comparison icon uses a cached unedited RAW render after native loading
+finishes, including the matching native-pixel region at 100%/200%. A camera JPEG
+may appear while the RAW loads or when sensor rendering is unsupported; it is
+a reference only and is never used as the source for OpenRAW export.
 The compact histogram follows the displayed Before, Camera Preview, or After
 image and reports near-black and near-white clipping percentages. It analyzes
 the displayed rendered 8-bit image, not untouched sensor values.

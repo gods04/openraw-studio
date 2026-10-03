@@ -4,23 +4,32 @@
 
 Implemented: photo-first editor, continuous GPU/CPU preview, guarded Auto with
 strength control, original RAW comparison, undo/redo, local edit retention,
-JPEG/TIFF export, and cancellable per-photo batch modes. Supported compressed
+native-pixel 100%/200% inspection, JPEG/TIFF export, and cancellable per-photo
+batch modes. Supported compressed
 Nikon paths include F-series lossless, 12-bit D20 non-split (verified on 1 J5),
 and the verified Z f HE* 14-bit profile with approximate nonlinear mapping.
 Local Windows EXE builds are available; this is not a public installer release.
 
-Next quality work: full-resolution inspection, better highlight tone rendering,
+Next quality work: better highlight tone rendering,
 faster first HE* import, broader verified HE profiles, broader camera calibration,
 edge-aware demosaic, actual sensor highlight reconstruction, and denoise.
 Semantic portrait/scene AI and mobile remain later phases.
 
-Latest verified increment: Auto validates promising corrections at 960 pixels
+Latest verified increment: true 100%/200% detail inspection uses bounded native
+Nikon sensor regions, with an interpolation halo matching full-resolution export.
+It retains original comparison, live adjustments, click-centered zoom, and pan;
+Auto continues to analyze the whole photo. Real D500 and portrait Z f desktop
+checks verify exact displayed pixel pitch and equality with full RAW renders.
+GPU and CPU paths pass; all 313 tests pass (one GPU-only skip on CPU).
+Native inspection does not add new format support or improve demosaic quality.
+
+Auto validates promising corrections at 960 pixels
 as well as the 256-pixel analysis size. All 184 checks across 23 selected photos,
 two resolutions, and four strengths pass; the six earlier detail-budget failures
 are resolved at those tested settings. Both guards cache candidate measurements.
 Single-photo Auto reuses the unedited live proxy with source-change/invalidation
 checks; desktop, batch, validation, and packaged smoke paths use the same helper.
-All 304 tests pass with GPU auto-selection and CPU fallback (one GPU-only skip).
+The Auto increment passed its 304-test baseline with GPU and CPU fallback.
 Real museum Auto improved from 0.62 s to 0.43 s; the difficult sea sample takes
 0.89 s. Both desktop workflows and batch cancellation checks pass. These remain
 preview-resolution heuristics, not full-resolution or semantic guarantees.

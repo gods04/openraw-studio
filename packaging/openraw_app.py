@@ -21,7 +21,9 @@ def smoke_test(source: Path, output: Path) -> int:
         compiled_he,
         compiled_he_transform,
     )
+    from openraw_studio.raw.native.detail import prepare_detail_photo
     from openraw_studio.raw.native.interactive import prepare_interactive_photo
+    from openraw_studio.ui.viewport import DetailView
 
     output.mkdir(parents=True, exist_ok=True)
     report = {}
@@ -63,8 +65,17 @@ def smoke_test(source: Path, output: Path) -> int:
         )
         report["export_seconds"] = perf_counter() - started
         report["export_size"] = [result.exports[0].width, result.exports[0].height]
+        started = perf_counter()
+        detail = prepare_detail_photo(pipeline.raw_processor, source)
+        region = DetailView((512, 384)).region(detail.size)
+        detail_image = detail.render_region(suggestion.as_overrides(), region)
+        report["detail_seconds"] = perf_counter() - started
+        report["detail_native_size"] = detail.size
+        report["detail_region"] = region
+        report["detail_size"] = detail_image.size
+        detail_image.save(output / "native-detail.png")
         report["source_unchanged"] = sha256_file(source) == before
-        report["ok"] = report["source_unchanged"] and result.exports[0].path.is_file()
+        report["ok"] = report["source_unchanged"] and result.exports[0].path.is_file() and detail_image.size == region[2:]
     except Exception as error:  # noqa: BLE001 - Persist unexpected frozen-runtime failures.
         report.update(ok=False, error=f"{type(error).__name__}: {error}")
     (output / "packaged-smoke.json").write_text(

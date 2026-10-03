@@ -31,6 +31,7 @@ from openraw_studio.raw.native.dng import DngMetadataReader
 from openraw_studio.raw.native.support import NativeSupportReport, inspect_native_support
 from openraw_studio.raw.native.synthetic import write_synthetic_dng, write_synthetic_nikon_nef
 from openraw_studio.ui.live_preview import LivePreviewWorker
+from openraw_studio.ui.viewport import DetailView
 from openraw_studio.ui.editing import EditHistory, SessionStore, clean_adjustments
 
 
@@ -674,6 +675,9 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.last_saved_preview_overrides = None
             self.last_live_latency_ms = None
             self.live_image = None
+            self.detail_frame = None
+            self.detail_full_size = None
+            self.detail_anchor = (0.5, 0.5)
             self.source_orientation = 1
             self.preview_only_name = "Camera JPEG"
             self.reference_image = None
@@ -1227,13 +1231,42 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                 )
                 self._sync_adjustment_labels()
 
-        def _zoom_changed(self, _event=None) -> None:
+        def _zoom_changed(self, _event=None, *, anchor=None) -> None:
+            if anchor is None and self.detail_frame is not None:
+                x, y, width, height = self.detail_frame.region
+                sw, sh = self.detail_frame.native_size
+                anchor = ((x + width / 2) / sw, (y + height / 2) / sh)
+            self.detail_anchor = anchor or (0.5, 0.5)
             self.pan_offset = [0.0, 0.0]
+            self.detail_frame = None
+            self.before_histogram = None
+            if self.histogram_after_id is not None:
+                self.root.after_cancel(self.histogram_after_id)
+                self.histogram_after_id = None
             self._fit_live_image()
+            self._schedule_live_preview()
+
+        def _detail_view(self):
+            scale = {"100%": 1, "200%": 2}.get(self.zoom_var.get())
+            if scale is None or not self.current_can_render:
+                return None
+            return DetailView(
+                (max(1, self.preview_label.winfo_width() - 2), max(1, self.preview_label.winfo_height() - 2)),
+                scale, tuple(self.pan_offset), self.detail_anchor,
+            )
 
         def _zoom_toggle(self, _event=None) -> str:
-            self.zoom_var.set("2x" if self.zoom_var.get() == "Fit" else "Fit")
-            self._zoom_changed()
+            anchor = None
+            if self.zoom_var.get() == "Fit" and self.live_image is not None and _event is not None:
+                width, height = self.live_image.size
+                aw, ah = self.preview_label.winfo_width() - 2, self.preview_label.winfo_height() - 2
+                scale = min(aw / width, ah / height)
+                anchor = (
+                    max(0, min(1, (_event.x - (aw - width * scale) / 2) / (width * scale))),
+                    max(0, min(1, (_event.y - (ah - height * scale) / 2) / (height * scale))),
+                )
+            self.zoom_var.set(("100%" if self.current_can_render else "2x") if self.zoom_var.get() == "Fit" else "Fit")
+            self._zoom_changed(anchor=anchor)
             return "break"
 
         def _pan_start(self, event) -> None:
@@ -1243,7 +1276,8 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             if self.pan_origin is not None and self.zoom_var.get() != "Fit":
                 x, y, ox, oy = self.pan_origin
                 width, height = (
-                    self.live_image.size if self.live_image is not None else (1, 1)
+                    self.detail_full_size if self._detail_view() is not None and self.detail_full_size is not None
+                    else self.live_image.size if self.live_image is not None else (1, 1)
                 )
                 area_width, area_height = (
                     self.preview_label.winfo_width(),
@@ -1253,17 +1287,23 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                     "2x": 2,
                     "4x": 4,
                 }.get(self.zoom_var.get(), 1)
+                if detail := self._detail_view():
+                    scale = detail.scale
                 bounds = (
                     max(0, (width * scale - area_width) / 2),
                     max(0, (height * scale - area_height) / 2),
                 )
-                self.pan_offset = [
-                    max(-bound, min(bound, value))
-                    for bound, value in zip(
-                        bounds, (ox + event.x - x, oy + event.y - y)
-                    )
-                ]
+                limits = [(-bound, bound) for bound in bounds]
+                if detail is not None and self.detail_full_size is not None:
+                    limits = [
+                        ((length * anchor - length + min(length, viewport / scale) / 2) * scale,
+                         (length * anchor - min(length, viewport / scale) / 2) * scale)
+                        for length, anchor, viewport in zip((width, height), self.detail_anchor, detail.viewport)
+                    ]
+                self.pan_offset = [max(low, min(high, value)) for (low, high), value in zip(limits, (ox + event.x - x, oy + event.y - y))]
                 self._fit_live_image()
+                if self._detail_view() is not None:
+                    self._schedule_live_preview()
 
         def _selected_export_format(self) -> str:
             return normalize_export_format(self.export_format_var.get())
@@ -1362,6 +1402,9 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self._schedule_live_preview()
 
         def _clear_result(self) -> None:
+            self.detail_frame = None
+            self.detail_full_size = None
+            self.detail_anchor = (0.5, 0.5)
             self.preview_photo = None
             self.before_photo = None
             self.after_photo = None
@@ -1401,7 +1444,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             if self.source_path is None or not self.current_can_render:
                 return
             self.live_revision = self.live_worker.submit(
-                self.source_path, self._current_overrides()
+                self.source_path, self._current_overrides(), detail_view=self._detail_view()
             )
             if self.after_photo is None:
                 self.preview_state_var.set("Preparing RAW preview...")
@@ -1412,13 +1455,20 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                 frame is not None
                 and frame.source == self.source_path
                 and frame.revision <= self.live_revision
+                and frame.detail_view == self._detail_view()
             ):
                 if frame.error:
                     self.preview_state_var.set("Live preview unavailable")
                     self.status_var.set(frame.error)
                 else:
                     image = frame.image.copy()
-                    self.live_image = image
+                    if frame.detail_view is None:
+                        self.live_image = image
+                        self.detail_frame = None
+                    else:
+                        self.detail_frame = frame
+                        self.detail_full_size = frame.native_size
+                        self.before_histogram = None
                     if frame.reference:
                         self.reference_image = image
                         self._fit_live_image()
@@ -1429,14 +1479,14 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                         return
                     self.last_preview_overrides = dict(frame.adjustments)
                     if frame.original_image is not None:
-                        if self.reference_image is not frame.original_image:
+                        if frame.detail_view is None and self.reference_image is not frame.original_image:
                             self.reference_image = frame.original_image
                             self.before_histogram = None
                         self.before_view_name = "Original"
                         self.compare_button.configure(state="normal", text="")
                     self.last_live_latency_ms = frame.elapsed_ms
                     self.preview_state_var.set(
-                        f"Live | {frame.backend} | {frame.elapsed_ms:.0f} ms"
+                        f"{'Live' if frame.detail_view is None else self.zoom_var.get()} | {frame.backend} | {frame.elapsed_ms:.0f} ms"
                     )
                     if not self.is_busy:
                         self.status_var.set(
@@ -1452,7 +1502,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                     if self.histogram_after_id is not None:
                         self.root.after_cancel(self.histogram_after_id)
                     self.histogram_after_id = self.root.after(
-                        180, lambda img=image: self._update_live_histogram(img)
+                        180, lambda img=image, before=frame.original_image: self._update_live_histogram(img, before)
                     )
             self.live_poll_id = self.root.after(8, self._poll_live_preview)
 
@@ -1460,6 +1510,8 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             if self.resize_after_id is not None:
                 self.root.after_cancel(self.resize_after_id)
             self.resize_after_id = self.root.after_idle(self._fit_live_image)
+            if self._detail_view() is not None:
+                self._schedule_live_preview()
 
         def _fit_live_image(self) -> None:
             from PIL import Image, ImageTk
@@ -1470,9 +1522,34 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                 max(1, self.preview_label.winfo_height() - 2),
             )
             zoom = {"Fit": 1, "2x": 2, "4x": 4}.get(self.zoom_var.get(), 1)
+            detail = self._detail_view()
+            if detail is not None and self.detail_frame is not None and self.detail_frame.detail_view == detail:
+                frame = self.detail_frame
+                draw_size = detail.display_size(frame.region)
+
+                def native_image(image):
+                    enlarged = image if detail.scale == 1 else image.resize(
+                        (image.width * detail.scale, image.height * detail.scale), Image.Resampling.NEAREST
+                    )
+                    return ImageTk.PhotoImage(enlarged.crop((0, 0, *draw_size)))
+
+                self.after_photo = native_image(frame.image)
+                self.before_photo = native_image(frame.original_image)
+                self.preview_photo = self.after_photo if self.showing_after else self.before_photo
+                self.preview_label.configure(image=self.preview_photo, text="")
+                return
+            if detail is not None:
+                self.preview_state_var.set("Preparing native detail...")
 
             def display_image(image):
                 width, height = image.size
+                if detail is not None and self.detail_full_size is not None:
+                    x, y, rw, rh = detail.region(self.detail_full_size)
+                    sx, sy = width / self.detail_full_size[0], height / self.detail_full_size[1]
+                    return ImageTk.PhotoImage(image.resize(
+                        detail.display_size((x, y, rw, rh)), Image.Resampling.BILINEAR,
+                        box=(x * sx, y * sy, (x + rw) * sx, (y + rh) * sy),
+                    ))
                 scale = min(size[0] / width, size[1] / height) * zoom
                 draw_width = min(size[0], max(1, round(width * scale)))
                 draw_height = min(size[1], max(1, round(height * scale)))
@@ -1512,16 +1589,16 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                 )
                 self.preview_label.configure(image=self.preview_photo, text="")
 
-        def _update_live_histogram(self, image) -> None:
+        def _update_live_histogram(self, image, original=None) -> None:
             self.histogram_after_id = None
             self.after_histogram = _analyze_pillow_preview(image, max_dimension=128)
             if self.before_histogram is None:
                 self.before_histogram = _analyze_pillow_preview(
-                    self.reference_image if self.reference_image is not None else image,
+                    original if original is not None else self.reference_image if self.reference_image is not None else image,
                     max_dimension=128,
                 )
             if self.showing_after:
-                self._show_histogram(self.after_histogram, view="After")
+                self._show_histogram(self.after_histogram, view="Detail after" if self._detail_view() else "After")
 
         def _close(self) -> None:
             if self.is_busy:
@@ -1822,6 +1899,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                 else "disabled"
             )
             self.auto_adjust_button.configure(state=render_state)
+            self.zoom_combo.configure(values=("Fit", "2x", "4x", "100%", "200%") if can_render else ("Fit", "2x", "4x"))
             self.preview_button.configure(state=preview_state)
             self.process_button.configure(state=render_state)
             batch_state = (
@@ -1972,7 +2050,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                 self.after_histogram if self.showing_after else self.before_histogram
             )
             self._show_histogram(
-                histogram, view="After" if self.showing_after else self.before_view_name
+                histogram, view=("Detail " if self._detail_view() else "") + ("After" if self.showing_after else self.before_view_name)
             )
 
         def _open_output_folder(self) -> None:

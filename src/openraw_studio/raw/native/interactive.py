@@ -52,6 +52,8 @@ class InteractivePhoto:
 
 def _resize_linear(pixels, max_dimension):
     height, width = pixels.shape[:2]
+    if max_dimension is None:
+        return np.ascontiguousarray(pixels, dtype=np.float32)
     scale = min(1, max_dimension / max(width, height))
     size = (max(1, round(width * scale)), max(1, round(height * scale)))
     if size == (width, height):

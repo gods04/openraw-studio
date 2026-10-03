@@ -13,6 +13,7 @@ from openraw_studio.core.files import atomic_output_path
 from openraw_studio.raw.native.dng import DngMetadata, DngMetadataError, DngMetadataReader, TiffIfd
 from openraw_studio.raw.native.fullres import render_bayer_full_resolution_rgb8
 from openraw_studio.raw.native.profiles import CameraColorProfile, Matrix3, find_camera_color_profile
+from openraw_studio.raw.native.regions import region_with_halo, sensor_region
 
 
 MAKER_NOTE_TAG = 37500
@@ -422,10 +423,17 @@ def render_decoded_nikon_34713_image(
     tint: float = 0.0,
     saturation: float = 0.0,
     quality: str = "fast",
+    region: tuple[int, int, int, int] | None = None,
 ) -> NikonRenderedRgbImage:
     """Render an already decoded Nikon 34713 sensor payload into packed RGB bytes."""
 
     crop = _render_crop(decoded)
+    region_box = None
+    if region is not None:
+        if quality != "full" or max_dimension is not None:
+            raise ValueError("Detail regions require unscaled full-resolution rendering")
+        region = sensor_region(region, crop[2:], decoded.orientation)
+        crop, region_box = region_with_halo(crop, region)
     camera_matrix = (
         decoded.camera_profile.camera_to_linear_srgb
         if decoded.camera_profile is not None
@@ -487,6 +495,8 @@ def render_decoded_nikon_34713_image(
         raise NikonCompressionError("Pillow is required for Nikon 34713 rendering") from exc
 
     image = Image.frombytes("RGB", (width, height), bytes(rgb))
+    if region_box is not None:
+        image = image.crop(region_box)
     image = _apply_exif_orientation(image, decoded.orientation)
     if max_dimension is not None:
         image = _resize_pillow_image(image, max_dimension=max_dimension)

@@ -247,10 +247,10 @@ def build_workspace(app, filedialog, messagebox):
     app.compare_button.grid(row=0, column=2, padx=(0, 4))
     app.zoom_combo = ttk.Combobox(
         photo_bar,
-        values=("Fit", "2x", "4x"),
+        values=("Fit", "2x", "4x", "100%", "200%"),
         textvariable=app.zoom_var,
         state="readonly",
-        width=4,
+        width=5,
     )
     app.zoom_combo.grid(row=0, column=3)
     app.zoom_combo.bind("<<ComboboxSelected>>", app._zoom_changed)
