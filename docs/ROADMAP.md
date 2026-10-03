@@ -24,8 +24,12 @@ two-sided quadratic mapping differs by at most 1 DN in all nine 14-bit linear
 sensor planes; this is an approximation, not bit-exact Nikon curve reproduction.
 All nine native Auto/export runs pass with unchanged sources. A real desktop
 workflow passes 16 checks including JPEG/TIFF export, history, and edit persistence.
-One local RTX 5070 run measured 58 ms median slider-to-display latency, 1.98 s
-export, and 4.77 s first native preview. Initial loading still needs improvement.
+The subsequent transform optimization preserves every sensor-buffer hash across
+the nine samples and reduces steady decode from about 3.2 s to 1.3 s. One local
+RTX 5070 desktop run measured 58 ms median slider latency, 2.02 s export, and
+2.90 s first native preview. The Windows bundle now retains compiled kernels
+across process restarts: preparation measured 1.90-2.14 s after a 6.35 s initial
+compile. First-use loading still needs improvement.
 Unknown cameras, HE modes, black levels, and stream profiles remain blocked.
 
 ## Phase 0 - Foundation

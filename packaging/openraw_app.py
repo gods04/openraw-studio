@@ -7,8 +7,6 @@ import json
 from pathlib import Path
 from time import perf_counter
 
-from openraw_studio.ui.desktop import launch_desktop_app
-
 
 def smoke_test(source: Path, output: Path) -> int:
     """Exercise frozen runtime imports, GPU/JIT, adjustment and full export."""
@@ -18,7 +16,7 @@ def smoke_test(source: Path, output: Path) -> int:
     )
     from openraw_studio.pipeline.interfaces import PipelineRequest
     from openraw_studio.pipeline.local import LocalPhotoPipeline
-    from openraw_studio.raw.native import compiled_decode, compiled_he
+    from openraw_studio.raw.native import compiled_decode, compiled_he, compiled_he_transform
     from openraw_studio.raw.native.interactive import prepare_interactive_photo
     from openraw_studio.raw.native.tone import PreviewRgbImage
 
@@ -44,6 +42,13 @@ def smoke_test(source: Path, output: Path) -> int:
         )
         report["he_decoder_fallback_reason"] = compiled_he.last_error
         report["he_decoder_disk_cache_disabled"] = compiled_he.cache_disabled_reason is not None
+        report["compiled_he_transforms"] = {
+            name: bool(getattr(kernel, "signatures", []))
+            for name, kernel in compiled_he_transform.kernels.items()
+        }
+        report["he_transform_fallback_reasons"] = compiled_he_transform.last_errors.copy()
+        report["he_transform_cache_disabled_reasons"] = compiled_he_transform.cache_disabled_reasons.copy()
+        report["he_decoder_cache_disabled_reason"] = compiled_he.cache_disabled_reason
         preview = PreviewRgbImage(
             image.width, image.height, tuple(image.getdata()), "gamma-2.2"
         )
@@ -67,6 +72,11 @@ def smoke_test(source: Path, output: Path) -> int:
 
 
 def main() -> int:
+    from openraw_studio.core.runtime import configure_numba_cache
+
+    configure_numba_cache()
+    from openraw_studio.ui.desktop import launch_desktop_app
+
     parser = argparse.ArgumentParser(description="OpenRAW Studio desktop")
     parser.add_argument("source", nargs="?", type=Path)
     parser.add_argument("--smoke-test", action="store_true")

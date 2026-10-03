@@ -93,6 +93,10 @@ The preview status identifies the active backend.
 
 Nikon lossless and verified HE* decoding can compile OpenRAW's own loops using Numba. The first
 launch may take longer while machine code and GPU kernels are initialized/cached.
+The Windows bundle keeps its compiled kernels under
+`%LOCALAPPDATA%\OpenRAW Studio\numba`, so restarting does not normally require
+recompilation. Updating the app can require a fresh compile. If the cache is
+unwritable, the app can still compile in memory and continue without it.
 This is separate from subsequent slider response; it does not replace our RAW
 engine with another photo application's decoder.
 

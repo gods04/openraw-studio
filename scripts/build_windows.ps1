@@ -66,6 +66,7 @@ try {
         --name $AppName `
         --collect-submodules "openraw_studio" `
         --collect-data "openraw_studio.ui" `
+        --additional-hooks-dir "$RepoRoot/packaging/hooks" `
         --paths "src" `
         --specpath "build\pyinstaller-spec" `
         "packaging\openraw_app.py"

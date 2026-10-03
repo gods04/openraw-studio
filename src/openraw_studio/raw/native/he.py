@@ -173,15 +173,16 @@ def decode_magnitudes(data, signs, gcli, threshold):
 
 
 def dequantize(coefficients, gcli, threshold):
-    """Reconstruct uniform-quantizer magnitudes in four fractional bits."""
-    magnitude = np.abs(coefficients.astype(np.int64)).reshape(-1, 4)
-    shift = np.maximum(1, gcli.astype(np.int64) - threshold + 1)[:, None]
+    """Reconstruct magnitudes, optionally batching precincts on leading axes."""
+    shape = (*coefficients.shape[:-1], -1, 4)
+    magnitude = np.abs(coefficients.astype(np.int64)).reshape(shape)
+    shift = np.maximum(1, gcli.astype(np.int64) - threshold + 1)[..., None]
     reconstructed = magnitude.copy()
     term = magnitude >> shift
     while np.any(term):
         reconstructed += term
         term >>= shift
-    return (np.sign(coefficients).reshape(-1, 4) * reconstructed * 16).astype(np.int32).ravel()
+    return (np.sign(coefficients).reshape(shape) * reconstructed * 16).astype(np.int32).reshape(coefficients.shape)
 
 
 @dataclass(frozen=True)

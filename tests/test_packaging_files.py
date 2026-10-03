@@ -32,6 +32,13 @@ class PackagingFilesTests(unittest.TestCase):
         self.assertIn("Copy-Item", script)
         self.assertTrue((ROOT / "NOTICE").is_file())
 
+    def test_numba_sources_are_present_for_frozen_cache_locator(self):
+        script = (ROOT / "scripts" / "build_windows.ps1").read_text(encoding="utf-8")
+        self.assertIn('--additional-hooks-dir "$RepoRoot/packaging/hooks"', script)
+        hook = runpy.run_path(str(ROOT / "packaging" / "hooks" / "hook-openraw_studio.raw.native.py"))
+        for module in ("compiled_decode", "compiled_he", "compiled_he_transform"):
+            self.assertEqual(hook["module_collection_mode"][f"openraw_studio.raw.native.{module}"], "py")
+
     def test_pyinstaller_entrypoint_is_import_safe(self) -> None:
         module_globals = runpy.run_path(str(ROOT / "packaging" / "openraw_app.py"))
 

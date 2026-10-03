@@ -260,7 +260,7 @@ profiles fail explicitly. A 64-million-sample allocation bound applies. Syntheti
 tests cover multiple widths, predictor resets, negative lifting, partial slices,
 bitstream bounds/padding, damaged packets, transactional state, and JIT fallback.
 Synthetic width coverage does not establish support for additional cameras.
-The complete 278-test suite passes with automatic GPU selection and with
+The complete 289-test suite passes with automatic GPU selection and with
 `OPENRAW_GPU=off` (one GPU-only skip). New synthetic tests cover the complete
 pipeline, color-lifting borders, curve bounds, CPU/JIT equality, crop/orientation,
 JPEG/TIFF output, decoder-cache reuse, and rejection of unknown profiles before
@@ -288,7 +288,7 @@ HE mode 13, other cameras/profiles, and Z5 remain unverified.
 
 All nine samples pass native preparation, Auto, and full-resolution JPEG export
 without source changes. Landscape exports are 6048 x 4032 after active cropping;
-portrait orientation is retained. Local preparation took 3.38-4.28 s and cached
+portrait orientation is retained. The initial implementation prepared in 3.38-4.28 s and cached
 exports 1.72-2.41 s. One actual desktop run passed 16 checks including pointer
 dragging, history, Auto, original comparison, JPEG/TIFF export, and persisted edits.
 A separate RTX 5070 run measured 58 ms median slider-to-display delay, 49 frames
@@ -297,13 +297,46 @@ sample-specific timings, not a promise of instant first import. Auto still
 backs off entirely on one dark museum scene with a small bright subject; improving
 that correction without losing highlight detail is further quality work.
 
-The refreshed local Windows bundle also passes actual frozen-runtime checks:
+The initial local Windows bundle also passed actual frozen-runtime checks:
 HE packet JIT stays active even when its disk cache cannot be written. A landscape
 GPU run prepared in 6.32 s and exported in 2.54 s at 6048 x 4032. A separate
 CPU-only portrait run prepared in 4.98 s and exported in 6.01 s at 4032 x 6048.
 These are different photographs, not a controlled GPU speedup ratio. Neither
 run changed its source. All fourteen D500 regression exports also still pass.
 The bundle contains no private photographs or external reference decoder.
+
+### HE Import Acceleration and Frozen Caches
+
+Horizontal synthesis now optionally compiles OpenRAW's integer dequantization
+and lifting loops. Without the compiler, NumPy batches 32 precincts while entropy
+predictors retain their original slice boundaries. Color reconstruction uses
+64-row tiles with two source-neighbor rows on either side, then writes linear
+uint16 pixels directly. It no longer requires a full nonlinear int64 Bayer frame
+or full-frame intermediate color planes. The checked NumPy fallback remains.
+
+All nine real Z f sensor-buffer hashes are identical before/after this change
+(220,487,040 samples); no source hash changed. On a same-session nine-photo run,
+decode after first-use initialization fell from 3.08-3.42 s to 1.23-1.40 s.
+A real desktop run showed 2.90 s first RAW display (previously 4.77 s), 58 ms
+median slider response, 49 frames during 50 drag edits, and 2.02 s JPEG export.
+All 16 desktop workflow checks still pass. Synthetic tests compare every
+transform path, varying batch boundaries, negative values, narrow/odd component
+dimensions, padding widths, and unavailable/unwritable compiler cache behavior.
+
+Frozen kernels load as source modules through the PyInstaller hook, not PYZ
+bytecode with virtual source filenames. Merely adding .py files as data did not
+make Numba use the requested cache locator. Before importing Numba, the launcher
+selects a resolved per-user cache directory under `OpenRAW Studio/numba` unless
+`NUMBA_CACHE_DIR` was explicitly supplied. Resolving the existing directory also
+avoids the observed Windows app-virtualization cross-volume rename failure.
+Unavailable cache directories still use the in-memory JIT fallback.
+
+Actual independent EXE launches verify persistence: Z f preparation was 6.35 s
+with no compiled cache, then 2.14 s and 1.90 s after process restarts; exports were
+1.96-2.09 s at 6048 x 4032. All three HE kernels remained compiled with no cache
+errors. A separate D500 check prepared in 1.47 s initially and 0.87 s after restart,
+exporting in 1.58-1.62 s at 5568 x 3712 with its compiled decoder active. These are
+local sample-specific measurements; new app builds can require recompilation.
 
 Next: reduce initial import latency, expand verified profiles only with real
 samples, and improve difficult-scene Auto. The reference decoder, wrapper, binaries, private

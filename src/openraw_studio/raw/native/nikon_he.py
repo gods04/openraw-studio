@@ -11,8 +11,7 @@ from pathlib import Path
 from .he import HeFormatError, read_header, validate_packet_profile
 from .he_transform import (
     decode_component_planes,
-    linearize_zf_he_bayer,
-    reconstruct_nonlinear_bayer,
+    reconstruct_zf_he_bayer,
 )
 from .nikon import (
     NikonCompressionError,
@@ -82,9 +81,7 @@ def decode_zf_he(path, metadata):
     payload, header, maker = read_zf_he_payload(path, metadata)
     try:
         components = decode_component_planes(payload)
-        nonlinear = reconstruct_nonlinear_bayer(components)
-        del components
-        samples = linearize_zf_he_bayer(nonlinear)
+        samples = reconstruct_zf_he_bayer(components)
     except HeFormatError as error:
         raise NikonCompressionError(f"Nikon High Efficiency: {error}") from error
     summary = metadata.summary
