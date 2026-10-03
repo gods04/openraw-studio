@@ -16,6 +16,8 @@ PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 def encode_png_rgb8(image: PreviewRgbImage) -> bytes:
     """Encode an 8-bit RGB preview image as a PNG byte stream."""
 
+    if image.bit_depth != 8:
+        raise ValueError("Preview PNG writer requires an 8-bit image")
     if image.width <= 0 or image.height <= 0:
         raise ValueError("PNG image dimensions must be positive")
     if len(image.pixels) != image.width * image.height:

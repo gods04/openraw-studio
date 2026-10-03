@@ -10,6 +10,19 @@ import numpy as np
 from openraw_studio.raw.native.tonal import apply_tonal_regions_array
 
 _KERNELS = r"""
+#ifdef RGB16
+typedef ushort channel_t;
+#define RGB_MAX 65535
+#define RGB_UNIT 257
+#define ROUND_RGB(v) convert_ushort3_sat_rte(v)
+#else
+typedef uchar channel_t;
+#define RGB_MAX 255
+#define RGB_UNIT 1
+#define ROUND_RGB(v) convert_uchar3_sat_rte(v)
+#endif
+#define LUMA_DIV (256 * RGB_UNIT)
+#define GUIDE(v) (((v) + LUMA_DIV/2) / LUMA_DIV)
 float3 finish_color(float3 c, __global const float *p) {
     c = (c - 0.18f) * p[12] + 0.18f;
     float3 pos = clamp(c, 0.0f, 1.0f);
@@ -38,11 +51,11 @@ float3 calibrated_color(float3 c, __global const float *p) {
 float3 color(float3 c, __global const float *p) {
     return calibrated_color(c * (float3)(p[9],p[10],p[11]), p);
 }
-__kernel void tone(__global const float *src, __global uchar *dst, __global const float *p) {
+__kernel void tone(__global const float *src, __global channel_t *dst, __global const float *p) {
     int i = get_global_id(0);
-    vstore3(convert_uchar3_sat_rte(color(vload3(i,src),p)*255.0f),i,dst);
+    vstore3(ROUND_RGB(color(vload3(i,src),p)*(float)RGB_MAX),i,dst);
 }
-__kernel void bayer(__global const ushort *src, __global uchar *dst,
+__kernel void bayer(__global const ushort *src, __global channel_t *dst,
     __global const float *p, __global const int *cfa, __global const float *black,
     int sw, int left, int top, int w, int h, float white) {
     int i = get_global_id(0), y=i/w, x=i%w;
@@ -64,7 +77,7 @@ __kernel void bayer(__global const ushort *src, __global uchar *dst,
         }
         rgb[ch]=weights>0?sum/weights:0;
     }
-    vstore3(convert_uchar3_sat_rte(color(rgb,p)*255.0f),i,dst);
+    vstore3(ROUND_RGB(color(rgb,p)*(float)RGB_MAX),i,dst);
 }
 float mhc_sample(__global const ushort *src, __global const float *p,
     __global const int *cfa, __global const float *black,
@@ -76,7 +89,7 @@ float mhc_sample(__global const ushort *src, __global const float *p,
     return clamp(((float)src[(y+top)*sw+x+left]-black[pos])/(white-black[pos]),0.0f,1.0f)*p[9+cfa[pos]];
 }
 #define MHC(dy,dx) mhc_sample(src,p,cfa,black,sw,left,top,w,h,white,y+(dy),x+(dx))
-__kernel void malvar(__global const ushort *src, __global uchar *dst,
+__kernel void malvar(__global const ushort *src, __global channel_t *dst,
     __global const float *p, __global const int *cfa, __global const float *black,
     int sw, int left, int top, int w, int h, float white) {
     int i=get_global_id(0), y=i/w, x=i%w;
@@ -94,20 +107,20 @@ __kernel void malvar(__global const ushort *src, __global uchar *dst,
         float opposite=(6.0f*c+2.0f*diagonal-1.5f*(far_x+far_y))/8.0f;
         rgb=ch==0 ? (float3)(c,g,opposite) : (float3)(opposite,g,c);
     }
-    vstore3(convert_uchar3_sat_rte(calibrated_color(rgb,p)*255.0f),i,dst);
+    vstore3(ROUND_RGB(calibrated_color(rgb,p)*(float)RGB_MAX),i,dst);
 }
 #undef MHC
-__kernel void luminance_noise(__global const uchar *src, __global uchar *dst,
+__kernel void luminance_noise(__global const channel_t *src, __global channel_t *dst,
     __global const int *weights, int w, int h, int amount) {
     int i=get_global_id(0), y=i/w, x=i%w;
     int3 rgb=convert_int3(vload3(i,src));
-    int weighted=54*rgb.x+183*rgb.y+19*rgb.z, guide=(weighted+128)>>8;
+    int weighted=54*rgb.x+183*rgb.y+19*rgb.z, guide=GUIDE(weighted);
     long sy=0, sw=0;
     for(int dy=-2;dy<=2;dy++) for(int dx=-2;dx<=2;dx++) {
         int yy=clamp(y+dy,0,h-1), xx=clamp(x+dx,0,w-1);
         int3 n=convert_int3(vload3(yy*w+xx,src));
         int nw=54*n.x+183*n.y+19*n.z;
-        long weight=weights[((dy+2)*5+dx+2)*256+abs(((nw+128)>>8)-guide)];
+        long weight=weights[((dy+2)*5+dx+2)*256+abs(GUIDE(nw)-guide)];
         sw+=weight; sy+=weight*(long)(nw-weighted);
     }
     long numerator=sy*(long)amount, denominator=sw*(long)(256*65536);
@@ -115,15 +128,15 @@ __kernel void luminance_noise(__global const uchar *src, __global uchar *dst,
     long whole=magnitude/denominator, remainder=magnitude%denominator;
     if(2*remainder>denominator || (2*remainder==denominator && whole%2==1)) whole++;
     int delta=(int)(numerator<0?-whole:whole);
-    delta=clamp(delta,-min(rgb.x,min(rgb.y,rgb.z)),255-max(rgb.x,max(rgb.y,rgb.z)));
-    vstore3(convert_uchar3(rgb+delta),i,dst);
+    delta=clamp(delta,-min(rgb.x,min(rgb.y,rgb.z)),RGB_MAX-max(rgb.x,max(rgb.y,rgb.z)));
+    vstore3(ROUND_RGB(convert_float3(rgb+delta)),i,dst);
 }
-__kernel void chroma_noise(__global const uchar *src, __global uchar *dst,
+__kernel void chroma_noise(__global const channel_t *src, __global channel_t *dst,
     __global const float *spatial, __global const float *light, __global const float *color_range,
     int w, int h, float strength) {
     int i=get_global_id(0), y=i/w, x=i%w;
     int3 rgb=convert_int3(vload3(i,src));
-    int weighted=54*rgb.x+183*rgb.y+19*rgb.z, guide=(weighted+128)>>8;
+    int weighted=54*rgb.x+183*rgb.y+19*rgb.z, guide=GUIDE(weighted);
     float luma=(float)weighted/256.0f;
     int u=rgb.x-rgb.y, v=rgb.z-rgb.y;
     float su=0, sv=0, sw=0;
@@ -132,8 +145,9 @@ __kernel void chroma_noise(__global const uchar *src, __global uchar *dst,
         for(int dx=-2;dx<=2;dx++) {
             int xx=clamp(x+dx,0,w-1);
             int3 n=convert_int3(vload3(yy*w+xx,src));
-            int nl=(54*n.x+183*n.y+19*n.z+128)>>8, nu=n.x-n.y, nv=n.z-n.y;
-            float weight=spatial[(dy+2)*5+dx+2]*light[abs(nl-guide)]*color_range[abs(nu-u)+abs(nv-v)];
+            int nl=GUIDE(54*n.x+183*n.y+19*n.z), nu=n.x-n.y, nv=n.z-n.y;
+            int difference=(abs(nu-u)+abs(nv-v)+RGB_UNIT/2)/RGB_UNIT;
+            float weight=spatial[(dy+2)*5+dx+2]*light[abs(nl-guide)]*color_range[difference];
             sw+=weight; su+=weight*(float)nu; sv+=weight*(float)nv;
         }
     }
@@ -142,10 +156,10 @@ __kernel void chroma_noise(__global const uchar *src, __global uchar *dst,
     float3 c=(float3)(fu-offset,-offset,fv-offset);
     float scale=1.0f;
     for(int ch=0;ch<3;ch++) {
-        if(c[ch]>0) scale=fmin(scale,(255.0f-luma)/c[ch]);
+        if(c[ch]>0) scale=fmin(scale,((float)RGB_MAX-luma)/c[ch]);
         else if(c[ch]<0) scale=fmin(scale,-luma/c[ch]);
     }
-    vstore3(convert_uchar3_sat_rte((float3)(luma)+scale*c),i,dst);
+    vstore3(ROUND_RGB((float3)(luma)+scale*c),i,dst);
 }
 """
 
@@ -176,7 +190,9 @@ def color_parameters(
     )
 
 
-def tone_cpu(pixels, params):
+def tone_cpu(pixels, params, *, bit_depth=8):
+    if bit_depth not in (8, 16):
+        raise ValueError("Tone output bit depth must be 8 or 16")
     camera = pixels * params[9:12]
     if params[17] >= 0:
         np.minimum(camera, params[17], out=camera)
@@ -194,7 +210,7 @@ def tone_cpu(pixels, params):
             axis=-1, keepdims=True
         ) / 256
         rgb = luma + (rgb - luma) * params[15]
-    return np.rint(np.clip(rgb, 0, 1) * 255).astype(np.uint8)
+    return np.rint(np.clip(rgb, 0, 1) * ((1 << bit_depth) - 1)).astype(np.uint8 if bit_depth == 8 else np.uint16)
 
 
 class OpenClRenderer:
@@ -214,6 +230,21 @@ class OpenClRenderer:
         self._luminance_validated = False
         self._cached_pixels = None
         self._pixel_buffer = None
+        self._kernels16 = None
+        self._validated16 = set()
+
+    def _kernel(self, name, bit_depth):
+        if bit_depth == 8:
+            return getattr(self, name + "_kernel")
+        if bit_depth != 16:
+            raise ValueError("GPU output bit depth must be 8 or 16")
+        if self._kernels16 is None:
+            program = self.cl.Program(self.context, _KERNELS).build(options=["-DRGB16"])
+            self._kernels16 = {
+                key: self.cl.Kernel(program, key + ("_noise" if key in ("chroma", "luminance") else ""))
+                for key in ("tone", "bayer", "malvar", "chroma", "luminance")
+            }
+        return self._kernels16[name]
 
     def buffer(self, data):
         return self.cl.Buffer(
@@ -222,15 +253,15 @@ class OpenClRenderer:
             hostbuf=np.ascontiguousarray(data),
         )
 
-    def tone(self, pixels, params):
+    def tone(self, pixels, params, *, bit_depth=8):
         if self._cached_pixels is not pixels:
             self._pixel_buffer = self.buffer(pixels)
             self._cached_pixels = pixels
-        output = np.empty(pixels.shape, dtype=np.uint8)
+        output = np.empty(pixels.shape, dtype=np.uint8 if bit_depth == 8 else np.uint16)
         destination = self.cl.Buffer(
             self.context, self.cl.mem_flags.WRITE_ONLY, output.nbytes
         )
-        self.tone_kernel(
+        self._kernel("tone", bit_depth)(
             self.queue,
             (pixels.size // 3,),
             None,
@@ -242,15 +273,19 @@ class OpenClRenderer:
         return output
 
     def luminance(self, pixels, strength):
-        if not self._luminance_validated:
+        bit_depth = pixels.dtype.itemsize * 8
+        if not (self._luminance_validated if bit_depth == 8 else "luminance" in self._validated16):
             from openraw_studio.raw.native.luminance import _reference_chunk
 
-            sample = np.random.default_rng(217).integers(0, 256, (9, 11, 3), dtype=np.uint8)
+            sample = np.random.default_rng(217).integers(0, 1 << bit_depth, (9, 11, 3), dtype=pixels.dtype)
             expected = _reference_chunk(sample, 0, 9, .73)
             actual = self._luminance(sample, .73)
             if not np.array_equal(actual, expected):
                 raise RuntimeError("GPU luminance-noise validation failed")
-            self._luminance_validated = True
+            if bit_depth == 8:
+                self._luminance_validated = True
+            else:
+                self._validated16.add("luminance")
         return self._luminance(pixels, strength)
 
     def _luminance(self, pixels, strength):
@@ -259,7 +294,7 @@ class OpenClRenderer:
         height, width, _ = pixels.shape
         output = np.empty_like(pixels)
         destination = self.cl.Buffer(self.context, self.cl.mem_flags.WRITE_ONLY, output.nbytes)
-        self.luminance_kernel(
+        self._kernel("luminance", pixels.dtype.itemsize * 8)(
             self.queue, (height * width,), None, self.buffer(pixels), destination,
             self.buffer(WEIGHTS), np.int32(width), np.int32(height), np.int32(round(strength * 65536)),
         )
@@ -267,15 +302,19 @@ class OpenClRenderer:
         return output
 
     def chroma(self, pixels, strength):
-        if not self._chroma_validated:
+        bit_depth = pixels.dtype.itemsize * 8
+        if not (self._chroma_validated if bit_depth == 8 else "chroma" in self._validated16):
             from openraw_studio.raw.native.chroma import _reference_chunk
 
-            sample = np.random.default_rng(215).integers(0, 256, (9, 11, 3), dtype=np.uint8)
+            sample = np.random.default_rng(215).integers(0, 1 << bit_depth, (9, 11, 3), dtype=pixels.dtype)
             expected = _reference_chunk(sample, 0, 9, .73)
             actual = self._chroma(sample, .73)
             if actual.shape != expected.shape or np.max(np.abs(actual.astype(int) - expected.astype(int))) > 1:
                 raise RuntimeError("GPU color-noise validation failed")
-            self._chroma_validated = True
+            if bit_depth == 8:
+                self._chroma_validated = True
+            else:
+                self._validated16.add("chroma")
         return self._chroma(pixels, strength)
 
     def _chroma(self, pixels, strength):
@@ -284,7 +323,7 @@ class OpenClRenderer:
         height, width, _ = pixels.shape
         output = np.empty_like(pixels)
         destination = self.cl.Buffer(self.context, self.cl.mem_flags.WRITE_ONLY, output.nbytes)
-        self.chroma_kernel(
+        self._kernel("chroma", pixels.dtype.itemsize * 8)(
             self.queue, (height * width,), None, self.buffer(pixels), destination,
             self.buffer(SPATIAL), self.buffer(LIGHT), self.buffer(COLOR),
             np.int32(width), np.int32(height), np.float32(strength),
@@ -292,20 +331,23 @@ class OpenClRenderer:
         self.cl.enqueue_copy(self.queue, output, destination).wait()
         return output
 
-    def bayer(self, raw_bytes, source_width, crop, pattern, black, white, params, *, method="bilinear"):
-        if method == "malvar" and not self._malvar_validated:
-            if not _validate_malvar_renderer(self):
+    def bayer(self, raw_bytes, source_width, crop, pattern, black, white, params, *, method="bilinear", bit_depth=8):
+        if method == "malvar" and not (self._malvar_validated if bit_depth == 8 else "malvar" in self._validated16):
+            if not _validate_malvar_renderer(self, bit_depth=bit_depth):
                 raise RuntimeError("GPU MHC validation failed")
-            self._malvar_validated = True
-        return self._bayer(raw_bytes, source_width, crop, pattern, black, white, params, method=method)
+            if bit_depth == 8:
+                self._malvar_validated = True
+            else:
+                self._validated16.add("malvar")
+        return self._bayer(raw_bytes, source_width, crop, pattern, black, white, params, method=method, bit_depth=bit_depth)
 
-    def _bayer(self, raw_bytes, source_width, crop, pattern, black, white, params, *, method="bilinear"):
+    def _bayer(self, raw_bytes, source_width, crop, pattern, black, white, params, *, method="bilinear", bit_depth=8):
         left, top, width, height = crop
-        output = np.empty((height, width, 3), dtype=np.uint8)
+        output = np.empty((height, width, 3), dtype=np.uint8 if bit_depth == 8 else np.uint16)
         destination = self.cl.Buffer(
             self.context, self.cl.mem_flags.WRITE_ONLY, output.nbytes
         )
-        kernel = self.malvar_kernel if method == "malvar" else self.bayer_kernel
+        kernel = self._kernel("malvar" if method == "malvar" else "bayer", bit_depth)
         kernel(
             self.queue,
             (width * height,),
@@ -329,7 +371,7 @@ class OpenClRenderer:
 _local = threading.local()
 
 
-def _validate_malvar_renderer(renderer):
+def _validate_malvar_renderer(renderer, *, bit_depth=8):
     from openraw_studio.raw.native.malvar import demosaic_chunk
 
     sample = np.random.default_rng(74).integers(0, 17000, (8, 10), dtype=np.uint16)
@@ -340,9 +382,9 @@ def _validate_malvar_renderer(renderer):
     expected_camera = np.stack(demosaic_chunk(sample, crop, 0, 6, pattern, black, 16383, gains), axis=2)
     calibrated = params.copy()
     calibrated[9:12] = 1
-    expected = tone_cpu(expected_camera, calibrated)
-    actual = renderer._bayer(sample.tobytes(), 10, crop, pattern, black, 16383, params, method="malvar")
-    return actual.shape == expected.shape and np.max(np.abs(actual.astype(int) - expected.astype(int))) <= 1
+    expected = tone_cpu(expected_camera, calibrated, bit_depth=bit_depth)
+    actual = renderer._bayer(sample.tobytes(), 10, crop, pattern, black, 16383, params, method="malvar", bit_depth=bit_depth)
+    return actual.shape == expected.shape and np.max(np.abs(actual.astype(int) - expected.astype(int))) <= (1 if bit_depth == 8 else 4)
 
 
 def _validate_tone_renderer(renderer):

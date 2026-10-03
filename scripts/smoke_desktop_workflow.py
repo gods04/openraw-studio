@@ -24,6 +24,7 @@ def main():
     parser.add_argument("--color-noise", type=float, default=0)
     parser.add_argument("--luminance-noise", type=float, default=0)
     parser.add_argument("--auto-color-noise", action="store_true")
+    parser.add_argument("--tiff-bit-depth", type=int, choices=(8, 16), default=8)
     args = parser.parse_args()
     if not 0 <= args.color_noise <= 1:
         parser.error("--color-noise must be within [0, 1]")
@@ -259,6 +260,8 @@ def main():
             app._zoom_changed()
             app.export_format_var.set("JPEG")
             app._sync_export_options()
+            require(app._selected_export_bit_depth() == 8 and app.export_bit_depth_combo.instate(["disabled"]),
+                    "JPEG locks bit depth to 8")
             app.process_button.invoke()
             state["phase"] = "jpeg"
         elif phase == "jpeg" and not app.is_busy and app.last_export_path is not None:
@@ -267,9 +270,16 @@ def main():
                 report["export_size"] = list(exported.size)
             app.export_format_var.set("TIFF")
             app.export_format_combo.event_generate("<<ComboboxSelected>>")
+            app.export_bit_depth_var.set(args.tiff_bit_depth)
+            app.export_bit_depth_combo.event_generate("<<ComboboxSelected>>")
+            require(not app.export_bit_depth_combo.instate(["disabled"]), "TIFF enables bit-depth selection")
             app.process_button.invoke()
             state["phase"] = "tiff"
         elif phase == "tiff" and not app.is_busy and app.last_export_path is not None:
+            import tifffile
+
+            with tifffile.TiffFile(app.last_export_path) as opened:
+                require(opened.pages[0].bitspersample == args.tiff_bit_depth, "TIFF contains the selected bit depth")
             with Image.open(app.last_export_path) as exported:
                 require(exported.format == "TIFF", "TIFF export opens correctly")
                 require(
@@ -283,6 +293,7 @@ def main():
                 "Session persisted without exporting a new recipe",
             )
             app._select_source(source, ready_status="Reopened")
+            require(app._selected_export_bit_depth() == args.tiff_bit_depth, "Reopening restores TIFF bit depth")
             require(
                 app._current_overrides() == state["saved"], "Reopening restores edits"
             )
@@ -296,6 +307,18 @@ def main():
     def capture():
         try:
             capture_window(app.root, args.output / "workspace.png")
+            app.inspector_tabs.select(2)
+            app.root.after(400, capture_export)
+        except Exception as error:
+            fail(error)
+
+    def capture_export():
+        try:
+            combo = app.export_bit_depth_combo
+            require(combo.winfo_ismapped() and 0 < combo.winfo_rooty() - app.root.winfo_rooty()
+                    < app.root.winfo_height() - combo.winfo_height(),
+                    "Bit-depth selector is visible in the compact Export tab")
+            capture_window(app.root, args.output / "export-options.png")
             finish()
         except Exception as error:
             fail(error)

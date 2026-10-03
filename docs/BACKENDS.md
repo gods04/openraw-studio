@@ -27,7 +27,7 @@ standard Nikon as-shot white balance from MakerNote tag 0x000c
 exact-model Nikon D500, 1 J5, Z5, and Z f camera profiles to linear sRGB
 EXIF orientation handling for native Nikon renders
 simple PNG preview support for narrow uncompressed DNG/Nikon files
-local JPEG quality and lossless 8-bit TIFF export support for renderable DNG/Nikon files
+local JPEG quality and lossless 8/16-bit TIFF export support for renderable DNG/Nikon files
 safe camera/capture derivative metadata without GPS passthrough
 12/14-bit packed strip payloads supported for the current DNG/Nikon path
 16-bit strip and tile payloads supported for the current DNG/Nikon path

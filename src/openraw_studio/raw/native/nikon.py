@@ -159,12 +159,13 @@ class NikonDecodedPixelData:
 
 @dataclass(frozen=True)
 class NikonRenderedRgbImage:
-    """Packed 8-bit RGB render produced by the Nikon 34713 path."""
+    """Packed RGB render; 16-bit channels use little-endian byte order."""
 
     width: int
     height: int
     rgb_bytes: bytes
     transfer: str = "gamma-2.2"
+    bit_depth: int = 8
 
 
 class NikonCompressionError(ValueError):
@@ -340,6 +341,7 @@ def render_nikon_34713_to_file(
     jpeg_exif: Any | None = None,
     tiffinfo: Any | None = None,
     quality: str = "fast",
+    bit_depth: int = 8,
 ) -> tuple[int, int]:
     """Render a supported Nikon 34713 RAW file directly to PNG, JPEG, or TIFF."""
 
@@ -361,6 +363,7 @@ def render_nikon_34713_to_file(
         jpeg_exif=jpeg_exif,
         tiffinfo=tiffinfo,
         quality=quality,
+        bit_depth=bit_depth,
     )
 
 
@@ -382,10 +385,16 @@ def render_decoded_nikon_34713_to_file(
     jpeg_exif: Any | None = None,
     tiffinfo: Any | None = None,
     quality: str = "fast",
+    bit_depth: int = 8,
 ) -> tuple[int, int]:
     """Render an already decoded Nikon 34713 sensor payload to PNG, JPEG, or TIFF."""
 
     destination = Path(output_path)
+    suffix = destination.suffix.lower()
+    if bit_depth not in (8, 16):
+        raise ValueError("RGB output bit depth must be 8 or 16")
+    if bit_depth == 16 and suffix not in {".tif", ".tiff"}:
+        raise NikonCompressionError("16-bit Nikon output requires TIFF (.tif or .tiff)")
     rendered = render_decoded_nikon_34713_image(
         decoded,
         max_dimension=max_dimension,
@@ -399,7 +408,16 @@ def render_decoded_nikon_34713_to_file(
         color_noise=color_noise,
         luminance_noise=luminance_noise,
         quality=quality,
+        bit_depth=bit_depth,
     )
+    if bit_depth == 16:
+        import numpy as np
+
+        from openraw_studio.raw.native.tiff import write_tiff_rgb16
+
+        pixels = np.frombuffer(rendered.rgb_bytes, dtype="<u2").reshape(rendered.height, rendered.width, 3)
+        write_tiff_rgb16(pixels, destination, tiffinfo=tiffinfo)
+        return rendered.width, rendered.height
     try:
         from PIL import Image
     except ImportError as exc:
@@ -407,7 +425,6 @@ def render_decoded_nikon_34713_to_file(
 
     image = Image.frombytes("RGB", (rendered.width, rendered.height), rendered.rgb_bytes)
 
-    suffix = destination.suffix.lower()
     if suffix not in {".jpg", ".jpeg", ".png", ".tif", ".tiff"}:
         raise NikonCompressionError("Nikon 34713 render output must be .png, .jpg, .jpeg, .tif, or .tiff")
     with atomic_output_path(destination) as temporary_path:
@@ -445,11 +462,16 @@ def render_decoded_nikon_34713_image(
     luminance_noise: float = 0.0,
     quality: str = "fast",
     region: tuple[int, int, int, int] | None = None,
+    bit_depth: int = 8,
 ) -> NikonRenderedRgbImage:
     """Render an already decoded Nikon 34713 sensor payload into packed RGB bytes."""
 
     from openraw_studio.raw.native.noise import noise_radius, reduce_noise
 
+    if bit_depth not in (8, 16):
+        raise ValueError("RGB output bit depth must be 8 or 16")
+    if bit_depth == 16 and quality != "full":
+        raise NikonCompressionError("16-bit Nikon rendering requires quality='full'")
     crop = _render_crop(decoded)
     region_box = None
     if region is not None:
@@ -485,6 +507,7 @@ def render_decoded_nikon_34713_image(
             shadows=shadows,
             saturation=saturation,
             demosaic="malvar",
+            bit_depth=bit_depth,
         )
         width, height, rgb = full.width, full.height, full.rgb_bytes
     elif quality == "fast":
@@ -513,6 +536,17 @@ def render_decoded_nikon_34713_image(
         )
     else:
         raise NikonCompressionError("Nikon render quality must be 'fast' or 'full'")
+    if bit_depth == 16:
+        import numpy as np
+
+        pixels = np.frombuffer(rgb, dtype="<u2").reshape(height, width, 3)
+        if color_noise != 0 or luminance_noise != 0:
+            pixels = reduce_noise(pixels, color_noise=color_noise, luminance_noise=luminance_noise)
+        pixels = _transform_rgb16(pixels, decoded.orientation, region_box=region_box, max_dimension=max_dimension)
+        return NikonRenderedRgbImage(
+            width=pixels.shape[1], height=pixels.shape[0],
+            rgb_bytes=pixels.astype("<u2", copy=False).tobytes(), bit_depth=bit_depth,
+        )
     try:
         from PIL import Image
     except ImportError as exc:
@@ -1144,6 +1178,43 @@ def _cfa_2x2(cfa_pattern: tuple[int, ...] | None) -> tuple[str, str, str, str]:
     if sorted(channels) != ["B", "G", "G", "R"]:
         return "R", "G", "G", "B"
     return channels  # type: ignore[return-value]
+
+
+def _transform_rgb16(
+    pixels: Any,
+    orientation: int,
+    *,
+    region_box: tuple[int, int, int, int] | None,
+    max_dimension: int | None,
+) -> Any:
+    import numpy as np
+
+    if region_box is not None:
+        left, top, right, bottom = region_box
+        pixels = pixels[top:bottom, left:right]
+    if orientation in (5, 6, 7, 8):
+        pixels = pixels.swapaxes(0, 1)
+    if orientation in (3, 4, 7, 8):
+        pixels = pixels[::-1]
+    if orientation in (2, 3, 6, 7):
+        pixels = pixels[:, ::-1]
+    if max_dimension is not None:
+        if max_dimension <= 0:
+            raise NikonCompressionError("max_dimension must be greater than zero")
+        height, width = pixels.shape[:2]
+        if max(height, width) > max_dimension:
+            from PIL import Image
+
+            scale = max_dimension / float(max(height, width))
+            size = (max(1, round(width * scale)), max(1, round(height * scale)))
+            resized = np.empty((size[1], size[0], 3), dtype=np.uint16)
+            # Pillow RGB is 8-bit; resize each channel in floating-point mode.
+            for channel in range(3):
+                plane = Image.fromarray(pixels[:, :, channel].astype(np.float32))
+                values = np.asarray(plane.resize(size, resample=Image.Resampling.LANCZOS))
+                resized[:, :, channel] = np.rint(np.clip(values, 0, 65535)).astype(np.uint16)
+            pixels = resized
+    return pixels
 
 
 def _resize_pillow_image(image: Any, *, max_dimension: int) -> Any:

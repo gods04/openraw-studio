@@ -18,6 +18,8 @@ def write_jpeg(
 ) -> Path:
     """Write an 8-bit RGB image as a JPEG file."""
 
+    if image.bit_depth != 8:
+        raise ValueError("JPEG writer requires an 8-bit image")
     if output_path.suffix.lower() not in {".jpg", ".jpeg"}:
         raise ValueError("JPEG output path must end in .jpg or .jpeg")
     if quality < 1 or quality > 100:

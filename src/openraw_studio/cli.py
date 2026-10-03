@@ -9,6 +9,7 @@ import sys
 from typing import Mapping
 
 from openraw_studio import __version__
+from openraw_studio.export.formats import validate_export_bit_depth
 from openraw_studio.pipeline.batch import BatchResult, discover_batch_sources, run_batch_export
 from openraw_studio.pipeline.errors import BackendUnavailableError, PipelineError
 from openraw_studio.pipeline.interfaces import PipelineRequest
@@ -74,6 +75,7 @@ def build_parser() -> argparse.ArgumentParser:
     batch.add_argument("--limit", type=int, default=200, help="Maximum number of RAW-like files to scan.")
     batch.add_argument("--format", dest="export_format", choices=("jpeg", "tiff"), default="jpeg", help="Final export format.")
     batch.add_argument("--quality", dest="export_quality", type=int, default=92, help="JPEG quality from 1 to 100; TIFF is lossless.")
+    batch.add_argument("--bit-depth", dest="export_bit_depth", type=int, choices=(8, 16), default=8, help="Output bit depth; 16-bit requires TIFF.")
     batch.add_argument("--preview-only", action="store_true", help="Render previews and recipes but skip final export.")
     batch.add_argument("--json", action="store_true", help="Print a machine-readable batch report.")
 
@@ -108,6 +110,7 @@ def build_parser() -> argparse.ArgumentParser:
     process.add_argument("--luminance-noise", type=float, default=0.0, help="Rendered luminance-noise reduction from 0.0 off to 1.0 full.")
     process.add_argument("--format", dest="export_format", choices=("jpeg", "tiff"), default="jpeg", help="Final export format.")
     process.add_argument("--quality", dest="export_quality", type=int, default=92, help="JPEG quality from 1 to 100; TIFF is lossless.")
+    process.add_argument("--bit-depth", dest="export_bit_depth", type=int, choices=(8, 16), default=8, help="Output bit depth; 16-bit requires TIFF.")
     process.add_argument(
         "--raw-backend",
         choices=("native", "darktable-experimental"),
@@ -136,7 +139,7 @@ def _run_doctor(include_experimental_backends: bool, darktable_cli: str | None) 
         "  status: foundation ready; Nikon NEF/NRW metadata import, embedded JPEG preview, "
         "MakerNote compression metadata summary, optimized Nikon 34713 lossless sensor decode/render, "
         "and basic exposure/contrast/highlights/shadows/temperature/tint/saturation controls; simple PNG preview/native render and "
-        "local JPEG or lossless 8-bit TIFF export for narrow uncompressed 12/14/16-bit DNG, guarded TIFF-style Nikon sensor "
+        "local 8-bit JPEG or lossless 8/16-bit TIFF export for narrow uncompressed 12/14/16-bit DNG, guarded TIFF-style Nikon sensor "
         "files, and supported Nikon 34713 lossless files"
     )
     if include_experimental_backends or darktable_cli:
@@ -231,6 +234,7 @@ def _run_process(args: argparse.Namespace) -> int:
                 preview_only=args.preview_only,
                 export_format=args.export_format,
                 export_quality=args.export_quality,
+                export_bit_depth=args.export_bit_depth,
             )
         )
     except BackendUnavailableError as exc:
@@ -294,6 +298,7 @@ def _run_batch(args: argparse.Namespace) -> int:
         preview_only=args.preview_only,
         export_format=args.export_format,
         export_quality=args.export_quality,
+        export_bit_depth=args.export_bit_depth,
     )
 
     if args.json:
@@ -359,6 +364,11 @@ def _validate_adjustment_args(args: argparse.Namespace) -> int | None:
         return 2
     if not 1 <= args.export_quality <= 100:
         print("error: --quality must be between 1 and 100", file=sys.stderr)
+        return 2
+    try:
+        validate_export_bit_depth(args.export_bit_depth, export_format=args.export_format)
+    except ValueError as exc:
+        print(f"error: --bit-depth: {exc}", file=sys.stderr)
         return 2
     return None
 

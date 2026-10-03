@@ -5,7 +5,7 @@
 Implemented: photo-first editor, continuous GPU/CPU preview, guarded Auto with
 strength control, original RAW comparison, undo/redo, local edit retention,
 manual color/luminance-noise reduction, sampled Auto color-noise advice,
-native-pixel 100%/200% inspection, JPEG/TIFF export, and cancellable per-photo
+native-pixel 100%/200% inspection, JPEG/8-bit or 16-bit TIFF export, and cancellable per-photo
 batch modes. Supported compressed
 Nikon paths include F-series lossless, 12-bit D20 non-split (verified on 1 J5),
 verified Z5 12/14-bit lossless and D40 non-split lossy FX, and the verified Z f HE/HE* 14-bit profile
@@ -18,6 +18,16 @@ and sensor-domain denoise with calibrated luminance-noise advice. Further first-
 also remain open.
 Semantic portrait/scene AI and mobile remain later phases.
 
+Latest export increment adds genuine 16-bit rendered TIFF alongside the default
+8-bit JPEG/TIFF path, including CPU/GPU rendering, both noise filters, metadata,
+single/batch/CLI controls, and recipe restoration. Preview/Auto/QC remain 8-bit;
+linear or wider-gamut TIFF is still pending. Bounded parallel Deflate avoids
+serial compression becoming the main export cost. See `DEVELOPMENT.md` for
+precision limits and verification details.
+The 539-test suite and eight rebuilt-EXE checks pass. Checked GPU TIFF16 takes
+2.56-3.57 s; CPU TIFF16 remains slower. Actual live response stays at 46/108 ms
+median GPU/CPU with both noise filters. No public installer is released.
+
 Latest Auto color increment measures renderer response before refining a
 spatially consistent near-neutral cast. It changes only Temperature/Tint after
 tonal recovery and rechecks preview/native clipping, shadow tones, and color
@@ -27,7 +37,7 @@ semantic illuminant recognition or calibrated white balance; saved edits remain
 unchanged unless Auto is run again.
 Across 33 real-photo checks, four examples receive bounded color refinements
 and 29 keep the previous Auto settings; CPU/GPU settings agree. All changed
-examples pass full-size budgets at four strengths. The current 491-test suite
+examples pass full-size budgets at four strengths. That increment's 491-test suite
 and two 41-check desktop workflows pass. Six rebuilt-EXE checks match source
 Auto and native detail; prior saved recipes retain their output. See
 `DEVELOPMENT.md` for limits and first-use timing.
@@ -362,7 +372,7 @@ Suggested implementation order:
 35. [done] replace direct DNG ColorMatrix1 multiplication with inverse camera-to-XYZ, Bradford adaptation, and linear-sRGB conversion
 36. [done] compare native Nikon 34713 results with their camera-authored embedded JPEG without a second sensor decode
 37. [done] add Nikon D500 MakerNote black level, standard as-shot white balance, exact camera profile, and EXIF orientation
-38. [partial] add edge-aware demosaic and lossless TIFF export (8-bit TIFF done; edge-aware and 16-bit linear output pending)
+38. [partial] add edge-aware demosaic and lossless TIFF export (8/16-bit rendered TIFF done; edge-aware and 16-bit linear output pending)
 39. [done] preserve safe camera/capture metadata in JPEG/TIFF derivatives without GPS passthrough
 40. [done] publish previews/exports/recipes atomically and show desktop processing progress
 41. [done] record advisory rendered-preview clipping QC and surface desktop warnings

@@ -10,12 +10,13 @@ from openraw_studio.raw.native.tonal import apply_tonal_regions as _apply_tonal_
 
 @dataclass(frozen=True)
 class PreviewRgbImage:
-    """8-bit RGB image ready for simple preview encoding."""
+    """RGB image with integer channels at the declared bit depth."""
 
     width: int
     height: int
     pixels: tuple[tuple[int, int, int], ...]
     transfer: str
+    bit_depth: int = 8
 
     def pixel_at(self, row: int, column: int) -> tuple[int, int, int]:
         if row < 0 or row >= self.height:
@@ -38,13 +39,16 @@ def tone_map_preview(
     color_noise: float = 0.0,
     luminance_noise: float = 0.0,
     gamma: float = 2.2,
+    bit_depth: int = 8,
 ) -> PreviewRgbImage:
-    """Map linear RGB values to a small 8-bit preview.
+    """Map linear RGB values directly to 8-bit or 16-bit RGB.
 
     This is a deliberately simple preview transform. It is not final color
     science, camera profiling, or perceptual rendering.
     """
 
+    if bit_depth not in (8, 16):
+        raise ValueError("RGB output bit depth must be 8 or 16")
     if gamma <= 0.0:
         raise ValueError("gamma must be greater than zero")
 
@@ -68,6 +72,7 @@ def tone_map_preview(
             tint=tint_value,
             saturation_factor=saturation_factor,
             gamma=gamma,
+            maximum=(1 << bit_depth) - 1,
         )
         for red, green, blue in linear.pixels
     )
@@ -76,9 +81,9 @@ def tone_map_preview(
 
         from openraw_studio.raw.native.noise import reduce_noise
 
-        rgb = np.asarray(pixels, np.uint8).reshape(linear.height, linear.width, 3)
+        rgb = np.asarray(pixels, np.uint8 if bit_depth == 8 else np.uint16).reshape(linear.height, linear.width, 3)
         pixels = tuple(map(tuple, reduce_noise(rgb, color_noise=color_noise, luminance_noise=luminance_noise).reshape(-1, 3).tolist()))
-    return PreviewRgbImage(width=linear.width, height=linear.height, pixels=pixels, transfer=f"gamma-{gamma:g}")
+    return PreviewRgbImage(width=linear.width, height=linear.height, pixels=pixels, transfer=f"gamma-{gamma:g}", bit_depth=bit_depth)
 
 
 def _encode_pixel(
@@ -94,6 +99,7 @@ def _encode_pixel(
     tint: float,
     saturation_factor: float,
     gamma: float,
+    maximum: int = 255,
 ) -> tuple[int, int, int]:
     red, green, blue = _apply_white_balance(red, green, blue, warmth=warmth, tint=tint)
     red = _apply_tonal_regions(_apply_contrast(red * exposure_scale, contrast_factor), highlights=highlights, shadows=shadows)
@@ -101,9 +107,9 @@ def _encode_pixel(
     blue = _apply_tonal_regions(_apply_contrast(blue * exposure_scale, contrast_factor), highlights=highlights, shadows=shadows)
     red, green, blue = _apply_saturation(red, green, blue, factor=saturation_factor)
     return (
-        _encode_channel(red, gamma),
-        _encode_channel(green, gamma),
-        _encode_channel(blue, gamma),
+        _encode_channel(red, gamma, maximum),
+        _encode_channel(green, gamma, maximum),
+        _encode_channel(blue, gamma, maximum),
     )
 
 
@@ -135,9 +141,9 @@ def _apply_saturation(red: float, green: float, blue: float, *, factor: float) -
     )
 
 
-def _encode_channel(value: float, gamma: float) -> int:
+def _encode_channel(value: float, gamma: float, maximum: int = 255) -> int:
     encoded = _clamp01(value) ** (1.0 / gamma)
-    return int(round(encoded * 255.0))
+    return int(round(encoded * maximum))
 
 
 def _clamp(value: float, minimum: float, maximum: float) -> float:

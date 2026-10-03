@@ -88,6 +88,7 @@ try {
     foreach ($Package in @(
         @{ Name = "NumPy"; Pattern = "numpy-*.dist-info" },
         @{ Name = "Pillow"; Pattern = "pillow-*.dist-info" },
+        @{ Name = "Tifffile"; Pattern = "tifffile-*.dist-info" },
         @{ Name = "Numba"; Pattern = "numba-*.dist-info" },
         @{ Name = "llvmlite"; Pattern = "llvmlite-*.dist-info" },
         @{ Name = "PyOpenCL"; Pattern = "pyopencl-*.dist-info" },

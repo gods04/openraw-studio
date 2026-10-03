@@ -46,7 +46,7 @@ For supported simple uncompressed DNG files and guarded TIFF-style Nikon sensor
 files, plus supported Nikon 34713 lossless compressed files, the app writes:
 
 - preview PNG
-- selected JPEG or lossless 8-bit TIFF derivative
+- selected JPEG or lossless 8/16-bit TIFF derivative
 - recipe JSON sidecar
 
 For Nikon preview-only files, the app writes:
@@ -239,7 +239,7 @@ can write a dry-run recipe/artifact plan for a RAW-like source file:
 - `openraw inspect` can import Nikon `.NEF` / `.NRW` metadata, detect embedded
   JPEG preview support, detect supported Nikon 34713 lossless renderable files,
   list render blockers, and show the next missing engine capability
-- `openraw process` writes a PNG preview and local JPEG or lossless 8-bit TIFF export for
+- `openraw process` writes a PNG preview and local JPEG or lossless 8/16-bit TIFF export for
   narrow supported uncompressed 12/14/16-bit DNG/Nikon sensor files and
   supported Nikon 34713 lossless files
 - `openraw process --preview-only` writes a JPEG preview for Nikon files with
@@ -303,8 +303,10 @@ openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-outpu
 For supported simple uncompressed DNG files, guarded TIFF-style Nikon sensor
 files, and supported Nikon 34713 lossless files, this writes a preview plus
 `IMG_0001.auto.jpg` by default or `IMG_0001.auto.tif` with `--format tiff`.
-The TIFF is an 8-bit sRGB Deflate-compressed derivative, not a 16-bit linear
-working file. The image data is still an early V0.1 render and does
+TIFF is a Deflate-compressed rendered sRGB derivative: 8-bit by default, or
+16-bit with `--format tiff --bit-depth 16`. The desktop `Export` tab has the
+same bit-depth selection. It is not a linear working file or HDR export.
+The image data is still an early V0.1 render and does
 not represent final camera-aware color science yet.
 JPEG/TIFF derivatives retain camera, lens, ISO, shutter, aperture, focal length,
 capture date, normalized orientation, sRGB, and OpenRAW software metadata. GPS

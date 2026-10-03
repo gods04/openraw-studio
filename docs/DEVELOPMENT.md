@@ -12,7 +12,7 @@ Support is intentionally format-specific; the README lists verified paths.
 2. Generate previews into an output artifact folder.
 3. Extract real EXIF/RAW metadata.
 4. Replace the placeholder image reference with real preview dimensions.
-5. Export JPEG or lossless 8-bit TIFF through `ExportEngine`.
+5. Export JPEG or lossless 8/16-bit TIFF through `ExportEngine`.
 6. Add local smoke-test guidance that does not commit private photos.
 7. Add import-folder watching after one-file processing works.
 
@@ -1394,7 +1394,7 @@ open, and originals are unchanged. Two preceding D500/Z f saved recipes also
 reproduce their previous native-detail output exactly. On the checked D500 CPU,
 Auto takes 2.27 s on the first launch after rebuilding and 0.84 s after restart;
 first-use compilation remains possible. Checked D500/Z f GPU exports take
-1.21/1.50 s with luminance noise 60 and automatically selected color noise.
+1.21/1.50 s with luminance noise 60 and retained/advised color-noise settings.
 These timings exclude EXE startup and are not speed guarantees. No private
 photos, development reference decoder, public ZIP, or installer are bundled.
 
@@ -1402,3 +1402,70 @@ For hidden PowerShell smoke launches, quote each source/output path inside
 `Start-Process -ArgumentList`. Its joined command line does not preserve an
 unquoted path containing spaces; this caused a reproduced test-harness startup
 failure before the corrected command passed.
+
+### Genuine 16-Bit TIFF Export
+
+`RawRenderRequest.bit_depth`, `ExportRequest.bit_depth`, and
+`PipelineRequest.export_bit_depth` default to 8. TIFF accepts 8 or 16, JPEG only
+8; invalid combinations are rejected before processing. CLI process/batch use
+`--format tiff --bit-depth 16`. The desktop Export tab retains output depth in
+the recipe without changing edit history or invalidating the live preview.
+Batch workers capture it on the UI thread alongside format and quality.
+
+Native Nikon full-resolution CPU/OpenCL rendering quantizes float color directly
+to uint16. DNG's scalar renderer likewise encodes directly at 16 bits. Both
+noise filters preserve uint16 values; only their range-weight guides retain
+display-scale bins. Orientation, region crops, optional resizing, and TIFF
+encoding never pass through Pillow RGB8. This remains rendered sRGB with the
+existing transfer curve, not linear/wide-gamut/HDR export or extra sensor bits.
+Previews, native inspection, histogram/QC, and Auto remain 8-bit. With filtering,
+16-bit exports need not downconvert to identical 8-bit preview pixels.
+
+OpenCL compiles its 16-bit program lazily and validates MHC/noise kernels before
+using them. CPU dtype specialization keeps range divisions compile-time constant
+and retains the previous RGB8 filter speed/output. GPU/Numba failures retain CPU
+reference paths; TIFF8/JPEG defaults and legacy render settings are unchanged.
+
+Tifffile 2026.3.3 is pinned for Python 3.11 compatibility. It writes lossless
+Deflate strips through stdlib zlib with at most four compression workers and
+an atomic destination. Only safe camera/capture tags are forwarded; no GPS or
+MakerNotes. The installed BSD-3 license is bundled. Re-export cannot silently
+promote RGB8 into fake RGB16; same-path TIFF checks actual bit depth and size.
+
+Tests cover genuine extra levels, scalar/compiled/reference/GPU paths, all Bayer
+layouts and EXIF orientations, chunk edges, both noise filters, geometry,
+roundtrip metadata, atomic failure, recipe/CLI/batch forwarding, and real Tk
+controls. Real D500/Z f comparisons retain originals and reproduce preceding
+JPEG files byte-for-byte. With both filters, their RGB16 CPU/GPU 99.9th-percentile
+difference is 1 DN16; worst pixels differ by 133/49 DN16 from range-bin boundary
+sensitivity. Do not claim bit-identical CPU/GPU filtered output. Display-scale
+16-versus-8 differences are also measured, not treated as encoding corruption.
+
+Two compact desktop checks (900x640 CPU / 1080x720 GPU) exercise JPEG/TIFF16,
+Auto, noise advice, history, comparison, and recipe restoration, including a
+visible bit-depth control. The earlier blank Export screenshot was a capture
+race after switching tabs; waiting for Tk paint and checking mapped controls
+produces the verified screenshots. Private audit assets stay under ignored output.
+
+The 539-test suite passes in the source and packaging environments, and with
+GPU disabled (six expected GPU-only skips). Eight rebuilt-EXE checks cover
+D500, Z f, Z5 D40, and synthetic DNG; source/native-detail pixels match, both
+16-bit CPU noise kernels compile without fallback, metadata/precision roundtrip,
+and all original hashes remain unchanged. Two frozen GPU TIFF16 files match
+source pixels exactly, and the legacy D500 JPEG remains byte-identical when
+the same manual noise settings are supplied.
+
+On RTX 5070, checked full-size TIFF16 exports take 2.56 s (D500), 3.10 s (Z5),
+and 3.57 s (Z f); the matching D500 JPEG takes 1.36 s. These include pipeline
+processing after RAW preparation, not startup. The D500 CPU TIFF16 check takes
+10.30 s initially and 7.63 s after restart, so CPU/high-precision export remains
+a performance target. Files are roughly 101-140 MB for these examples. A
+single Z f compression-only comparison goes from 3.74 s serial to 1.27-1.32 s
+with four workers at the same compressed size.
+
+Actual D500 slider-to-display checks with both noise filters measure 46 ms
+median on GPU and 108 ms on warmed CPU, with 48/17 visible frames during a
+50-event drag. Release-to-final is 64/164 ms. The warmed CPU JPEG benchmark is
+4.12 s; the first run after a kernel change is 7.02 s. First-use compilation is
+not removed and these local results are not universal speed guarantees. The
+Windows EXE is refreshed; no public ZIP/installer or private photos are shipped.

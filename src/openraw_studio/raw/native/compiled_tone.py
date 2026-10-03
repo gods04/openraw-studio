@@ -39,8 +39,7 @@ if njit is not None:
     _tone_region = njit(inline="always")(_tone_region)
 
 
-def _tone(pixels, params):
-    output = np.empty(pixels.shape, dtype=np.uint8)
+def _tone_into(pixels, params, output, maximum):
     for row in range(pixels.shape[0]):
         for column in range(pixels.shape[1]):
             camera_r = pixels[row, column, 0] * params[9]
@@ -68,9 +67,21 @@ def _tone(pixels, params):
                 blue = luma + (blue - luma) * params[15]
             for channel, value in enumerate((red, green, blue)):
                 output[row, column, channel] = np.rint(
-                    min(np.float32(1), max(np.float32(0), value)) * np.float32(255)
+                    min(np.float32(1), max(np.float32(0), value)) * maximum
                 )
     return output
+
+
+if njit is not None:
+    _tone_into = njit(inline="always")(_tone_into)
+
+
+def _tone(pixels, params):
+    return _tone_into(pixels, params, np.empty(pixels.shape, np.uint8), np.float32(255))
+
+
+def _tone16(pixels, params):
+    return _tone_into(pixels, params, np.empty(pixels.shape, np.uint16), np.float32(65535))
 
 
 # No fastmath or parallel thread pool: retain the curve and avoid oversubscribing
@@ -81,10 +92,19 @@ except RuntimeError:
     tone = njit(nogil=True)(_tone) if njit is not None else None
 
 
-def render(pixels, params):
-    """Return RGB8, or None when compilation is unavailable (NumPy fallback)."""
-    global tone, last_error, cache_disabled_reason
-    if tone is None:
+try:
+    tone16 = njit(cache=True, nogil=True)(_tone16) if njit is not None else None
+except RuntimeError:
+    tone16 = njit(nogil=True)(_tone16) if njit is not None else None
+
+
+def render(pixels, params, *, bit_depth=8):
+    """Quantize the processed float pixels once, or return None for fallback."""
+    global tone, tone16, last_error, cache_disabled_reason
+    if bit_depth not in (8, 16):
+        raise ValueError("Tone output bit depth must be 8 or 16")
+    kernel, implementation = (tone, _tone) if bit_depth == 8 else (tone16, _tone16)
+    if kernel is None:
         return None
     pixels = np.ascontiguousarray(pixels, dtype=np.float32).view()
     params = np.ascontiguousarray(params, dtype=np.float32).view()
@@ -96,15 +116,21 @@ def render(pixels, params):
     params.flags.writeable = False
     try:
         try:
-            output = tone(pixels, params)
+            output = kernel(pixels, params)
         except OSError as cache_error:
-            uncached = njit(nogil=True)(_tone)
+            uncached = njit(nogil=True)(implementation)
             output = uncached(pixels, params)
-            tone = uncached
+            if bit_depth == 8:
+                tone = uncached
+            else:
+                tone16 = uncached
             cache_disabled_reason = f"{type(cache_error).__name__}: {cache_error}"
     except (NumbaError, OSError, RuntimeError) as error:
         last_error = f"{type(error).__name__}: {error}"
-        tone = None
+        if bit_depth == 8:
+            tone = None
+        else:
+            tone16 = None
         return None
     last_error = None
     return output

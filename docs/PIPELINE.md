@@ -12,7 +12,7 @@ Source RAW
   -> basic analysis
   -> decision and recipe
   -> base render
-  -> export JPEG or lossless 8-bit TIFF
+  -> export JPEG or lossless 8/16-bit TIFF
   -> save recipe JSON
 ```
 

@@ -22,7 +22,12 @@ from openraw_studio.decision.auto_adjust import (
 )
 from openraw_studio.decision.color_noise import suggest_color_noise_for_photo
 from openraw_studio.raw.native.interactive import prepare_interactive_photo
-from openraw_studio.export.formats import export_display_name, normalize_export_format, validate_export_quality
+from openraw_studio.export.formats import (
+    export_display_name,
+    normalize_export_format,
+    validate_export_bit_depth,
+    validate_export_quality,
+)
 from openraw_studio.pipeline.batch import BatchItemResult, BatchResult, run_batch_export
 from openraw_studio.pipeline.errors import BackendUnavailableError, PipelineError, SourceFileError
 from openraw_studio.pipeline.interfaces import PipelineRequest
@@ -407,7 +412,9 @@ def _load_recipe_adjustments(recipe_path: Path, source: Path) -> dict[str, float
     return _recipe_adjustment_overrides(recipe)
 
 
-def _recipe_export_options(recipe: Mapping[str, Any]) -> tuple[str, int]:
+def _recipe_export_options(
+    recipe: Mapping[str, Any], *, include_bit_depth: bool = False
+) -> tuple[str, int] | tuple[str, int, int]:
     output = recipe.get("output")
     output = output if isinstance(output, Mapping) else {}
     format_value = output.get("format", "jpeg")
@@ -419,17 +426,25 @@ def _recipe_export_options(recipe: Mapping[str, Any]) -> tuple[str, int]:
         export_quality = validate_export_quality(int(output.get("quality") or 92))
     except (TypeError, ValueError):
         export_quality = 92
+    if include_bit_depth:
+        try:
+            bit_depth = validate_export_bit_depth(output.get("bit_depth", 8), export_format=export_format)
+        except ValueError:
+            bit_depth = 8
+        return export_format, export_quality, bit_depth
     return export_format, export_quality
 
 
-def _load_recipe_export_options(recipe_path: Path, source: Path) -> tuple[str, int]:
+def _load_recipe_export_options(
+    recipe_path: Path, source: Path, *, include_bit_depth: bool = False
+) -> tuple[str, int] | tuple[str, int, int]:
     recipe = json.loads(recipe_path.read_text(encoding="utf-8"))
     if not isinstance(recipe, Mapping):
         raise ValueError("recipe file must contain a JSON object")
     validate_recipe_shape(recipe)
     if not _recipe_source_matches(recipe, source):
         raise ValueError("recipe does not match the selected photo")
-    return _recipe_export_options(recipe)
+    return _recipe_export_options(recipe, include_bit_depth=include_bit_depth)
 
 
 def _flatten_rgb_pixels(pixels: tuple[tuple[int, int, int], ...]) -> bytes:
@@ -742,6 +757,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.luminance_noise_var = tk.DoubleVar(value=0.0)
             self.luminance_noise_label_var = tk.StringVar(value="0")
             self.export_format_var = tk.StringVar(value="JPEG")
+            self.export_bit_depth_var = tk.IntVar(value=8)
             self.jpeg_quality_var = tk.DoubleVar(value=92.0)
             self.jpeg_quality_label_var = tk.StringVar(value="92")
             self.exposure_label_var = tk.StringVar(value=_format_exposure_label(0.0))
@@ -1083,13 +1099,14 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                 return None
             try:
                 overrides = _load_recipe_adjustments(recipe_path, self.source_path)
-                export_format, export_quality = _load_recipe_export_options(
-                    recipe_path, self.source_path
+                export_format, export_quality, export_bit_depth = _load_recipe_export_options(
+                    recipe_path, self.source_path, include_bit_depth=True
                 )
             except (OSError, ValueError):
                 return "Saved recipe could not be loaded"
             self._set_adjustment_values(overrides)
             self.export_format_var.set(export_display_name(export_format))
+            self.export_bit_depth_var.set(export_bit_depth)
             self.jpeg_quality_var.set(float(export_quality))
             self._sync_export_options(update_status=False)
             self._refresh_preview_state()
@@ -1329,15 +1346,24 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
         def _selected_export_quality(self) -> int:
             return validate_export_quality(round(float(self.jpeg_quality_var.get())))
 
+        def _selected_export_bit_depth(self) -> int:
+            return validate_export_bit_depth(
+                self.export_bit_depth_var.get(), export_format=self._selected_export_format()
+            )
+
         def _sync_export_options(self, *_: Any, update_status: bool = True) -> None:
             export_format = self._selected_export_format()
             if export_format == "jpeg":
+                self.export_bit_depth_var.set(8)
+                self.export_bit_depth_combo.configure(state="disabled")
                 quality = self._selected_export_quality()
                 self.jpeg_quality_var.set(float(quality))
                 self.jpeg_quality_label_var.set(str(quality))
                 self.jpeg_quality_scale.configure(state="normal")
             else:
-                self.jpeg_quality_label_var.set("Lossless 8-bit")
+                self.export_bit_depth_combo.configure(state="readonly")
+                bit_depth = self._selected_export_bit_depth()
+                self.jpeg_quality_label_var.set(f"Lossless {bit_depth}-bit")
                 self.jpeg_quality_scale.configure(state="disabled")
             self.process_button.configure(
                 text=f"Export {export_display_name(export_format)}"
@@ -1710,6 +1736,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             overrides = self._current_overrides()
             export_format = self._selected_export_format()
             export_quality = self._selected_export_quality()
+            export_bit_depth = self._selected_export_bit_depth()
             existing = sum(
                 ArtifactPlan.for_source(
                     path, output_dir, export_format=export_format
@@ -1744,6 +1771,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                     export_quality,
                     mode,
                     strength,
+                    export_bit_depth,
                 ),
                 daemon=True,
             ).start()
@@ -1758,6 +1786,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             export_quality: int,
             mode: str,
             strength: float,
+            export_bit_depth: int = 8,
         ) -> None:
             def adjustments(source):
                 if mode == "Saved edits":
@@ -1797,6 +1826,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                     overrides=overrides,
                     export_format=export_format,
                     export_quality=export_quality,
+                    export_bit_depth=export_bit_depth,
                     progress_callback=on_progress,
                     pipeline=self.pipeline,
                     should_cancel=self.batch_cancel.is_set,
@@ -1856,6 +1886,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             run_id = self.run_counter
             export_format = self._selected_export_format()
             export_quality = self._selected_export_quality()
+            export_bit_depth = self._selected_export_bit_depth()
             destination = ArtifactPlan.for_source(
                 self.source_path, output_dir, export_format=export_format
             ).export_path
@@ -1901,6 +1932,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                     export_format,
                     export_quality,
                     reuse_existing_preview,
+                    export_bit_depth,
                 ),
                 daemon=True,
             ).start()
@@ -1915,6 +1947,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             export_format: str,
             export_quality: int,
             reuse_existing_preview: bool,
+            export_bit_depth: int = 8,
         ) -> None:
             try:
                 result = self.pipeline.process(
@@ -1926,6 +1959,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                         export_format=export_format,
                         export_quality=export_quality,
                         reuse_existing_preview=reuse_existing_preview,
+                        export_bit_depth=export_bit_depth,
                     )
                 )
             except (PipelineError, OSError, ValueError) as exc:

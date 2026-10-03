@@ -19,6 +19,7 @@ class ExportRequest:
     format: str = "jpeg"
     quality: int = 92
     write_recipe_sidecar: bool = True
+    bit_depth: int = 8
 
 
 @dataclass(frozen=True)

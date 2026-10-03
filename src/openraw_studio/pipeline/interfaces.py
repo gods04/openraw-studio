@@ -24,6 +24,7 @@ class PipelineRequest:
     export_format: str = "jpeg"
     export_quality: int = 92
     reuse_existing_preview: bool = False
+    export_bit_depth: int = 8
 
 
 @dataclass(frozen=True)

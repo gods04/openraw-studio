@@ -16,12 +16,17 @@ if njit is not None and config.DISABLE_JIT:
     njit = None
 
 
-def _filter(pixels, start, end, strength, spatial, light, color):
+def _filter(pixels, start, end, strength, spatial, light, color, unit=None):
+    if unit is None:
+        # Numba folds dtype equality; array.itemsize remains a runtime lookup.
+        unit = 257 if pixels.dtype == np.dtype(np.uint16) else 1
+    maximum = 255 * unit
+    divisor = 256 * unit
     height, width, _ = pixels.shape
-    output = np.empty((end - start, width, 3), np.uint8)
+    output = np.empty((end - start, width, 3), pixels.dtype)
     # Calibrate each neighbor once per bounded chunk instead of repeating its
     # luma/chroma arithmetic in every 5x5 neighborhood.
-    prepared = np.empty((end - start + 4, width + 4, 3), np.int16)
+    prepared = np.empty((end - start + 4, width + 4, 3), np.int32)
     for row in range(end - start + 4):
         yy = min(height - 1, max(0, start + row - 2))
         for col in range(width + 4):
@@ -31,7 +36,7 @@ def _filter(pixels, start, end, strength, spatial, light, color):
                 np.int32(pixels[yy, xx, 1]),
                 np.int32(pixels[yy, xx, 2]),
             )
-            prepared[row, col, 0] = (54 * r + 183 * g + 19 * b + 128) >> 8
+            prepared[row, col, 0] = (54 * r + 183 * g + 19 * b + divisor // 2) // divisor
             prepared[row, col, 1] = r - g
             prepared[row, col, 2] = b - g
     for y in range(start, end):
@@ -42,22 +47,25 @@ def _filter(pixels, start, end, strength, spatial, light, color):
                 np.int32(pixels[y, x, 2]),
             )
             weighted = 54 * r + 183 * g + 19 * b
-            luma, guide = weighted / 256.0, (weighted + 128) >> 8
-            u, v = r - g, b - g
+            luma = weighted / 256.0
+            guide = prepared[y - start + 2, x + 2, 0]
+            u = np.int32(prepared[y - start + 2, x + 2, 1])
+            v = np.int32(prepared[y - start + 2, x + 2, 2])
             su = sv = sw = 0.0
             for dy in range(-2, 3):
                 yy = y - start + dy + 2
                 for dx in range(-2, 3):
                     xx = x + dx + 2
-                    nl = np.int32(prepared[yy, xx, 0])
+                    nl = prepared[yy, xx, 0]
                     nu, nv = (
                         np.int32(prepared[yy, xx, 1]),
                         np.int32(prepared[yy, xx, 2]),
                     )
+                    difference = (abs(nu - u) + abs(nv - v) + unit // 2) // unit
                     weight = (
                         spatial[dy + 2, dx + 2]
                         * light[abs(nl - guide)]
-                        * color[abs(nu - u) + abs(nv - v)]
+                        * color[difference]
                     )
                     sw += weight
                     su += weight * nu
@@ -69,12 +77,12 @@ def _filter(pixels, start, end, strength, spatial, light, color):
             scale = 1.0
             for c in chroma:
                 if c > 0:
-                    scale = min(scale, (255 - luma) / c)
+                    scale = min(scale, (maximum - luma) / c)
                 elif c < 0:
                     scale = min(scale, -luma / c)
             for channel in range(3):
                 output[y - start, x, channel] = np.rint(
-                    min(255.0, max(0.0, luma + scale * chroma[channel]))
+                    min(float(maximum), max(0.0, luma + scale * chroma[channel]))
                 )
     return output
 
@@ -92,14 +100,14 @@ def render_chunk(pixels, start, end, strength, spatial, light, color):
     if (
         pixels.ndim != 3
         or pixels.shape[2] != 3
-        or pixels.dtype != np.uint8
+        or pixels.dtype not in (np.uint8, np.uint16)
         or not 0 <= start < end <= pixels.shape[0]
         or pixels.shape[1] < 1
         or spatial.shape != (5, 5)
         or light.shape != (256,)
         or color.shape != (1021,)
     ):
-        raise ValueError("Chroma chunk requires valid RGB8 bounds and range tables")
+        raise ValueError("Chroma chunk requires valid RGB8 or RGB16 bounds and range tables")
     pixels = np.ascontiguousarray(pixels).view()
     pixels.flags.writeable = False
     try:

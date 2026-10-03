@@ -108,6 +108,15 @@ OpenRAW Studio uses Pillow for desktop image display and JPEG/TIFF encoding.
 Windows bundles include Pillow's complete license and bundled-component notices
 under THIRD_PARTY_LICENSES/Pillow.
 
+Tifffile
+--------
+
+OpenRAW Studio uses Tifffile 2026.3.3 for lossless 16-bit RGB TIFF containers.
+RAW decoding and rendering remain project-authored. Tifffile is distributed
+under BSD-3-Clause; Windows bundles retain its complete installed license
+under THIRD_PARTY_LICENSES/Tifffile.
+https://pypi.org/project/tifffile/2026.3.3/
+
 Native Acceleration Runtime
 ---------------------------
 

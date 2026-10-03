@@ -82,8 +82,12 @@ def render_preview_image(
     color_noise: float = 0.0,
     luminance_noise: float = 0.0,
     max_dimension: int | None = None,
+    bit_depth: int = 8,
 ) -> PreviewRgbImage:
-    """Render a source RAW file into an 8-bit RGB preview image."""
+    """Render a source RAW file into an 8-bit or 16-bit RGB image."""
+
+    if bit_depth not in (8, 16):
+        raise ValueError("RGB output bit depth must be 8 or 16")
 
     if preview := _render_nikon_34713_preview_image(
         source_path,
@@ -97,6 +101,7 @@ def render_preview_image(
         color_noise=color_noise,
         luminance_noise=luminance_noise,
         max_dimension=max_dimension,
+        bit_depth=bit_depth,
     ):
         return preview
 
@@ -119,6 +124,7 @@ def render_preview_image(
         saturation=saturation,
         color_noise=color_noise,
         luminance_noise=luminance_noise,
+        bit_depth=bit_depth,
     )
     return resize_preview(preview, max_dimension=max_dimension)
 
@@ -136,6 +142,7 @@ def _render_nikon_34713_preview_image(
     color_noise: float,
     luminance_noise: float,
     max_dimension: int | None,
+    bit_depth: int = 8,
 ) -> PreviewRgbImage | None:
     if source_path.suffix.lower() not in NIKON_RAW_EXTENSIONS:
         return None
@@ -162,18 +169,27 @@ def _render_nikon_34713_preview_image(
         saturation=saturation,
         color_noise=color_noise,
         luminance_noise=luminance_noise,
+        quality="full" if bit_depth == 16 else "fast",
+        bit_depth=bit_depth,
     )
     return PreviewRgbImage(
         width=rendered.width,
         height=rendered.height,
-        pixels=_rgb_bytes_to_pixels(rendered.rgb_bytes),
+        pixels=_rgb_bytes_to_pixels(rendered.rgb_bytes, bit_depth=rendered.bit_depth),
         transfer=rendered.transfer,
+        bit_depth=rendered.bit_depth,
     )
 
 
-def _rgb_bytes_to_pixels(payload: bytes) -> tuple[tuple[int, int, int], ...]:
-    if len(payload) % 3:
-        raise NikonCompressionError("Nikon preview RGB payload is not divisible by three")
+def _rgb_bytes_to_pixels(payload: bytes, *, bit_depth: int = 8) -> tuple[tuple[int, int, int], ...]:
+    if bit_depth not in (8, 16):
+        raise ValueError("RGB output bit depth must be 8 or 16")
+    if len(payload) % (3 * (bit_depth // 8)):
+        raise NikonCompressionError("Nikon preview RGB payload does not contain whole RGB pixels")
+    if bit_depth == 16:
+        import struct
+
+        return tuple(struct.iter_unpack("<HHH", payload))
     return tuple((payload[index], payload[index + 1], payload[index + 2]) for index in range(0, len(payload), 3))
 
 
@@ -191,7 +207,7 @@ def _optional_int(value: object) -> int | None:
 
 
 def resize_preview(image: PreviewRgbImage, *, max_dimension: int | None) -> PreviewRgbImage:
-    """Downsample an 8-bit preview with nearest-neighbor sampling."""
+    """Downsample RGB with nearest-neighbor sampling at its original bit depth."""
 
     if max_dimension is None:
         return image
@@ -209,12 +225,14 @@ def resize_preview(image: PreviewRgbImage, *, max_dimension: int | None) -> Prev
         for row in range(height)
         for column in range(width)
     )
-    return PreviewRgbImage(width=width, height=height, pixels=pixels, transfer=image.transfer)
+    return PreviewRgbImage(width=width, height=height, pixels=pixels, transfer=image.transfer, bit_depth=image.bit_depth)
 
 
 def write_ppm(image: PreviewRgbImage, output_path: Path) -> Path:
     """Write a binary PPM file."""
 
+    if image.bit_depth != 8:
+        raise ValueError("Preview PPM writer requires an 8-bit image")
     header = f"P6\n{image.width} {image.height}\n255\n".encode("ascii")
     payload = bytes(channel for pixel in image.pixels for channel in pixel)
     with atomic_output_path(output_path) as temporary_path:

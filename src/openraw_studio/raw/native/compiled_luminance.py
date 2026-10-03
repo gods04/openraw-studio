@@ -16,9 +16,14 @@ if njit is not None and config.DISABLE_JIT:
     njit = None
 
 
-def _filter(pixels, start, end, amount, weights):
+def _filter(pixels, start, end, amount, weights, unit=None):
+    if unit is None:
+        # Numba folds dtype equality; array.itemsize remains a runtime lookup.
+        unit = 257 if pixels.dtype == np.dtype(np.uint16) else 1
+    maximum = 255 * unit
+    divisor = 256 * unit
     height, width, _ = pixels.shape
-    output = np.empty((end - start, width, 3), np.uint8)
+    output = np.empty((end - start, width, 3), pixels.dtype)
     prepared = np.empty((end - start + 4, width + 4), np.int32)
     for row in range(end - start + 4):
         yy = min(height - 1, max(0, start + row - 2))
@@ -28,12 +33,12 @@ def _filter(pixels, start, end, amount, weights):
     for y in range(start, end):
         for x in range(width):
             weighted = prepared[y - start + 2, x + 2]
-            guide = (weighted + 128) >> 8
+            guide = (weighted + divisor // 2) // divisor
             sy = sw = np.int64(0)
             for dy in range(-2, 3):
                 for dx in range(-2, 3):
                     nw = prepared[y - start + dy + 2, x + dx + 2]
-                    weight = np.int64(weights[dy + 2, dx + 2, abs(((nw + 128) >> 8) - guide)])
+                    weight = np.int64(weights[dy + 2, dx + 2, abs((nw + divisor // 2) // divisor - guide)])
                     sw += weight
                     sy += weight * (np.int64(nw) - weighted)
             numerator, denominator = sy * amount, sw * (256 * 65536)
@@ -43,12 +48,12 @@ def _filter(pixels, start, end, amount, weights):
                 delta += 1
             if numerator < 0:
                 delta = -delta
-            highest, lowest = 0, 255
+            highest, lowest = 0, maximum
             for channel in range(3):
                 value = np.int32(pixels[y, x, channel])
                 highest = max(highest, value)
                 lowest = min(lowest, value)
-            delta = min(255 - highest, max(-lowest, delta))
+            delta = min(maximum - highest, max(-lowest, delta))
             for channel in range(3):
                 output[y - start, x, channel] = np.int32(pixels[y, x, channel]) + delta
     return output
@@ -64,8 +69,8 @@ def render_chunk(pixels, start, end, strength, weights):
     global luminance, last_error, cache_disabled_reason
     if luminance is None:
         return None
-    if pixels.ndim != 3 or pixels.shape[2] != 3 or pixels.dtype != np.uint8 or not 0 <= start < end <= pixels.shape[0] or pixels.shape[1] < 1 or weights.shape != (5, 5, 256):
-        raise ValueError("Luminance chunk requires valid RGB8 bounds and range tables")
+    if pixels.ndim != 3 or pixels.shape[2] != 3 or pixels.dtype not in (np.uint8, np.uint16) or not 0 <= start < end <= pixels.shape[0] or pixels.shape[1] < 1 or weights.shape != (5, 5, 256):
+        raise ValueError("Luminance chunk requires valid RGB8 or RGB16 bounds and range tables")
     pixels = np.ascontiguousarray(pixels).view()
     pixels.flags.writeable = False
     amount = round(strength * 65536)

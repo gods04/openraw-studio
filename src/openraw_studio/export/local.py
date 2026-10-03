@@ -9,7 +9,7 @@ from typing import Any, Mapping
 from openraw_studio.core.domain import EngineInfo, ImageRef
 from openraw_studio.core.files import atomic_output_path
 from openraw_studio.export.errors import ExportError
-from openraw_studio.export.formats import normalize_export_format, validate_export_quality
+from openraw_studio.export.formats import normalize_export_format, validate_export_quality, validate_export_bit_depth
 from openraw_studio.export.interfaces import ExportRequest, ExportResult
 from openraw_studio.export.metadata import build_jpeg_exif, build_tiff_info
 
@@ -25,10 +25,10 @@ class LocalImageExportEngine:
         return EngineInfo(
             name="openraw-export",
             version="0.2.0",
-            backend="local-pillow",
+            backend="local-pillow-tifffile",
             capabilities={
                 "jpeg": True,
-                "tiff": "rgb8-deflate",
+                "tiff": "rgb8-rgb16-deflate",
                 "jpeg_quality": True,
                 "photographic_metadata": "safe-capture-no-gps-v0.1",
                 "source_passthrough": True,
@@ -43,6 +43,7 @@ class LocalImageExportEngine:
         try:
             export_format = normalize_export_format(request.format)
             quality = validate_export_quality(request.quality)
+            bit_depth = validate_export_bit_depth(request.bit_depth, export_format=export_format)
         except ValueError as exc:
             raise ExportError(str(exc)) from exc
         suffix = request.output_path.suffix.lower()
@@ -57,6 +58,8 @@ class LocalImageExportEngine:
         if _same_path(request.image.path, output_path):
             if not output_path.exists():
                 raise ExportError(f"Rendered image does not exist: {output_path}")
+            if export_format == "tiff":
+                _check_rgb_tiff(output_path, bit_depth, size=(request.image.width, request.image.height))
         else:
             _write_from_existing_image(
                 request.image.path,
@@ -64,6 +67,7 @@ class LocalImageExportEngine:
                 export_format=export_format,
                 quality=quality,
                 recipe=request.recipe,
+                bit_depth=bit_depth,
             )
 
         recipe_path = _write_recipe_sidecar(output_path, request.recipe) if request.write_recipe_sidecar else None
@@ -80,7 +84,7 @@ class LocalImageExportEngine:
             metadata={
                 "format": export_format,
                 "quality": quality if export_format == "jpeg" else None,
-                "bit_depth": 8,
+                "bit_depth": bit_depth,
                 "compression": "jpeg" if export_format == "jpeg" else "tiff_deflate",
                 "metadata_policy": "safe-capture-no-gps-v0.1",
                 "source_path": str(request.image.path),
@@ -101,9 +105,22 @@ def _write_from_existing_image(
     export_format: str,
     quality: int,
     recipe: Mapping[str, Any],
+    bit_depth: int = 8,
 ) -> None:
     if not source_path.exists():
         raise ExportError(f"Rendered image does not exist: {source_path}")
+    if bit_depth == 16:
+        import tifffile
+
+        from openraw_studio.raw.native.tiff import write_tiff_rgb16
+
+        _check_rgb_tiff(source_path, 16)
+        try:
+            pixels = tifffile.imread(source_path)
+            write_tiff_rgb16(pixels, output_path, tiffinfo=build_tiff_info(recipe))
+        except (OSError, TypeError, ValueError) as exc:
+            raise ExportError(f"Could not encode 16-bit TIFF export: {exc}") from exc
+        return
     try:
         from PIL import Image
     except ImportError as exc:
@@ -131,6 +148,25 @@ def _write_from_existing_image(
                     )
     except (OSError, TypeError, ValueError) as exc:
         raise ExportError(f"Could not encode {export_format.upper()} export: {exc}") from exc
+
+
+def _check_rgb_tiff(path: Path, bit_depth: int, *, size: tuple[int, int] | None = None) -> None:
+    import tifffile
+
+    try:
+        with tifffile.TiffFile(path) as opened:
+            page = opened.pages[0]
+            valid = (
+                len(opened.pages) == 1 and page.photometric == 2
+                and page.samplesperpixel == 3 and page.bitspersample == bit_depth
+                and page.dtype.kind == "u" and page.planarconfig == 1
+            )
+            if not valid:
+                raise ValueError(f"source must contain unsigned {bit_depth}-bit RGB samples")
+            if size is not None and (page.imagewidth, page.imagelength) != size:
+                raise ValueError("rendered TIFF dimensions do not match the export request")
+    except (OSError, ValueError, IndexError) as exc:
+        raise ExportError(f"Invalid {bit_depth}-bit TIFF: {exc}") from exc
 
 
 def _write_recipe_sidecar(output_path: Path, recipe: Mapping[str, Any]) -> Path:

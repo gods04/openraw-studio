@@ -52,7 +52,7 @@ class NativeRawProcessor:
                 "preview": "simple-png-dng-and-nikon-embedded-jpeg-v0.1",
                 "base_render": "preview-derived-jpeg-dng-v0.1",
                 "jpeg_export": "pillow-jpeg-v0.1",
-                "tiff_export": "pillow-rgb8-deflate-v0.1",
+                "tiff_export": "rgb8-rgb16-deflate-v0.2",
                 "derivative_metadata": "safe-capture-no-gps-v0.1",
                 "white_balance": "dng-as-shot-neutral-v0.1",
                 "camera_color_matrix": "dng-color-matrix-1-to-linear-srgb-v0.2",
@@ -199,6 +199,10 @@ class NativeRawProcessor:
         output_suffix = request.output_path.suffix.lower()
         if output_suffix not in {".jpg", ".jpeg", ".tif", ".tiff"}:
             raise RawProcessingError("OpenRAW Native export path must end in .jpg, .jpeg, .tif, or .tiff")
+        if request.bit_depth not in (8, 16):
+            raise RawProcessingError("RGB output bit depth must be 8 or 16")
+        if request.bit_depth == 16 and output_suffix not in {".tif", ".tiff"}:
+            raise RawProcessingError("16-bit OpenRAW Native export requires TIFF (.tif or .tiff)")
         try:
             adjustments = _recipe_render_adjustments(request.recipe)
             jpeg_exif = build_jpeg_exif(request.recipe) if output_suffix in {".jpg", ".jpeg"} else None
@@ -222,6 +226,7 @@ class NativeRawProcessor:
                     jpeg_exif=jpeg_exif,
                     tiffinfo=tiff_info,
                     quality="full",
+                    bit_depth=request.bit_depth,
                 )
                 return ImageRef(
                     path=plan.output_path,
@@ -241,9 +246,18 @@ class NativeRawProcessor:
                 saturation=adjustments.saturation,
                 color_noise=adjustments.color_noise,
                 luminance_noise=adjustments.luminance_noise,
+                max_dimension=request.max_dimension,
+                bit_depth=request.bit_depth,
             )
             if output_suffix in {".jpg", ".jpeg"}:
                 write_jpeg(rendered, plan.output_path, quality=request.quality, exif=jpeg_exif)
+            elif request.bit_depth == 16:
+                import numpy as np
+
+                from openraw_studio.raw.native.tiff import write_tiff_rgb16
+
+                pixels = np.asarray(rendered.pixels, dtype=np.uint16).reshape(rendered.height, rendered.width, 3)
+                write_tiff_rgb16(pixels, plan.output_path, tiffinfo=tiff_info)
             else:
                 write_tiff_rgb8(rendered, plan.output_path, tiffinfo=tiff_info)
         except (DngMetadataError, NotImplementedError, RuntimeError, ValueError, OSError) as exc:

@@ -95,7 +95,7 @@ Status:
 - simple Bayer demosaic exists
 - simple tone mapping and PNG preview encoding exist
 - `openraw process --preview-only` can complete without final export
-- local export engine records JPEG quality or lossless 8-bit TIFF derivatives for supported DNG/Nikon files
+- local export engine records JPEG quality or lossless 8/16-bit TIFF derivatives for supported DNG/Nikon files
 - safe camera/capture EXIF/TIFF metadata is written with normalized orientation and no GPS passthrough
 - bounded rendered-preview highlight/shadow clipping QC is recorded in recipes;
   it is advisory and does not claim sensor-domain analysis
@@ -139,7 +139,7 @@ Current native pixel scope:
 - simple local-average Bayer demosaic for RGGB, GRBG, GBRG, and BGGR
 - simple gamma preview transform
 - PNG preview output
-- JPEG quality and lossless 8-bit sRGB TIFF export output
+- JPEG quality and lossless 8/16-bit rendered sRGB TIFF export output
 - recipe-driven exposure/contrast/highlights/shadows/temperature/tint/saturation adjustment
 
 Not supported yet:

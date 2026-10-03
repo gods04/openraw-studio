@@ -496,6 +496,17 @@ def build_workspace(app, filedialog, messagebox):
     )
     app.export_format_combo.pack(fill="x")
     app.export_format_combo.bind("<<ComboboxSelected>>", app._sync_export_options)
+    ttk.Label(export, text="Bit depth", style="Panel.TLabel").pack(
+        anchor="w", pady=(16, 6)
+    )
+    app.export_bit_depth_combo = ttk.Combobox(
+        export,
+        textvariable=app.export_bit_depth_var,
+        values=(8, 16),
+        state="disabled",
+    )
+    app.export_bit_depth_combo.pack(fill="x")
+    app.export_bit_depth_combo.bind("<<ComboboxSelected>>", app._sync_export_options)
     row = ttk.Frame(export)
     row.pack(fill="x", pady=(16, 4))
     ttk.Label(row, text="JPEG quality", style="Panel.TLabel").pack(side="left")

@@ -7,7 +7,12 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from openraw_studio.core.files import is_supported_raw_path
-from openraw_studio.export.formats import export_display_name, normalize_export_format, validate_export_quality
+from openraw_studio.export.formats import (
+    export_display_name,
+    normalize_export_format,
+    validate_export_bit_depth,
+    validate_export_quality,
+)
 from openraw_studio.pipeline.errors import BackendUnavailableError, PipelineError
 from openraw_studio.pipeline.interfaces import PipelineRequest
 from openraw_studio.pipeline.local import LocalPhotoPipeline
@@ -144,12 +149,14 @@ def run_batch_export(
     pipeline: LocalPhotoPipeline | None = None,
     should_cancel: Callable[[], bool] | None = None,
     adjustments_for_source: Callable[[Path], Mapping[str, Any]] | None = None,
+    export_bit_depth: int = 8,
 ) -> BatchResult:
     """Process supported sources one by one through the normal local pipeline."""
 
     destination = Path(output_dir)
     resolved_format = normalize_export_format(export_format)
     resolved_quality = validate_export_quality(export_quality)
+    resolved_bit_depth = validate_export_bit_depth(export_bit_depth, export_format=resolved_format)
     local_pipeline = pipeline or LocalPhotoPipeline()
     items: list[BatchItemResult] = []
     normalized_sources = tuple(Path(source) for source in sources)
@@ -181,6 +188,7 @@ def run_batch_export(
                 preview_only=preview_only,
                 export_format=resolved_format,
                 export_quality=resolved_quality,
+                export_bit_depth=resolved_bit_depth,
             )
         items.append(item)
         if progress_callback is not None:
@@ -202,6 +210,7 @@ def _process_batch_item(
     export_format: str,
     export_quality: int,
     adjustments_for_source: Callable[[Path], Mapping[str, Any]] | None = None,
+    export_bit_depth: int = 8,
 ) -> BatchItemResult:
     try:
         if adjustments_for_source is not None:
@@ -217,6 +226,7 @@ def _process_batch_item(
                 preview_only=preview_only,
                 export_format=export_format,
                 export_quality=export_quality,
+                export_bit_depth=export_bit_depth,
             )
         )
     except (

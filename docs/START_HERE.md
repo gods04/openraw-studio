@@ -14,7 +14,7 @@ Choose RAW file
   -> inspect metadata
   -> generate preview
   -> make a simple AUTO decision
-  -> export JPEG or lossless 8-bit TIFF
+  -> export JPEG or lossless 8/16-bit TIFF
   -> save recipe JSON
 ```
 
@@ -167,7 +167,7 @@ Current status:
 - simple PNG preview encoding exists
 - `--preview-only` pipeline mode exists
 - `darktable-cli` adapter exists only as an explicit experimental backend
-- local export engine records JPEG quality or lossless 8-bit TIFF derivatives for supported DNG and guarded Nikon files
+- local export engine records JPEG quality or lossless 8/16-bit TIFF derivatives for supported DNG and guarded Nikon files
 - JPEG/TIFF derivatives retain safe camera/capture metadata with normalized orientation and no GPS passthrough
 - single-illuminant DNG white balance and standards-directed ColorMatrix1-to-linear-sRGB conversion are now applied
 - exposure, contrast, highlights, shadows, temperature, tint, and saturation adjustments are available from the CLI and desktop shell and are saved in the recipe

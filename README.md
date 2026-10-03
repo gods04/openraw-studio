@@ -106,7 +106,7 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - Native black/white level normalization for 12/14/16-bit Bayer sensor data
 - Native simple Bayer demosaic baseline
 - Native PNG preview encoding for narrow uncompressed DNG/Nikon test files
-- Local JPEG quality control and lossless 8-bit RGB TIFF export with recipe traceability
+- Local JPEG quality control and lossless 8/16-bit RGB TIFF export with recipe traceability
 - Atomic preview, derivative, and recipe publication so interrupted writes do not
   replace an existing complete result with a partial file
 - Safe derivative metadata for camera, lens, capture settings, date, orientation,
@@ -178,7 +178,7 @@ Then import `sample-data\openraw-synthetic.DNG` or
   crop mode, firmware, or the Z5 II. Check each file with
   `openraw inspect`.
 - Broad proprietary RAW rendering support is not implemented yet
-- TIFF export is currently 8-bit sRGB; 16-bit linear/working-space TIFF is not implemented yet
+- TIFF supports 8/16-bit rendered sRGB; linear/working-space TIFF is not implemented yet
 - QC currently checks rendered 8-bit preview clipping only; sensor-domain
   headroom, sharpness, calibrated noise, and color-accuracy checks are not implemented yet
 - No AI model weights included
@@ -284,7 +284,8 @@ or choose `Library` > `Sample photos`, then click `Auto`
 for a conservative starter look.
 The preview appears automatically after import and follows adjustment sliders
 while you drag. The preview status shows the active GPU or CPU. Choose
-JPEG or TIFF in the `Export` tab, then click the top-right Export button. After
+JPEG or TIFF in the `Export` tab, then click the top-right Export button. TIFF
+also offers `Bit depth` 8 or 16; JPEG stays 8-bit. After
 importing a folder, choose a folder-processing mode and click `Export folder`.
 Unsupported files are skipped and reported. `Stop batch` stops between photos.
 
@@ -338,7 +339,9 @@ is `adjustments.raw.luminance_noise` in `[0, 1]`, also defaulting to zero. It
 smooths local brightness grain before the color filter while retaining channel
 differences. At strong settings, fine texture can soften. Fit reduces its amount
 with proxy scale to avoid overstating the native-pixel effect; it remains an
-approximation. Native 100%/200% regions match full-size export. The CLI accepts
+approximation. Native 100%/200% regions match the 8-bit full-size render; 16-bit
+TIFF retains additional precision and is not pixel-identical after noise filtering.
+The CLI accepts
 `--luminance-noise 0.5`, independently or together with `--color-noise`.
 The wand button beside the Color noise value runs `Auto color noise` independently
 of tonal Auto. It evaluates the current tones and luminance-noise amount with
@@ -406,12 +409,18 @@ Render the current narrow end-to-end native path:
 openraw process "E:\Photos\input\IMG_0001.DNG" --output "E:\Photos\openraw-output"
 openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-output"
 openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-output" --format tiff
+openraw process "E:\Photos\input\IMG_0001.NEF" --output "E:\Photos\openraw-output" --format tiff --bit-depth 16
 ```
 
 For supported simple uncompressed DNG files, guarded TIFF-style Nikon sensor
 files, and supported Nikon 34713 lossless files, this writes `.preview.png` plus
 `.auto.jpg` by default, or `.auto.tif` with `--format tiff`. TIFF output is
-lossless Deflate-compressed 8-bit sRGB. The image data
+lossless Deflate-compressed rendered sRGB, 8-bit by default or genuine 16-bit
+with `--bit-depth 16` (also available for `batch`). The 16-bit path quantizes
+the processed floating-point image directly and retains precision through noise
+reduction, orientation, and encoding. It is not an upscaled 8-bit image, a linear
+RAW export, or a wider-gamut/HDR format; files are larger and can take longer.
+Live previews remain 8-bit. The image data
 is still an early V0.1 render. It applies available DNG `AsShotNeutral`, inverts
 `ColorMatrix1` from camera space through XYZ, performs Bradford white-point
 adaptation, and converts to linear sRGB before tone mapping. Dual-illuminant
@@ -470,7 +479,7 @@ RAW input
   -> basic scene/portrait detection
   -> processing recipe
   -> base RAW render
-  -> JPEG or lossless 8-bit TIFF export
+  -> JPEG or lossless 8/16-bit TIFF export
   -> recipe sidecar
 ```
 

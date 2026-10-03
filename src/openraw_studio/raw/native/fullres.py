@@ -12,14 +12,15 @@ from openraw_studio.raw.native.tonal import apply_tonal_regions_array
 
 @dataclass(frozen=True)
 class FullResolutionRgbImage:
-    """Packed 8-bit RGB output from the full-resolution Bayer path."""
+    """Packed RGB output; 16-bit channels use little-endian byte order."""
 
     width: int
     height: int
     rgb_bytes: bytes
+    bit_depth: int = 8
 
 
-def render_bayer_full_resolution_rgb8(
+def render_bayer_full_resolution(
     raw_bytes: bytes,
     *,
     source_width: int,
@@ -39,6 +40,7 @@ def render_bayer_full_resolution_rgb8(
     use_compiled: bool = True,
     highlight_ceiling: float | None = None,
     demosaic: str = "bilinear",
+    bit_depth: int = 8,
 ) -> FullResolutionRgbImage:
     """Render Bayer using GPU, compiled CPU chunks, or the NumPy fallback.
 
@@ -46,6 +48,10 @@ def render_bayer_full_resolution_rgb8(
     """
 
     np = _numpy()
+    if bit_depth not in (8, 16):
+        raise ValueError("Bayer output bit depth must be 8 or 16")
+    dtype = np.dtype('uint8' if bit_depth == 8 else '<u2')
+    maximum = (1 << bit_depth) - 1
     if source_width <= 1 or source_height <= 1:
         raise ValueError("full-resolution Bayer rendering needs an image larger than 1 x 1")
     if len(raw_bytes) != source_width * source_height * 2:
@@ -102,12 +108,15 @@ def render_bayer_full_resolution_rgb8(
                     highlight_ceiling=highlight_ceiling,
                 )
                 args = (raw_bytes, source_width, crop, pattern, black_levels, white_level, params)
-                rendered = gpu.bayer(*args, method=demosaic) if demosaic != "bilinear" else gpu.bayer(*args)
-                return FullResolutionRgbImage(width, height, rendered.tobytes())
+                if bit_depth == 16:
+                    rendered = gpu.bayer(*args, method=demosaic, bit_depth=16)
+                else:
+                    rendered = gpu.bayer(*args, method=demosaic) if demosaic != "bilinear" else gpu.bayer(*args)
+                return FullResolutionRgbImage(width, height, rendered.astype(dtype, copy=False).tobytes(), bit_depth)
             except Exception:
                 disable_gpu()
     source = np.frombuffer(raw_bytes, dtype="<u2").reshape(source_height, source_width)
-    output = np.empty((height, width, 3), dtype=np.uint8)
+    output = np.empty((height, width, 3), dtype=dtype)
     if use_compiled:
         from openraw_studio.raw.native import compiled_bayer, compiled_tone
         from openraw_studio.raw.native.acceleration import color_parameters
@@ -125,7 +134,7 @@ def render_bayer_full_resolution_rgb8(
             args = (source, crop, core_start, core_end, pattern, black_levels, white_level, channel_gains)
             camera = compiled_bayer.render_chunk(*args, method=demosaic) if demosaic != "bilinear" else compiled_bayer.render_chunk(*args)
         if camera is not None:
-            rendered = compiled_tone.render(camera, params)
+            rendered = compiled_tone.render(camera, params, bit_depth=16) if bit_depth == 16 else compiled_tone.render(camera, params)
             if rendered is not None:
                 output[core_start:core_end] = rendered
                 continue
@@ -153,11 +162,15 @@ def render_bayer_full_resolution_rgb8(
             saturation=saturation,
         )
         rgb = np.stack((red, green, blue), axis=2)
-        rgb *= 255.0
+        rgb *= float(maximum)
         np.rint(rgb, out=rgb)
-        output[core_start:core_end] = rgb.astype(np.uint8)
+        output[core_start:core_end] = rgb.astype(dtype)
 
-    return FullResolutionRgbImage(width=width, height=height, rgb_bytes=output.tobytes())
+    return FullResolutionRgbImage(width=width, height=height, rgb_bytes=output.tobytes(), bit_depth=bit_depth)
+
+
+# Existing callers retain their RGB8 default and keyword contract.
+render_bayer_full_resolution_rgb8 = render_bayer_full_resolution
 
 
 def _demosaic_numpy(np, source, crop, start, end, pattern, black_levels, white_level, channel_gains):

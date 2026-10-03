@@ -13,7 +13,12 @@ from openraw_studio.core.recipe import new_recipe, write_recipe
 from openraw_studio.decision.interfaces import DecisionRequest
 from openraw_studio.decision.rules import RuleBasedDecisionEngine
 from openraw_studio.export.errors import ExportError
-from openraw_studio.export.formats import export_display_name, normalize_export_format, validate_export_quality
+from openraw_studio.export.formats import (
+    export_display_name,
+    normalize_export_format,
+    validate_export_bit_depth,
+    validate_export_quality,
+)
 from openraw_studio.export.interfaces import ExportEngine, ExportRequest
 from openraw_studio.export.local import LocalImageExportEngine
 from openraw_studio.pipeline.errors import BackendUnavailableError, PipelineError, SourceFileError
@@ -58,6 +63,7 @@ class LocalPhotoPipeline:
         try:
             export_format = normalize_export_format(request.export_format)
             export_quality = validate_export_quality(request.export_quality)
+            export_bit_depth = validate_export_bit_depth(request.export_bit_depth, export_format=export_format)
         except ValueError as exc:
             raise PipelineError(str(exc)) from exc
 
@@ -147,7 +153,7 @@ class LocalPhotoPipeline:
         recipe["output"] = {
             "format": export_format,
             "quality": export_quality if export_format == "jpeg" else None,
-            "bit_depth": 8,
+            "bit_depth": export_bit_depth,
             "compression": "jpeg" if export_format == "jpeg" else "tiff_deflate",
             "metadata_policy": "safe-capture-no-gps-v0.1",
         }
@@ -220,6 +226,7 @@ class LocalPhotoPipeline:
                         max_dimension=None,
                         color_space="sRGB",
                         quality=export_quality,
+                        bit_depth=export_bit_depth,
                     )
                 )
                 export_result = self.export_engine.export(
@@ -230,6 +237,7 @@ class LocalPhotoPipeline:
                         format=export_format,
                         quality=export_quality,
                         write_recipe_sidecar=False,
+                        bit_depth=export_bit_depth,
                     )
                 )
                 export_ref = export_result.exported
@@ -276,7 +284,7 @@ class LocalPhotoPipeline:
                     "width": export_ref.width,
                     "height": export_ref.height,
                     "quality": export_result.metadata.get("quality"),
-                    "bit_depth": export_result.metadata.get("bit_depth", 8),
+                    "bit_depth": export_result.metadata.get("bit_depth", export_bit_depth),
                     "compression": export_result.metadata.get("compression"),
                     "metadata_policy": export_result.metadata.get("metadata_policy"),
                     "engine": self.export_engine.engine_info().name,

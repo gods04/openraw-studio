@@ -29,6 +29,7 @@ class PackagingFilesTests(unittest.TestCase):
         self.assertIn('"THIRD_PARTY_LICENSES"', script)
         self.assertIn('@{ Name = "NumPy"; Pattern = "numpy-*.dist-info" }', script)
         self.assertIn('@{ Name = "Pillow"; Pattern = "pillow-*.dist-info" }', script)
+        self.assertIn('@{ Name = "Tifffile"; Pattern = "tifffile-*.dist-info" }', script)
         self.assertIn("Copy-Item", script)
         self.assertTrue((ROOT / "NOTICE").is_file())
 

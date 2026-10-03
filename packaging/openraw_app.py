@@ -9,7 +9,8 @@ from pathlib import Path
 from time import perf_counter
 
 
-def smoke_test(source: Path, output: Path, *, color_noise=0.0, luminance_noise=0.0, auto_color_noise=False) -> int:
+def smoke_test(source: Path, output: Path, *, color_noise=0.0, luminance_noise=0.0, auto_color_noise=False,
+               export_format="jpeg", bit_depth=8) -> int:
     """Exercise frozen runtime imports, GPU/JIT, adjustment and full export."""
     from openraw_studio.core.files import sha256_file
     from openraw_studio.decision.auto_adjust import (
@@ -80,10 +81,24 @@ def smoke_test(source: Path, output: Path, *, color_noise=0.0, luminance_noise=0
         report["luminance_noise"] = edits["luminance_noise"]
         started = perf_counter()
         result = pipeline.process(
-            PipelineRequest(source, output, overrides=edits)
+            PipelineRequest(source, output, overrides=edits, export_format=export_format, export_bit_depth=bit_depth)
         )
         report["export_seconds"] = perf_counter() - started
         report["export_size"] = [result.exports[0].width, result.exports[0].height]
+        report["export_format"] = export_format
+        report["bit_depth"] = bit_depth
+        if bit_depth == 16:
+            import numpy as np
+            import tifffile
+
+            with tifffile.TiffFile(result.exports[0].path) as opened:
+                page = opened.pages[0]
+                pixels = page.asarray()
+                report["tiff_bits_per_sample"] = page.bitspersample
+                report["tiff_sample_dtype"] = str(pixels.dtype)
+                report["tiff_non_8bit_fraction"] = float(np.mean(pixels % 257 != 0))
+                if page.bitspersample != 16 or pixels.dtype != np.uint16:
+                    raise AssertionError("Export did not preserve 16-bit RGB samples")
         started = perf_counter()
         detail = prepare_detail_photo(pipeline.raw_processor, source)
         region = DetailView((512, 384)).region(detail.size)
@@ -95,6 +110,7 @@ def smoke_test(source: Path, output: Path, *, color_noise=0.0, luminance_noise=0
         detail_image.save(output / "native-detail.png")
         # Auto/export/detail can compile additional signatures after preparation.
         report["compiled_cpu_tone"] = bool(getattr(compiled_tone.tone, "signatures", []))
+        report["compiled_cpu_tone16"] = bool(getattr(compiled_tone.tone16, "signatures", []))
         report["cpu_tone_fallback_reason"] = compiled_tone.last_error
         report["cpu_tone_cache_disabled_reason"] = compiled_tone.cache_disabled_reason
         report["compiled_cpu_bayer"] = bool(getattr(compiled_bayer.malvar_demosaic, "signatures", []))
@@ -129,6 +145,8 @@ def main() -> int:
     parser.add_argument("--color-noise", type=float, default=0.0)
     parser.add_argument("--luminance-noise", type=float, default=0.0)
     parser.add_argument("--auto-color-noise", action="store_true", help="Select color-noise strength during --smoke-test.")
+    parser.add_argument("--format", dest="export_format", choices=("jpeg", "tiff"), default="jpeg")
+    parser.add_argument("--bit-depth", type=int, choices=(8, 16), default=8)
     args = parser.parse_args()
     if args.smoke_test:
         if args.source is None or args.output is None:
@@ -137,7 +155,10 @@ def main() -> int:
             parser.error("--color-noise must be within [0, 1]")
         if not 0 <= args.luminance_noise <= 1:
             parser.error("--luminance-noise must be within [0, 1]")
-        return smoke_test(args.source, args.output, color_noise=args.color_noise, luminance_noise=args.luminance_noise, auto_color_noise=args.auto_color_noise)
+        if args.bit_depth == 16 and args.export_format != "tiff":
+            parser.error("16-bit export requires --format tiff")
+        return smoke_test(args.source, args.output, color_noise=args.color_noise, luminance_noise=args.luminance_noise,
+                          auto_color_noise=args.auto_color_noise, export_format=args.export_format, bit_depth=args.bit_depth)
     app = launch_desktop_app(run_mainloop=False)
     if args.source is not None:
         app.root.after(

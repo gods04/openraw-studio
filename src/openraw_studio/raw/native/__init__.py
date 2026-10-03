@@ -10,7 +10,7 @@ from openraw_studio.raw.native.color import (
 from openraw_studio.raw.native.decoder import NativeRawDecoder
 from openraw_studio.raw.native.demosaic import LinearRgbImage, demosaic_simple
 from openraw_studio.raw.native.engine import NativeRawProcessor
-from openraw_studio.raw.native.fullres import FullResolutionRgbImage, render_bayer_full_resolution_rgb8
+from openraw_studio.raw.native.fullres import FullResolutionRgbImage, render_bayer_full_resolution, render_bayer_full_resolution_rgb8
 from openraw_studio.raw.native.jpeg import write_jpeg
 from openraw_studio.raw.native.nikon import (
     NIKON_COMPRESSED_RAW,
@@ -40,7 +40,7 @@ from openraw_studio.raw.native.synthetic import (
     write_synthetic_nikon_nef,
 )
 from openraw_studio.raw.native.tone import PreviewRgbImage, tone_map_preview
-from openraw_studio.raw.native.tiff import write_tiff_rgb8
+from openraw_studio.raw.native.tiff import write_tiff_rgb8, write_tiff_rgb16
 
 __all__ = [
     "DngMetadataReader",
@@ -72,6 +72,7 @@ __all__ = [
     "render_decoded_nikon_34713_image",
     "render_decoded_nikon_34713_to_file",
     "render_bayer_full_resolution_rgb8",
+    "render_bayer_full_resolution",
     "render_nikon_34713_to_file",
     "normalize_sensor_data",
     "inspect_native_support",
@@ -90,4 +91,5 @@ __all__ = [
     "write_png",
     "write_ppm",
     "write_tiff_rgb8",
+    "write_tiff_rgb16",
 ]

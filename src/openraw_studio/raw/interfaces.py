@@ -19,6 +19,7 @@ class RawRenderRequest:
     max_dimension: int | None = None
     color_space: str = "ProPhoto RGB"
     quality: int = 92
+    bit_depth: int = 8
 
 
 @runtime_checkable

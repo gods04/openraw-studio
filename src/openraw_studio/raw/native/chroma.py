@@ -1,4 +1,4 @@
-"""Local, luminance-preserving bilateral color-noise reduction on rendered RGB8.
+"""Local, luminance-preserving bilateral color-noise reduction on rendered RGB8/RGB16.
 
 Independent adaptation of the bilateral domain/range weighting described by
 Tomasi and Manduchi (ICCV 1998):
@@ -23,29 +23,34 @@ for _table in (SPATIAL, LIGHT, COLOR):
 
 
 def _reference_chunk(pixels, start, end, strength):
+    unit = 257 if pixels.dtype == np.uint16 else 1
+    maximum = 255 * unit
+    divisor = 256 * unit
     height, width, _ = pixels.shape
     ys = np.clip(np.arange(start - 2, end + 2), 0, height - 1)
     xs = np.clip(np.arange(-2, width + 2), 0, width - 1)
     tile = pixels[ys[:, None], xs[None, :]].astype(np.int32)
     r, g, b = (tile[:, :, c] for c in range(3))
     weighted = 54 * r + 183 * g + 19 * b
-    guide = (weighted + 128) >> 8
+    guide = (weighted + divisor // 2) // divisor
     u, v = r - g, b - g
     center = (slice(2, 2 + end - start), slice(2, 2 + width))
     cu, cv, cy = u[center], v[center], guide[center]
-    su, sv, sw = (np.zeros(cu.shape, np.float32) for _ in range(3))
+    accumulator_dtype = np.float64 if unit == 257 else np.float32
+    su, sv, sw = (np.zeros(cu.shape, accumulator_dtype) for _ in range(3))
     for dy in range(-2, 3):
         for dx in range(-2, 3):
             area = (slice(2 + dy, 2 + dy + end - start), slice(2 + dx, 2 + dx + width))
             nu, nv = u[area], v[area]
+            difference = (np.abs(nu - cu) + np.abs(nv - cv) + unit // 2) // unit
             weight = (
                 SPATIAL[dy + 2, dx + 2]
                 * LIGHT[np.abs(guide[area] - cy)]
-                * COLOR[np.abs(nu - cu) + np.abs(nv - cv)]
+                * COLOR[difference]
             )
             sw += weight
-            su += weight * nu.astype(np.float32)
-            sv += weight * nv.astype(np.float32)
+            su += weight * nu.astype(accumulator_dtype)
+            sv += weight * nv.astype(accumulator_dtype)
     u = cu + strength * (su / sw - cu)
     v = cv + strength * (sv / sw - cv)
     offset = (54 * u + 19 * v) / 256
@@ -55,26 +60,26 @@ def _reference_chunk(pixels, start, end, strength):
     # Contract the chroma towards the same luminance at the gamut boundary.
     # Per-channel clipping would instead change brightness and hue.
     bound = np.full_like(chroma, np.inf)
-    np.divide(255 - luma, chroma, out=bound, where=chroma > 0)
+    np.divide(maximum - luma, chroma, out=bound, where=chroma > 0)
     np.divide(-luma, chroma, out=bound, where=chroma < 0)
     scale = np.minimum(1, bound.min(axis=-1, keepdims=True))
-    return np.rint(np.clip(luma + chroma * scale, 0, 255)).astype(np.uint8)
+    return np.rint(np.clip(luma + chroma * scale, 0, maximum)).astype(pixels.dtype)
 
 
 def reduce_color_noise(
     pixels, strength, *, use_gpu=True, use_compiled=True, chunk_rows=128
 ):
-    """Return a new RGB8 image, or the unchanged input when strength is zero."""
+    """Return RGB8/RGB16 in the input dtype, or the input itself at zero strength."""
     if not math.isfinite(strength) or not 0 <= strength <= 1:
         raise ValueError("Color noise strength must be finite and within [0, 1]")
     if (
-        pixels.dtype != np.uint8
+        pixels.dtype not in (np.uint8, np.uint16)
         or pixels.ndim != 3
         or pixels.shape[2] != 3
         or min(pixels.shape[:2]) < 1
     ):
         raise ValueError(
-            "Color noise reduction requires nonempty H x W x 3 RGB8 pixels"
+            "Color noise reduction requires nonempty H x W x 3 RGB8 or RGB16 pixels"
         )
     if chunk_rows < 1:
         raise ValueError("Color noise chunk size must be positive")

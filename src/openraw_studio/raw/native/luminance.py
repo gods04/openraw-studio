@@ -1,4 +1,4 @@
-"""Bounded bilateral smoothing of rendered RGB8 luminance, not sensor denoise.
+"""Bounded bilateral smoothing of rendered RGB8/RGB16 luminance, not sensor denoise.
 
 Independent domain/range weighting based on Tomasi and Manduchi (ICCV 1998):
 https://users.cs.duke.edu/~tomasi/papers/tomasi/tomasiIccv98.pdf
@@ -20,12 +20,15 @@ WEIGHTS.flags.writeable = False
 
 
 def _reference_chunk(pixels, start, end, strength):
+    unit = 257 if pixels.dtype == np.uint16 else 1
+    maximum = 255 * unit
+    divisor = 256 * unit
     height, width, _ = pixels.shape
     ys = np.clip(np.arange(start - 2, end + 2), 0, height - 1)
     xs = np.clip(np.arange(-2, width + 2), 0, width - 1)
     tile = pixels[ys[:, None], xs[None, :]].astype(np.int32)
     weighted = 54 * tile[..., 0] + 183 * tile[..., 1] + 19 * tile[..., 2]
-    guide = (weighted + 128) >> 8
+    guide = (weighted + divisor // 2) // divisor
     center = (slice(2, 2 + end - start), slice(2, 2 + width))
     cy = guide[center]
     sy, sw = (np.zeros(cy.shape, np.int64) for _ in range(2))
@@ -36,23 +39,23 @@ def _reference_chunk(pixels, start, end, strength):
             sw += weight
             sy += weight * (weighted[area] - weighted[center])
     # Q16 weights/amount and integer ties-to-even make CPU/GPU shifts identical.
-    # Even 25 * 65536 * 65280 * 65536 fits in a signed 64-bit accumulator.
+    # Even 25 * 65536 * (65535 * 256) * 65536 fits in signed 64-bit.
     numerator = sy * round(strength * 65536)
     denominator = sw * (256 * 65536)
     whole, remainder = np.divmod(np.abs(numerator), denominator)
     whole += (2 * remainder > denominator) | ((2 * remainder == denominator) & (whole % 2 == 1))
     delta = (np.sign(numerator) * whole).astype(np.int32)
     rgb = tile[center]
-    delta = np.clip(delta, -rgb.min(axis=-1), 255 - rgb.max(axis=-1))
-    return (rgb + delta[..., None]).astype(np.uint8)
+    delta = np.clip(delta, -rgb.min(axis=-1), maximum - rgb.max(axis=-1))
+    return (rgb + delta[..., None]).astype(pixels.dtype)
 
 
 def reduce_luminance_noise(pixels, strength, *, use_gpu=True, use_compiled=True, chunk_rows=128):
     """Smooth local brightness grain; zero returns the exact original input."""
     if not math.isfinite(strength) or not 0 <= strength <= 1:
         raise ValueError("Luminance noise strength must be finite and within [0, 1]")
-    if pixels.dtype != np.uint8 or pixels.ndim != 3 or pixels.shape[2] != 3 or min(pixels.shape[:2]) < 1:
-        raise ValueError("Luminance noise reduction requires nonempty H x W x 3 RGB8 pixels")
+    if pixels.dtype not in (np.uint8, np.uint16) or pixels.ndim != 3 or pixels.shape[2] != 3 or min(pixels.shape[:2]) < 1:
+        raise ValueError("Luminance noise reduction requires nonempty H x W x 3 RGB8 or RGB16 pixels")
     if chunk_rows < 1:
         raise ValueError("Luminance noise chunk size must be positive")
     if strength == 0:
