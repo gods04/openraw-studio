@@ -13,13 +13,12 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageOps
 
 from openraw_studio.core.files import sha256_file
-from openraw_studio.decision.auto_adjust import suggest_auto_adjustments_from_preview
+from openraw_studio.decision.auto_adjust import suggest_auto_adjustments_for_photo
 from openraw_studio.pipeline.interfaces import PipelineRequest
 from openraw_studio.pipeline.local import LocalPhotoPipeline
 from openraw_studio.raw.native.dng import DngMetadataReader
 from openraw_studio.raw.native.interactive import prepare_interactive_photo
 from openraw_studio.raw.native.nikon import _apply_exif_orientation
-from openraw_studio.raw.native.tone import PreviewRgbImage
 
 
 def contact_sheet(tiles, output, columns=4):
@@ -123,19 +122,8 @@ def validate(sources, output, export):
             )
             original, backend = photo.render({})
             record.update(prepare_seconds=perf_counter() - started, backend=backend)
-            analysis_photo = prepare_interactive_photo(
-                pipeline.raw_processor, source, max_dimension=256
-            )
-            sample, _ = analysis_photo.render({})
-            preview = PreviewRgbImage(
-                sample.width, sample.height,
-                tuple(map(tuple, np.asarray(sample).reshape(-1, 3))), "gamma-2.2"
-            )
             started = perf_counter()
-            suggestion = suggest_auto_adjustments_from_preview(
-                preview,
-                render=lambda values, photo=analysis_photo: photo.render(values)[0],
-            )
+            suggestion = suggest_auto_adjustments_for_photo(photo)
             adjustments = {
                 key: value * 0.7 for key, value in suggestion.as_overrides().items()
             }
@@ -146,7 +134,7 @@ def validate(sources, output, export):
                 metrics=suggestion.metrics,
                 adjustments=adjustments,
                 full_strength_adjustments=suggestion.as_overrides(),
-                analysis_size=list(sample.size),
+                detail_size=list(original.size),
             )
             item_dir = output / f"photo-{len(records):02d}"
             item_dir.mkdir(exist_ok=True)

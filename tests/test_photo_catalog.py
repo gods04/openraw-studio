@@ -84,19 +84,25 @@ class PhotoCatalogTests(unittest.TestCase):
 
     def test_auto_validation_uses_desktop_linear_proxy_not_display_thumbnail(self):
         validation = sys.modules["validate_photo_set"]
-        display = SimpleNamespace(render=lambda _: (Image.new("RGB", (40, 30), (200, 200, 200)), "CPU"))
+        display = SimpleNamespace(
+            render=lambda _: (Image.new("RGB", (40, 30), (200, 200, 200)), "CPU"),
+            pixels=SimpleNamespace(shape=(30, 40, 3)),
+        )
         analysis = SimpleNamespace(render=lambda _: (Image.new("RGB", (4, 3), (100, 100, 100)), "CPU"))
+        analysis.pixels = SimpleNamespace(shape=(3, 4, 3))
+        display.resized = lambda dimension: analysis
         with tempfile.TemporaryDirectory() as folder, patch.object(
-            validation, "prepare_interactive_photo", side_effect=[display, analysis]
+            validation, "prepare_interactive_photo", return_value=display
         ) as prepare, patch("sys.stdout", new_callable=StringIO):
             source = Path(folder) / "photo.NEF"
             source.write_bytes(b"synthetic harness input")
             record = validation.validate([source], Path(folder), False)[0]
         self.assertTrue(record["ok"])
         self.assertTrue(record["source_unchanged"])
-        self.assertEqual([call.kwargs["max_dimension"] for call in prepare.call_args_list], [960, 256])
-        self.assertEqual(record["analysis_size"], [4, 3])
+        self.assertEqual([call.kwargs["max_dimension"] for call in prepare.call_args_list], [960])
+        self.assertEqual(record["detail_size"], [40, 30])
         self.assertAlmostEqual(record["metrics"]["median_luma"], 100 / 255, places=5)
+        self.assertAlmostEqual(record["metrics"]["detail_median_luma"], 200 / 255, places=5)
 
 
 if __name__ == "__main__":

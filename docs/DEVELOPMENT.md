@@ -261,7 +261,7 @@ profiles fail explicitly. A 64-million-sample allocation bound applies. Syntheti
 tests cover multiple widths, predictor resets, negative lifting, partial slices,
 bitstream bounds/padding, damaged packets, transactional state, and JIT fallback.
 Synthetic width coverage does not establish support for additional cameras.
-The complete 295-test suite passes with automatic GPU selection and with
+The complete 304-test suite passes with automatic GPU selection and with
 `OPENRAW_GPU=off` (one GPU-only skip). New synthetic tests cover the complete
 pipeline, color-lifting borders, curve bounds, CPU/JIT equality, crop/orientation,
 JPEG/TIFF output, decoder-cache reuse, and rejection of unknown profiles before
@@ -349,8 +349,8 @@ budgets remain unchanged. Failed recovery still backs off the entire correction.
 Per-call metric caching avoids duplicate renders; `validation_renders` and
 `highlights_guarded` expose this work without retaining rendered images.
 
-The private validation script now uses the same scene-linear 256-pixel proxy as
-desktop Auto, not a downsized gamma-encoded display image. This fixes a sampling
+The initial joint-guard validation script used the same scene-linear 256-pixel
+proxy as desktop Auto, not a downsized gamma-encoded display image. This fixed a sampling
 discrepancy in older comparison reports. Fourteen D500 and nine Z f samples all
 pass native Auto/full-size JPEG export with unchanged source hashes. On the local
 RTX 5070, Auto plus the 960-pixel comparison render took 0.033-0.109 s, and cached
@@ -364,15 +364,58 @@ A separate D500 moon run measured 51 ms median slider response, 49 frames during
 50 drag edits, and 1.76 s export. Unit regressions cover real linear rendering,
 zero/negative exposure, the one-render fast path, and bounded duplicate-free search.
 
-Remaining quality limitation: a separate 23-photo audit at 25/50/70/100% strength
+The initial implementation's 23-photo audit at 25/50/70/100% strength
 and 256/960-pixel resolution passed 178 of 184 clipping/shadow checks. All 256-pixel
 checks passed, but six 960-pixel cases exceeded the same budgets: backlight, moon,
 and high-ISO highlight detail at 100%; fine sea highlights at 70% and 100%; and
 temple shadow detail at 100%. This is evidence that a small analysis proxy misses
-fine detail, not proof of full-resolution protection. The next Auto priority is
-detail-aware validation without making normal editing slower. Reports remain local.
+fine detail, not proof of full-resolution protection. The two-level validation
+below addresses those six observed cases. Reports remain local.
 
-Next: improve finer-detail Auto validation, reduce initial import latency, and
+### Detail-Aware Auto Validation
+
+Desktop Auto, per-photo batch Auto, local sample validation, and packaged smoke
+checks now share `suggest_auto_adjustments_for_photo`. It derives the 256-pixel
+analysis proxy from the unedited 960-pixel scene-linear display proxy. Color
+parameters and EXIF orientation remain intact; no edited or gamma-encoded image
+is resized to make that analysis input.
+
+Promising corrections must pass both analysis and display-resolution guards.
+Candidates rejected by the small proxy skip expensive detail renders, and both
+guards cache measurements. The existing clipping/shadow budgets are unchanged.
+`detail_*` metrics distinguish the finer check from the original analysis metrics.
+Tiny synthetic highlights that disappear during downsampling reproduce the old
+failure; the new guard preserves them while retaining a useful exposure lift.
+
+Single-photo Auto reuses the live worker's prepared, unedited proxy rather than
+rebuilding it from sensor data. Access is synchronized and keyed by resolved path,
+file size, and modification time. Source switches, invalidation, missing/changed
+files, and worker closure cannot hand out stale prepared state; tests also cover
+an invalidated in-flight preparation. There is no new decoded-photo cache.
+
+All 23 selected D500/Z f native Auto/full-size JPEG exports pass with unchanged
+source hashes. The same 184 strength/resolution clipping and shadow checks now
+all pass, including the previously failing sea, moon, backlight, high-ISO, and
+temple cases. This validates those samples at 256/960 pixels and four strengths,
+not full-resolution guarantees or every intermediate strength.
+
+On the local RTX 5070, Auto including the report's display render took 0.09-0.79 s
+(mean 0.18 s); full-size cached JPEG export took 1.60-2.41 s. Actual Tk Auto took
+0.43 s on the museum image (previously 0.62 s), and 0.89 s on the fine-highlight
+sea image. Both passed all 16 desktop workflow checks. The seven batch checks
+pass, including cancellation and compact-panel scrolling. A separate moon run
+measured 59 ms median slider response and 49 frames during 50 edits, with 1.79 s
+export. These are sample-specific measurements, not a universal latency promise.
+The 304-test suite passes with GPU auto-selection and CPU-only fallback (one
+GPU-only skip).
+
+The refreshed local EXE also passes Z f portrait GPU export (4032 x 6048) and
+D500 CPU-only export (5568 x 3712), preserving source hashes and matching source
+Auto settings. The difficult sea photo takes 1.70 s for Auto and 5.08 s for export
+on CPU; fallback performance remains slower than the GPU path. The build still
+does not generate or publish a public ZIP release.
+
+Next: full-resolution inspection, better highlight tone rendering, reduced import latency, and
 expand verified profiles only with real samples. The reference decoder, wrapper, binaries, private
 images, and comparison reports stay in ignored `output/`; none is a runtime or
 distributed dependency. Primary algorithm references include

@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
+from openraw_studio.raw.native.interactive import InteractivePhoto
 from openraw_studio.raw.native.preview import render_preview_image
 from openraw_studio.raw.native.tone import PreviewRgbImage
 
@@ -85,6 +86,86 @@ def _clipping(pixels):
     return float(np.mean(np.max(pixels, axis=1) >= 254 / 255))
 
 
+class _RenderGuard:
+    """Cached measurements in one unedited proxy's own sampling domain."""
+
+    def __init__(self, preview, render, *, preserve_midtones):
+        self.pixels = _pixels(preview)
+        self.render = render
+        self.weights = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
+        luma = self.pixels @ self.weights
+        self.median = float(np.median(luma))
+        self.clipping = _clipping(self.pixels)
+        self.preserve_midtones = preserve_midtones and self.median < 0.5
+        self.usable_shadows = (luma > 8 / 255) & (luma < 0.25)
+        self.headroom = self.pixels <= 250 / 255
+        # Channel-level headroom protects small bright subjects even if a
+        # different channel at that pixel was already clipped before editing.
+        self.highlight_detail = (self.pixels >= 0.60) & self.headroom
+        self.highlight_channels = int(np.count_nonzero(self.highlight_detail))
+        self.detail_allowance = max(2, self.highlight_channels * 0.02)
+        self.cache = {}
+
+    def measure(self, values):
+        key = tuple(sorted(values.items()))
+        if key not in self.cache:
+            candidate = _pixels(self.render(values))
+            if candidate.shape != self.pixels.shape:
+                raise ValueError("Auto validation render must match the baseline preview dimensions")
+            candidate_luma = candidate @ self.weights
+            clipped_channels = candidate >= 254 / 255
+            self.cache[key] = _RenderedMetrics(
+                _clipping(candidate), float(np.median(candidate_luma)),
+                float(np.mean(self.usable_shadows & (candidate_luma <= 2 / 255))),
+                float(np.mean(np.any(self.headroom & clipped_channels, axis=1))),
+                int(np.count_nonzero(self.highlight_detail & clipped_channels)),
+            )
+        return self.cache[key]
+
+    def tones_preserved(self, values, *, tolerance=0.01):
+        checked = self.measure(values)
+        return checked.crushed_shadows <= 0.005 and (
+            not self.preserve_midtones or checked.median >= self.median - tolerance
+        )
+
+    def highlights_preserved(self, values):
+        checked = self.measure(values)
+        return (
+            checked.clipping <= self.clipping + 0.005
+            and checked.new_clipping <= 0.005
+            and checked.lost_highlight_channels <= self.detail_allowance
+        )
+
+    def metrics(self, values):
+        checked = self.measure(values)
+        return {
+            "median_luma": self.median,
+            "highlight_fraction_before": self.clipping,
+            "highlight_fraction_after": checked.clipping,
+            "median_luma_after": checked.median,
+            "new_shadow_clipping_fraction": checked.crushed_shadows,
+            "new_highlight_clipping_fraction": checked.new_clipping,
+            "highlight_detail_loss_fraction": checked.lost_highlight_channels / max(1, self.highlight_channels),
+            "validation_renders": float(len(self.cache)),
+            "validation_pixels": float(len(self.pixels)),
+        }
+
+
+def suggest_auto_adjustments_for_photo(photo: InteractivePhoto) -> AutoAdjustSuggestion:
+    """Analyze a small linear proxy and validate against the prepared display photo."""
+    analysis = photo.resized(256)
+    original, _ = analysis.render({})
+    detail = {}
+    if photo.pixels.shape[:2] != analysis.pixels.shape[:2]:
+        detail = {
+            "detail_preview": photo.render({})[0],
+            "render_detail": lambda values: photo.render(values)[0],
+        }
+    return suggest_auto_adjustments_from_preview(
+        original, render=lambda values: analysis.render(values)[0], **detail
+    )
+
+
 def suggest_auto_adjustments(source_path: str | Path) -> AutoAdjustSuggestion:
     preview = render_preview_image(Path(source_path), max_dimension=256)
     return suggest_auto_adjustments_from_preview(preview)
@@ -94,13 +175,19 @@ def suggest_auto_adjustments_from_preview(
     preview: PreviewRgbImage,
     *,
     render: Callable | None = None,
+    detail_preview=None,
+    render_detail: Callable | None = None,
 ) -> AutoAdjustSuggestion:
     """Analyze an unedited preview, optionally validating against the same renderer.
 
     The callback accepts adjustment overrides and returns RGB pixels/Pillow image.
     It must render from the original linear proxy, never from the edited preview.
+    An optional finer-detail baseline/callback pair validates promising candidates
+    without rendering every rejected candidate at the larger resolution.
     This is a local heuristic, not a trained AI model or semantic scene classifier.
     """
+    if (detail_preview is None) != (render_detail is None) or (render_detail is not None and render is None):
+        raise ValueError("Detail validation requires a baseline, a detail renderer, and the analysis renderer")
     pixels = _pixels(preview)
     luma = pixels @ np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
     p05, p10, median, p90, p95, p99 = np.quantile(
@@ -225,60 +312,31 @@ def suggest_auto_adjustments_from_preview(
     if render is None:
         return suggestion
 
+    primary = _RenderGuard(preview, render, preserve_midtones=exposure >= 0 and not low_key)
+    guards = [primary]
+    if render_detail is not None:
+        guards.append(_RenderGuard(
+            detail_preview, render_detail, preserve_midtones=exposure >= 0 and not low_key
+        ))
+
+    def tones_preserved(values, *, tolerance=0.01):
+        return all(
+            guard.tones_preserved(values, tolerance=tolerance) for guard in guards
+        )
+
+    def highlights_preserved(values):
+        return all(guard.highlights_preserved(values) for guard in guards)
+
     # Positive contrast can undo an exposure lift and clip dim subjects. Test
     # that component first, retaining the other corrections where possible.
-    luma_weights = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
-    usable_shadows = (luma > 8 / 255) & (luma < 0.25)
-    # A moon or lamp can be much smaller than the whole-frame clipping budget.
-    # Track individual channels too: an already clipped red must not hide a
-    # newly clipped green. Leave a few code values of headroom for quantization.
-    headroom = pixels <= 250 / 255
-    highlight_detail = (pixels >= 0.60) & headroom
-    highlight_channels = int(np.count_nonzero(highlight_detail))
-    detail_allowance = max(2, highlight_channels * 0.02)
-    rendered_cache = {}
-
-    def rendered_metrics(values):
-        key = tuple(sorted(values.items()))
-        if key in rendered_cache:
-            return rendered_cache[key]
-        candidate = _pixels(render(values))
-        if candidate.shape != pixels.shape:
-            raise ValueError("Auto validation render must match the baseline preview dimensions")
-        candidate_luma = candidate @ luma_weights
-        crushed = float(np.mean(usable_shadows & (candidate_luma <= 2 / 255)))
-        clipped_channels = candidate >= 254 / 255
-        checked = _RenderedMetrics(
-            _clipping(candidate), float(np.median(candidate_luma)), crushed,
-            float(np.mean(np.any(headroom & clipped_channels, axis=1))),
-            int(np.count_nonzero(highlight_detail & clipped_channels)),
-        )
-        rendered_cache[key] = checked
-        return checked
-
-    def tones_preserved(checked, *, tolerance=0.01):
-        preserve_midtones = exposure >= 0 and median < 0.5 and not low_key
-        return checked.crushed_shadows <= 0.005 and (
-            not preserve_midtones or checked.median >= median - tolerance
-        )
-
-    def highlights_preserved(checked):
-        return (
-            checked.clipping <= clipped + 0.005
-            and checked.new_clipping <= 0.005
-            and checked.lost_highlight_channels <= detail_allowance
-        )
-
     initial_values = suggestion.as_overrides()
-    initial_metrics = rendered_metrics(initial_values)
     contrast_guarded = False
-    if suggestion.contrast > 0 and not tones_preserved(initial_metrics):
+    if suggestion.contrast > 0 and not tones_preserved(initial_values):
         for fraction in (0.5, 0.0):
             values = {**initial_values, "contrast": round(suggestion.contrast * fraction, 4)}
-            checked = rendered_metrics(values)
-            if tones_preserved(checked) or fraction == 0:
+            if tones_preserved(values) or fraction == 0:
                 suggestion = replace(suggestion, contrast=values["contrast"])
-                initial_values, initial_metrics = values, checked
+                initial_values = values
                 contrast_guarded = True
                 break
 
@@ -294,31 +352,27 @@ def suggest_auto_adjustments_from_preview(
                     **initial_values, "exposure": round(suggestion.exposure * fraction, 4),
                     "contrast": candidate_contrast,
                 }
-                checked = rendered_metrics(values)
                 # A recovered correction must not darken dim midtones. Contrast
                 # that worked before limiting exposure may now defeat the lift.
-                if not tones_preserved(checked, tolerance=1e-6):
+                if not primary.tones_preserved(values, tolerance=1e-6):
                     continue
-                if highlights_preserved(checked):
-                    return values, checked
+                if highlights_preserved(values) and tones_preserved(values, tolerance=1e-6):
+                    return values
                 for candidate_highlights in (-0.16, -0.30):
                     if candidate_highlights >= suggestion.highlights:
                         continue
                     compressed = {**values, "highlights": candidate_highlights}
-                    compressed_metrics = rendered_metrics(compressed)
-                    if highlights_preserved(compressed_metrics) and tones_preserved(compressed_metrics, tolerance=1e-6):
-                        return compressed, compressed_metrics
+                    if highlights_preserved(compressed) and tones_preserved(compressed, tolerance=1e-6):
+                        return compressed
         return None
 
-    if not highlights_preserved(initial_metrics):
-        recovered = recover_tones()
-        if recovered is not None:
-            values, checked = recovered
+    if not highlights_preserved(initial_values):
+        values = recover_tones()
+        if values is not None:
             exposure_guarded = values["exposure"] != suggestion.exposure
             highlights_guarded = values["highlights"] != suggestion.highlights
             contrast_guarded |= values["contrast"] != suggestion.contrast
             suggestion = replace(suggestion, **values)
-            initial_values, initial_metrics = values, checked
 
     # Back off the complete correction until rendered highlights AND dark
     # subjects stay inside their budgets. Proxy renders do not decode RAW again.
@@ -327,10 +381,7 @@ def suggest_auto_adjustments_from_preview(
             key: round(value * amount, 4)
             for key, value in suggestion.as_overrides().items()
         }
-        checked = (
-            initial_metrics if amount == 1.0 else rendered_metrics(values)
-        )
-        if (highlights_preserved(checked) and tones_preserved(checked)) or amount == 0:
+        if (highlights_preserved(values) and tones_preserved(values)) or amount == 0:
             notes = suggestion.rationale + (
                 ("Reduced contrast to preserve dark subjects.",) if contrast_guarded else ()
             ) + (
@@ -340,22 +391,20 @@ def suggest_auto_adjustments_from_preview(
             ) + (
                 ("Reduced correction to protect highlights and shadows.",) if amount < 1 else ()
             )
+            metrics = primary.metrics(values)
+            if len(guards) > 1:
+                metrics.update({f"detail_{key}": value for key, value in guards[1].metrics(values).items()})
             return replace(
                 suggestion,
                 **values,
                 rationale=notes,
                 metrics={
                     **suggestion.metrics,
-                    "highlight_fraction_after": checked.clipping,
-                    "median_luma_after": checked.median,
-                    "new_shadow_clipping_fraction": checked.crushed_shadows,
-                    "new_highlight_clipping_fraction": checked.new_clipping,
-                    "highlight_detail_loss_fraction": checked.lost_highlight_channels / max(1, highlight_channels),
+                    **metrics,
                     "contrast_guarded": float(contrast_guarded),
                     "exposure_guarded": float(exposure_guarded),
                     "highlights_guarded": float(highlights_guarded),
                     "guard_strength": amount,
-                    "validation_renders": float(len(rendered_cache)),
                 },
             )
     return suggestion

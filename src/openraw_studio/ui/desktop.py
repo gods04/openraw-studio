@@ -18,10 +18,9 @@ from openraw_studio.core.files import is_supported_raw_path
 from openraw_studio.core.recipe import validate_recipe_shape
 from openraw_studio.decision.auto_adjust import (
     AutoAdjustSuggestion,
-    suggest_auto_adjustments_from_preview,
+    suggest_auto_adjustments_for_photo,
 )
 from openraw_studio.raw.native.interactive import prepare_interactive_photo
-from openraw_studio.raw.native.tone import PreviewRgbImage
 from openraw_studio.export.formats import export_display_name, normalize_export_format, validate_export_quality
 from openraw_studio.pipeline.batch import BatchItemResult, BatchResult, run_batch_export
 from openraw_studio.pipeline.errors import BackendUnavailableError, PipelineError, SourceFileError
@@ -1324,16 +1323,10 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
 
         def _auto_adjust_worker(self, run_id: int, source: Path) -> None:
             try:
-                photo = prepare_interactive_photo(
-                    self.pipeline.raw_processor, source, max_dimension=256
-                )
-                image, _backend = photo.render({})
-                preview = PreviewRgbImage(
-                    image.width, image.height, tuple(image.getdata()), "gamma-2.2"
-                )
-                suggestion = suggest_auto_adjustments_from_preview(
-                    preview, render=lambda settings: photo.render(settings)[0]
-                )
+                photo = self.live_worker.get_prepared_photo(source)
+                if photo is None:
+                    photo = prepare_interactive_photo(self.pipeline.raw_processor, source)
+                suggestion = suggest_auto_adjustments_for_photo(photo)
             except (
                 PipelineError,
                 OSError,
@@ -1638,15 +1631,9 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                     )
                 if mode == "Auto each photo":
                     photo = prepare_interactive_photo(
-                        self.pipeline.raw_processor, source, max_dimension=256
+                        self.pipeline.raw_processor, source
                     )
-                    image, _ = photo.render({})
-                    preview = PreviewRgbImage(
-                        image.width, image.height, tuple(image.getdata()), "gamma-2.2"
-                    )
-                    suggested = suggest_auto_adjustments_from_preview(
-                        preview, render=lambda settings: photo.render(settings)[0]
-                    )
+                    suggested = suggest_auto_adjustments_for_photo(photo)
                     return {
                         key: value * strength
                         for key, value in suggested.as_overrides().items()

@@ -9,20 +9,21 @@ Nikon paths include F-series lossless, 12-bit D20 non-split (verified on 1 J5),
 and the verified Z f HE* 14-bit profile with approximate nonlinear mapping.
 Local Windows EXE builds are available; this is not a public installer release.
 
-Next quality work: finer-detail Auto validation, faster first HE* import,
-broader verified HE profiles, broader camera calibration, edge-aware
-demosaic, actual sensor highlight reconstruction, denoise, and full-resolution
-inspection. Semantic portrait/scene AI and mobile remain later phases.
+Next quality work: full-resolution inspection, better highlight tone rendering,
+faster first HE* import, broader verified HE profiles, broader camera calibration,
+edge-aware demosaic, actual sensor highlight reconstruction, and denoise.
+Semantic portrait/scene AI and mobile remain later phases.
 
-Latest verified increment: Auto jointly checks exposure, contrast, and highlight
-compression, retaining a modest correction on a previously unchanged museum photo.
-It still limits newly clipped channels relative to available highlight detail;
-cached proxy metrics avoid duplicate candidate renders. Fourteen D500 and nine
-Z f full-size exports pass with unchanged sources. All 295 tests pass with GPU
-auto-selection and CPU-only fallback (one GPU-only skip). A finer-resolution
-audit found six clipping/shadow budget overruns among 184 checks, including tiny
-sea highlights at default strength. Small-proxy guards are not full-resolution
-guarantees; addressing these cases is the next Auto priority.
+Latest verified increment: Auto validates promising corrections at 960 pixels
+as well as the 256-pixel analysis size. All 184 checks across 23 selected photos,
+two resolutions, and four strengths pass; the six earlier detail-budget failures
+are resolved at those tested settings. Both guards cache candidate measurements.
+Single-photo Auto reuses the unedited live proxy with source-change/invalidation
+checks; desktop, batch, validation, and packaged smoke paths use the same helper.
+All 304 tests pass with GPU auto-selection and CPU fallback (one GPU-only skip).
+Real museum Auto improved from 0.62 s to 0.43 s; the difficult sea sample takes
+0.89 s. Both desktop workflows and batch cancellation checks pass. These remain
+preview-resolution heuristics, not full-resolution or semantic guarantees.
 Nine Z f HE* streams match an independent development
 oracle through entropy, wavelets, and nonlinear Bayer reconstruction. The computed
 two-sided quadratic mapping differs by at most 1 DN in all nine 14-bit linear

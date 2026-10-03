@@ -12,7 +12,7 @@ def smoke_test(source: Path, output: Path) -> int:
     """Exercise frozen runtime imports, GPU/JIT, adjustment and full export."""
     from openraw_studio.core.files import sha256_file
     from openraw_studio.decision.auto_adjust import (
-        suggest_auto_adjustments_from_preview,
+        suggest_auto_adjustments_for_photo,
     )
     from openraw_studio.pipeline.interfaces import PipelineRequest
     from openraw_studio.pipeline.local import LocalPhotoPipeline
@@ -22,7 +22,6 @@ def smoke_test(source: Path, output: Path) -> int:
         compiled_he_transform,
     )
     from openraw_studio.raw.native.interactive import prepare_interactive_photo
-    from openraw_studio.raw.native.tone import PreviewRgbImage
 
     output.mkdir(parents=True, exist_ok=True)
     report = {}
@@ -31,9 +30,9 @@ def smoke_test(source: Path, output: Path) -> int:
         pipeline = LocalPhotoPipeline()
         started = perf_counter()
         photo = prepare_interactive_photo(
-            pipeline.raw_processor, source, max_dimension=256
+            pipeline.raw_processor, source
         )
-        image, backend = photo.render({})
+        _image, backend = photo.render({})
         report["prepare_seconds"] = perf_counter() - started
         report["preview_backend"] = backend
         report["compiled_decoder"] = bool(
@@ -53,13 +52,8 @@ def smoke_test(source: Path, output: Path) -> int:
         report["he_transform_fallback_reasons"] = compiled_he_transform.last_errors.copy()
         report["he_transform_cache_disabled_reasons"] = compiled_he_transform.cache_disabled_reasons.copy()
         report["he_decoder_cache_disabled_reason"] = compiled_he.cache_disabled_reason
-        preview = PreviewRgbImage(
-            image.width, image.height, tuple(image.getdata()), "gamma-2.2"
-        )
         started = perf_counter()
-        suggestion = suggest_auto_adjustments_from_preview(
-            preview, render=lambda values: photo.render(values)[0]
-        )
+        suggestion = suggest_auto_adjustments_for_photo(photo)
         report["auto_seconds"] = perf_counter() - started
         report["auto"] = suggestion.as_overrides()
         report["auto_metrics"] = suggestion.metrics

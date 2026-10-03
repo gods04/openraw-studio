@@ -18,7 +18,10 @@ from openraw_studio.raw.native.acceleration import (
 )
 from openraw_studio.raw.native.engine import NativeRawProcessor
 from openraw_studio.raw.native.fullres import render_bayer_full_resolution_rgb8
-from openraw_studio.raw.native.interactive import prepare_interactive_photo
+from openraw_studio.raw.native.interactive import (
+    InteractivePhoto,
+    prepare_interactive_photo,
+)
 from openraw_studio.raw.native.nikon import (
     NikonCompressionError,
     NikonCompressionSetup,
@@ -32,6 +35,21 @@ from openraw_studio.raw.native.synthetic import write_synthetic_dng
 
 
 class AccelerationTests(unittest.TestCase):
+    def test_resized_proxy_averages_linear_pixels_and_preserves_render_configuration(self):
+        values = np.array([[[.01, .02, .03], [.9, .8, .7]]] * 2, dtype=np.float32)
+        matrix = np.diag([1, 1.1, 1.2]).astype(np.float32)
+        photo = InteractivePhoto(values, matrix, (1.2, 1, 1.5), orientation=6, linear_saturation=True)
+        smaller = photo.resized(1)
+        np.testing.assert_allclose(smaller.pixels[0, 0], values.mean(axis=(0, 1)), atol=1e-7)
+        np.testing.assert_array_equal(photo.pixels, values)
+        self.assertIs(smaller.matrix, matrix)
+        self.assertEqual(smaller.gains, photo.gains)
+        self.assertEqual(smaller.orientation, 6)
+        self.assertTrue(smaller.linear_saturation)
+        self.assertIs(photo.resized(100).pixels, photo.pixels)
+        with self.assertRaisesRegex(ValueError, "positive"):
+            photo.resized(0)
+
     def test_unwritable_decoder_cache_keeps_compiled_processing(self):
         if compiled_decode.njit is None:
             self.skipTest("Numba is unavailable")
@@ -58,8 +76,8 @@ class AccelerationTests(unittest.TestCase):
         np.testing.assert_array_equal(cpu[0, 1], unchanged[0, 1])
 
     def test_shadow_lift_keeps_true_black_and_opens_dark_detail(self):
-        from openraw_studio.raw.native.tone import _apply_tonal_regions
         from openraw_studio.raw.native.nikon import _apply_tonal_regions as nikon_tone
+        from openraw_studio.raw.native.tone import _apply_tonal_regions
 
         for function in (_apply_tonal_regions, nikon_tone):
             self.assertEqual(function(0, highlights=0, shadows=1), 0)

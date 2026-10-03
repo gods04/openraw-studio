@@ -115,8 +115,8 @@ Then import `sample-data\openraw-synthetic.DNG` or
   comparison, zoom/pan, undo/redo, and automatic local edit retention
 - Auto strength control, luminance-aware exposure, conservative color correction,
   black-preserving shadows, and rendered-highlight checks that also guard small
-  bright subjects and individual color channels; joint exposure/contrast/highlight
-  recovery retains useful corrections on difficult dim scenes
+  bright subjects and individual color channels at two preview resolutions;
+  joint exposure/contrast/highlight recovery retains useful corrections on difficult dim scenes
 - Folder export using current adjustments, per-photo saved edits, or Auto per
   photo; stopping finishes the current photo and cancels the remainder
 - Saved recipe detection that restores basic desktop adjustments for the same

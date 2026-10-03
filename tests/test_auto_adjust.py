@@ -7,6 +7,7 @@ from fixtures_nikon import synthetic_nikon_nef_compressed_bytes
 
 from openraw_studio.decision.auto_adjust import (
     suggest_auto_adjustments,
+    suggest_auto_adjustments_for_photo,
     suggest_auto_adjustments_from_preview,
 )
 from openraw_studio.raw.native.interactive import InteractivePhoto
@@ -15,6 +16,100 @@ from openraw_studio.raw.native.tone import PreviewRgbImage
 
 
 class AutoAdjustTests(unittest.TestCase):
+    def test_detail_guard_protects_highlights_missing_from_analysis(self):
+        small = np.full((4, 4, 3), 60, dtype=np.uint8)
+        detail = np.full((100, 100, 3), 60, dtype=np.uint8)
+        detail[45:50, 48:52] = 210
+        rendered = []
+
+        def render_detail(values):
+            rendered.append(tuple(sorted(values.items())))
+            candidate = detail.copy()
+            if values["exposure"] > .4 and values["highlights"] > -.2:
+                candidate[45:50, 48:52] = 255
+            return candidate
+
+        result = suggest_auto_adjustments_from_preview(
+            small, render=lambda _: small, detail_preview=detail, render_detail=render_detail
+        )
+        self.assertGreater(result.exposure, .4)
+        self.assertEqual(result.highlights, -.3)
+        self.assertEqual(result.metrics["detail_highlight_detail_loss_fraction"], 0)
+        self.assertEqual(result.metrics["detail_validation_pixels"], 10000)
+        self.assertEqual(len(rendered), len(set(rendered)))
+
+    def test_detail_guard_rejects_shadow_crushing_hidden_in_analysis(self):
+        small = np.full((4, 4, 3), 100, dtype=np.uint8)
+        detail = np.full((100, 100, 3), 100, dtype=np.uint8)
+        detail[:10] = 25
+
+        def render_detail(values):
+            candidate = detail.copy()
+            if values["contrast"] > 0:
+                candidate[:10] = 0
+            return candidate
+
+        result = suggest_auto_adjustments_from_preview(
+            small, render=lambda _: small, detail_preview=detail, render_detail=render_detail
+        )
+        self.assertEqual(result.contrast, 0)
+        self.assertEqual(result.metrics["contrast_guarded"], 1)
+        self.assertEqual(result.metrics["detail_new_shadow_clipping_fraction"], 0)
+
+    def test_rejected_analysis_candidates_skip_expensive_detail_renders(self):
+        small = np.full((4, 4, 3), 60, dtype=np.uint8)
+        detail = np.full((100, 100, 3), 60, dtype=np.uint8)
+
+        def render(values):
+            return np.full_like(small, 255 if values["exposure"] > .15 else 60)
+
+        result = suggest_auto_adjustments_from_preview(
+            small, render=render, detail_preview=detail, render_detail=lambda _: detail
+        )
+        self.assertLessEqual(result.exposure, .15)
+        self.assertLessEqual(result.metrics["detail_validation_renders"], 2)
+        self.assertGreater(result.metrics["validation_renders"], 10)
+        self.assertLessEqual(result.metrics["validation_renders"], 42)
+
+    def test_detail_validation_requires_matching_baseline_and_renderer(self):
+        pixels = np.full((4, 4, 3), 100, dtype=np.uint8)
+        for options in (
+            {"detail_preview": pixels},
+            {"render_detail": lambda _: pixels},
+            {"detail_preview": pixels, "render_detail": lambda _: pixels, "render": None},
+        ):
+            with self.assertRaisesRegex(ValueError, "Detail validation requires"):
+                suggest_auto_adjustments_from_preview(pixels, **{ "render": lambda _: pixels, **options})
+        with self.assertRaisesRegex(ValueError, "baseline preview dimensions"):
+            suggest_auto_adjustments_from_preview(
+                pixels, render=lambda _: pixels, detail_preview=pixels,
+                render_detail=lambda _: np.zeros((3, 3, 3)),
+            )
+
+    def test_real_detail_guard_retains_tiny_bright_subject(self):
+        values = np.full((640, 960, 3), .05, dtype=np.float32)
+        values[300:302, 460:462] = .8
+        photo = InteractivePhoto(values, np.eye(3, dtype=np.float32), (1, 1, 1))
+        analysis = photo.resized(256)
+        baseline = analysis.render({})[0]
+        self.assertLess(np.asarray(baseline).max(), 153)
+        coarse_only = suggest_auto_adjustments_from_preview(
+            baseline, render=lambda edits: analysis.render(edits)[0]
+        )
+        coarse_result = np.asarray(photo.render(coarse_only.as_overrides())[0])
+        self.assertGreaterEqual(coarse_result[300:302, 460:462].max(), 254)
+        result = suggest_auto_adjustments_for_photo(photo)
+        self.assertGreater(result.exposure, 0)
+        self.assertEqual(result.metrics["detail_highlight_detail_loss_fraction"], 0)
+        self.assertGreater(result.metrics["detail_median_luma_after"], result.metrics["detail_median_luma"])
+        self.assertTrue(np.all(values[300:302, 460:462] == .8))
+        self.assertLessEqual(result.metrics["detail_validation_renders"], 42)
+
+    def test_small_interactive_photo_needs_no_second_guard(self):
+        photo = InteractivePhoto(np.full((4, 4, 3), .2, dtype=np.float32), np.eye(3), (1, 1, 1))
+        result = suggest_auto_adjustments_for_photo(photo)
+        self.assertNotIn("detail_validation_renders", result.metrics)
+
     def test_low_key_scene_keeps_its_intent(self) -> None:
         pixels = ((12, 12, 12),) * 90 + ((220, 220, 220),) * 10
         suggestion = suggest_auto_adjustments_from_preview(PreviewRgbImage(10, 10, pixels, "gamma-2.2"))

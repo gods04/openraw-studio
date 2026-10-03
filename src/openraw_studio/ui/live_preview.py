@@ -33,6 +33,7 @@ class LivePreviewWorker:
         self._source = None
         self._pending = None
         self._completed = None
+        self._prepared = None
         self._closed = False
         self._thread = threading.Thread(
             target=self._run, daemon=True, name="openraw-live-preview"
@@ -45,6 +46,7 @@ class LivePreviewWorker:
             if source != self._source:
                 self._generation += 1
                 self._completed = None
+                self._prepared = None
                 self._source = source
             self._revision += 1
             self._pending = (
@@ -62,6 +64,20 @@ class LivePreviewWorker:
             self._revision += 1
             self._generation += 1
             self._pending = self._completed = None
+            self._prepared = None
+
+    def get_prepared_photo(self, source):
+        """Share the unedited proxy read-only; never reuse a changed source."""
+        try:
+            source = Path(source)
+            stat = source.stat()
+            key = (source.resolve(), stat.st_size, stat.st_mtime_ns)
+        except (OSError, RuntimeError):
+            return None
+        with self._condition:
+            if not self._closed and self._prepared is not None and self._prepared[0] == key:
+                return self._prepared[1]
+        return None
 
     def take(self):
         with self._condition:
@@ -72,6 +88,7 @@ class LivePreviewWorker:
         with self._condition:
             self._closed = True
             self._pending = self._completed = None
+            self._prepared = None
             self._condition.notify()
 
     def _run(self):
@@ -97,6 +114,8 @@ class LivePreviewWorker:
                     original, _backend = photo.render({})
                     key = current_key
                 with self._condition:
+                    if generation == self._generation and not self._closed:
+                        self._prepared = (key, photo)
                     if revision != self._revision or self._closed:
                         continue
                 image, backend = photo.render(adjustments)
@@ -109,7 +128,7 @@ class LivePreviewWorker:
                     (perf_counter() - requested_at) * 1000,
                     original_image=original,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - Report worker failures to the UI.
                 frame = LiveFrame(revision, source, adjustments, error=str(exc))
             with self._condition:
                 # A finished frame is useful during a drag even if a newer edit is

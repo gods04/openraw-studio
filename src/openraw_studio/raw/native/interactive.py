@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -19,6 +19,12 @@ class InteractivePhoto:
     gains: tuple[float, float, float]
     orientation: int = 1
     linear_saturation: bool = False
+
+    def resized(self, max_dimension):
+        """Derive an unedited scene-linear proxy, retaining color and orientation."""
+        if max_dimension < 1:
+            raise ValueError("Proxy dimension must be positive")
+        return replace(self, pixels=_resize_linear(self.pixels, max_dimension))
 
     def render(self, adjustments):
         warmth = np.clip(adjustments.get("warmth", 0), -1, 1)
