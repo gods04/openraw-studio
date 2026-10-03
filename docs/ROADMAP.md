@@ -10,12 +10,25 @@ Nikon paths include F-series lossless, 12-bit D20 non-split (verified on 1 J5),
 and the verified Z f HE* 14-bit profile with approximate nonlinear mapping.
 Local Windows EXE builds are available; this is not a public installer release.
 
-Next quality work: faster CPU full-size export and first HE* import, broader verified HE profiles,
+Next quality work: reduced preview/QC overhead in export and first HE* import, broader verified HE profiles,
 broader camera calibration and gamut handling,
 edge-aware demosaic, actual sensor highlight reconstruction, and denoise.
 Semantic portrait/scene AI and mobile remain later phases.
 
-Latest verified increment: fused CPU live tones reduce repeated full-frame memory
+Latest verified increment: compiled, bounded-memory CPU Bayer interpolation reuses
+the fused tone kernel for full-size exports and native detail. On the same D500
+desktop benchmark, CPU export improves from 5.09 to 3.11 seconds without changing
+dimensions or export quality. All 69 full-resolution comparisons across 23 private
+D500/Z f photos stay within 1 DN of the NumPy reference; source hashes are unchanged.
+All 344 tests pass with GPU and CPU-only (two GPU-only skips), plus actual
+JPEG/TIFF editing, native-detail equality, and batch workflows. The matching GPU
+benchmark remains at 1.95 s export. This retains bilinear quality and the existing
+format guards, not new camera support, denoise, or edge-aware interpolation.
+The refreshed EXE verifies CPU kernel activation and restart cache reuse:
+D500 export is 3.49 s on first compilation and 3.05 s warm; Z f CPU/GPU export
+and native inspection also pass. First HE* import remains unfinished work.
+
+Fused CPU live tones reduce repeated full-frame memory
 passes without shrinking the preview. The same D500 desktop benchmark improves
 from 109 to 62-72 ms median response and from 16 to 48 displayed frames during 50
 edits. CPU full-size export remains about 5 seconds and is not changed here.

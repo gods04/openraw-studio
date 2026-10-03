@@ -590,3 +590,53 @@ with 0.62-0.69 s Auto, 5.22-5.35 s export, and 0.69 s cached preparation after
 and 2.22 s after restart; export takes 2.06-2.10 s. These preparation timings
 exclude executable startup. GPU runs do not compile the CPU tone kernel.
 All seven CPU batch checks pass as well. No public ZIP was generated or released.
+
+### Compiled CPU Bayer Export
+
+`compiled_bayer.py` evaluates the existing normalized bilinear kernel in one
+neighborhood traversal, retaining position-specific black levels, crop/CFA phase,
+normalization, pre-interpolation gains, and summation order. `fullres.py` calls it
+in bounded chunks (256 rows by default), then reuses `compiled_tone.py` with unit
+gains because interpolation already applied them. It does not allocate a whole
+floating-point image or change the demosaic algorithm, output size, bit depth,
+quality setting, camera support guards, or GPU-first selection.
+
+The original NumPy interpolation is retained in `_demosaic_numpy`. Disabling both
+`use_gpu` and `use_compiled` selects that reference path. Compiler failure retains
+NumPy; tone-only failure can still use compiled interpolation with NumPy color.
+Disabled JIT and unwritable cache paths follow the existing checked fallback
+policy. The new kernel is sequential, releases the GIL, and has no fastmath.
+Packaging retains its source for Numba cache lookup. Frozen/desktop benchmark
+reports record actual Bayer compilation and fallback reasons after export.
+
+All 344 tests pass with GPU selection and CPU-only (two GPU-only skips). New
+checks cover reference-exact linear interpolation for every accepted CFA layout,
+odd/offset crops, borders, one-row chunks, control extremes, bounded working
+buffers, readonly signature reuse, invalid bounds, and compiler/cache failure.
+Native detail remains byte-identical to the corresponding full render across
+orientations and CFA patterns. Final RGB8 can differ from the NumPy reference
+by 1 DN because the compiled tone pass uses different floating-point operations.
+
+The private 23-photo D500/Z f audit passes all 69 full-resolution comparisons:
+neutral, Auto 70%, and a +4 EV/highlight/color stress case for each. Maximum error
+is 1 DN; at most 2.1 channel values per million differ in these samples. Every
+source hash is unchanged. Auto 70% rendering takes 1.33-2.03 s versus 2.94-4.29 s
+for NumPy, excluding decoding and file export. These are local sample results,
+not universal performance or pixel-equivalence guarantees.
+
+Actual D500 desktop CPU export improves from 5.09 to 3.11 s (about 39%), including
+preview/QC and JPEG writing. Live editing remains 68 ms median/48 frames during
+50 edits. The matching GPU run measures 59 ms/49 frames and 1.95 s export, without
+compiling CPU kernels. The real Z f CPU editing/JPEG/TIFF workflow, 22 D500 CPU
+native-detail checks, and seven CPU batch checks pass. Legacy preview LUT creation
+and preview QC still contribute overhead; those and first HE* import remain
+optimization targets. No new format support or image-quality algorithm is implied.
+
+The refreshed EXE confirms compiled Bayer and tone activation on CPU, with no
+cache fallback. The D500 sea sample exports in 3.49 s including first-use Bayer
+compilation, then 3.05 s after process restart (previous bundle: 5.22 s warm).
+Z f CPU export takes 3.72 s and GPU export 2.08 s; both retain source Auto settings,
+native inspection, and 4032x6048 orientation. All source hashes remain unchanged.
+HE* first-build CPU preparation still takes 5.79 s; a subsequent GPU process
+prepares in 2.50 s. Those are different backends, not an import speedup comparison.
+No public ZIP was generated or released.

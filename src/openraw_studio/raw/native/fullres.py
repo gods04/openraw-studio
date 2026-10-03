@@ -36,9 +36,13 @@ def render_bayer_full_resolution_rgb8(
     saturation: float = 0.0,
     chunk_rows: int = 256,
     use_gpu: bool = True,
+    use_compiled: bool = True,
     highlight_ceiling: float | None = None,
 ) -> FullResolutionRgbImage:
-    """Demosaic a little-endian Bayer buffer with chunked bilinear interpolation."""
+    """Render Bayer using GPU, compiled CPU chunks, or the NumPy fallback.
+
+    Disable both use_gpu and use_compiled to select the reference implementation.
+    """
 
     np = _numpy()
     if source_width <= 1 or source_height <= 1:
@@ -97,44 +101,34 @@ def render_bayer_full_resolution_rgb8(
             except Exception:
                 disable_gpu()
     source = np.frombuffer(raw_bytes, dtype="<u2").reshape(source_height, source_width)
-    cropped = source[top : top + height, left : left + width]
     output = np.empty((height, width, 3), dtype=np.uint8)
+    if use_compiled:
+        from openraw_studio.raw.native import compiled_bayer, compiled_tone
+        from openraw_studio.raw.native.acceleration import color_parameters
+
+        # Interpolation already applies channel gains, just as the reference does.
+        params = color_parameters(
+            matrix, (1, 1, 1), contrast=contrast, highlights=highlights,
+            shadows=shadows, saturation=saturation, highlight_ceiling=highlight_ceiling,
+        )
 
     for core_start in range(0, height, chunk_rows):
         core_end = min(height, core_start + chunk_rows)
-        halo_start = max(0, core_start - 1)
-        halo_end = min(height, core_end + 1)
-        chunk = cropped[halo_start:halo_end]
-        core_offset = core_start - halo_start
-        core_count = core_end - core_start
-
-        camera_planes = []
-        for channel_code, kernel in (
-            (0, _RED_BLUE_KERNEL),
-            (1, _GREEN_KERNEL),
-            (2, _RED_BLUE_KERNEL),
-        ):
-            sparse = np.zeros(chunk.shape, dtype=np.float32)
-            mask = np.zeros(chunk.shape, dtype=np.float32)
-            for position, sample_channel in enumerate(pattern):
-                if sample_channel != channel_code:
-                    continue
-                row_parity, column_parity = divmod(position, 2)
-                first_row = (row_parity - ((top + halo_start) & 1)) & 1
-                first_column = (column_parity - (left & 1)) & 1
-                black_level = black_levels[position]
-                if black_level < 0 or black_level >= white_level:
-                    raise ValueError("Bayer black levels must be between zero and white_level")
-                samples = chunk[first_row::2, first_column::2].astype(np.float32)
-                samples -= float(black_level)
-                samples /= float(max(1, white_level - black_level))
-                np.clip(samples, 0.0, 1.0, out=samples)
-                samples *= float(channel_gains[channel_code])
-                sparse[first_row::2, first_column::2] = samples
-                mask[first_row::2, first_column::2] = 1.0
-
-            interpolated = _normalized_convolution(np, sparse, mask, kernel)
-            camera_planes.append(interpolated[core_offset : core_offset + core_count])
+        camera = None
+        if use_compiled:
+            camera = compiled_bayer.render_chunk(
+                source, crop, core_start, core_end, pattern, black_levels, white_level, channel_gains,
+            )
+        if camera is not None:
+            rendered = compiled_tone.render(camera, params)
+            if rendered is not None:
+                output[core_start:core_end] = rendered
+                continue
+            camera_planes = [camera[:, :, channel] for channel in range(3)]
+        else:
+            camera_planes = _demosaic_numpy(
+                np, source, crop, core_start, core_end, pattern, black_levels, white_level, channel_gains,
+            )
 
         if highlight_ceiling is not None:
             for plane in camera_planes:
@@ -154,6 +148,35 @@ def render_bayer_full_resolution_rgb8(
         output[core_start:core_end] = rgb.astype(np.uint8)
 
     return FullResolutionRgbImage(width=width, height=height, rgb_bytes=output.tobytes())
+
+
+def _demosaic_numpy(np, source, crop, start, end, pattern, black_levels, white_level, channel_gains):
+    """Retain the original sparse-convolution path as a reference and fallback."""
+    left, top, width, height = crop
+    halo_start, halo_end = max(0, start - 1), min(height, end + 1)
+    chunk = source[top + halo_start : top + halo_end, left : left + width]
+    core_offset, core_count = start - halo_start, end - start
+    camera_planes = []
+    for channel_code, kernel in ((0, _RED_BLUE_KERNEL), (1, _GREEN_KERNEL), (2, _RED_BLUE_KERNEL)):
+        sparse = np.zeros(chunk.shape, dtype=np.float32)
+        mask = np.zeros(chunk.shape, dtype=np.float32)
+        for position, sample_channel in enumerate(pattern):
+            if sample_channel != channel_code:
+                continue
+            row_parity, column_parity = divmod(position, 2)
+            first_row = (row_parity - ((top + halo_start) & 1)) & 1
+            first_column = (column_parity - (left & 1)) & 1
+            black_level = black_levels[position]
+            samples = chunk[first_row::2, first_column::2].astype(np.float32)
+            samples -= float(black_level)
+            samples /= float(max(1, white_level - black_level))
+            np.clip(samples, 0.0, 1.0, out=samples)
+            samples *= float(channel_gains[channel_code])
+            sparse[first_row::2, first_column::2] = samples
+            mask[first_row::2, first_column::2] = 1.0
+        interpolated = _normalized_convolution(np, sparse, mask, kernel)
+        camera_planes.append(interpolated[core_offset : core_offset + core_count])
+    return camera_planes
 
 
 _RED_BLUE_KERNEL = (
