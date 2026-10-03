@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
+from openraw_studio.decision.white_balance import NeutralCast, refine_white_balance
 from openraw_studio.raw.native.interactive import InteractivePhoto
 from openraw_studio.raw.native.preview import render_preview_image
 from openraw_studio.raw.native.tone import PreviewRgbImage
@@ -66,6 +67,7 @@ class _RenderedMetrics:
     new_clipping: float
     lost_highlight_channels: int
     shadow_midtone_mean: float
+    neutral_bias: np.ndarray | None
 
 
 def _pixels(preview):
@@ -90,9 +92,10 @@ def _clipping(pixels):
 class _RenderGuard:
     """Cached measurements in one unedited proxy's own sampling domain."""
 
-    def __init__(self, preview, render, *, preserve_midtones):
+    def __init__(self, preview, render, *, preserve_midtones, balance=False):
         self.pixels = _pixels(preview)
         self.render = render
+        self.neutral = NeutralCast(preview) if balance else None
         self.weights = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
         luma = self.pixels @ self.weights
         self.median = float(np.median(luma))
@@ -128,6 +131,7 @@ class _RenderGuard:
                 float(np.mean(np.any(self.headroom & clipped_channels, axis=1))),
                 int(np.count_nonzero(self.highlight_detail & clipped_channels)),
                 self._shadow_mean(candidate_luma),
+                self.neutral.measure(candidate) if self.neutral is not None else None,
             )
         return self.cache[key]
 
@@ -359,7 +363,7 @@ def suggest_auto_adjustments_from_preview(
     if render is None:
         return suggestion
 
-    primary = _RenderGuard(preview, render, preserve_midtones=exposure >= 0 and not low_key)
+    primary = _RenderGuard(preview, render, preserve_midtones=exposure >= 0 and not low_key, balance=not low_key)
     guards = [primary]
     prefixes = [""]
     if render_native is not None:
@@ -367,7 +371,8 @@ def suggest_auto_adjustments_from_preview(
         prefixes.append("native_")
     if render_detail is not None:
         guards.append(_RenderGuard(
-            detail_preview, render_detail, preserve_midtones=exposure >= 0 and not low_key
+            detail_preview, render_detail, preserve_midtones=exposure >= 0 and not low_key,
+            balance=primary.neutral is not None and primary.neutral.mask is not None,
         ))
         prefixes.append("detail_")
 
@@ -381,11 +386,11 @@ def suggest_auto_adjustments_from_preview(
             values["contrast"] > 0 and any(guard.preserve_shadow_midtones for guard in guards)
         )
 
-    def highlights_preserved(values):
+    def highlights_preserved(values, *, all_strengths=False):
         # Compression can protect the endpoint while weaker settings still clip.
         # Reject on the small proxy before spending work at display resolution.
         samples = [values]
-        if needs_strength_checks(values):
+        if all_strengths or needs_strength_checks(values):
             samples.extend(
                 {key: value * strength for key, value in values.items()}
                 for strength in validation_strengths
@@ -502,6 +507,15 @@ def suggest_auto_adjustments_from_preview(
             refined = refine_shadows(values) if amount else values
             shadows_refined = refined["shadows"] > values["shadows"]
             values = refined
+            balance_metrics = {"white_balance_refined": 0.0}
+            if amount and not low_key:
+                values, balance_metrics = refine_white_balance(
+                    primary.neutral, lambda candidate: primary.measure(candidate).neutral_bias, values,
+                    lambda candidate: highlights_preserved(candidate, all_strengths=True) and tones_preserved(candidate),
+                    detail_evidence=guards[-1].neutral if render_detail is not None else None,
+                    measure_detail=(lambda candidate: guards[-1].measure(candidate).neutral_bias) if render_detail is not None else None,
+                    validation_strengths=validation_strengths,
+                )
             notes = suggestion.rationale + (
                 ("Reduced contrast to preserve dark subjects.",) if contrast_guarded else ()
             ) + (
@@ -514,6 +528,8 @@ def suggest_auto_adjustments_from_preview(
                 ("Reduced correction to protect highlights and shadows.",) if amount < 1 else ()
             ) + (
                 ("Lifted usable shadows after limiting global exposure.",) if shadows_refined else ()
+            ) + (
+                ("Refined a consistent near-neutral cast using measured renderer response.",) if balance_metrics["white_balance_refined"] else ()
             )
             metrics = primary.metrics(values)
             for guard, prefix in zip(guards[1:], prefixes[1:]):
@@ -525,13 +541,14 @@ def suggest_auto_adjustments_from_preview(
                 metrics={
                     **suggestion.metrics,
                     **metrics,
+                    **balance_metrics,
                     "contrast_guarded": float(contrast_guarded),
                     "exposure_guarded": float(exposure_guarded),
                     "highlights_guarded": float(highlights_guarded),
                     "saturation_guarded": float(saturation_guarded),
                     "shadows_refined": float(shadows_refined),
                     "guard_strength": amount,
-                    "validated_strength_samples": float(1 + len(validation_strengths) if needs_strength_checks(values) else 1),
+                    "validated_strength_samples": float(1 + len(validation_strengths) if needs_strength_checks(values) or balance_metrics["white_balance_refined"] else 1),
                 },
             )
     return suggestion

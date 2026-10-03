@@ -18,6 +18,20 @@ and sensor-domain denoise with calibrated luminance-noise advice. Further first-
 also remain open.
 Semantic portrait/scene AI and mobile remain later phases.
 
+Latest Auto color increment measures renderer response before refining a
+spatially consistent near-neutral cast. It changes only Temperature/Tint after
+tonal recovery and rechecks preview/native clipping, shadow tones, and color
+benefit at intermediate Auto strengths. Low-confidence, low-key, very dark,
+and dim red/blue-dominated scenes retain the earlier correction. This is not
+semantic illuminant recognition or calibrated white balance; saved edits remain
+unchanged unless Auto is run again.
+Across 33 real-photo checks, four examples receive bounded color refinements
+and 29 keep the previous Auto settings; CPU/GPU settings agree. All changed
+examples pass full-size budgets at four strengths. The current 491-test suite
+and two 41-check desktop workflows pass. Six rebuilt-EXE checks match source
+Auto and native detail; prior saved recipes retain their output. See
+`DEVELOPMENT.md` for limits and first-use timing.
+
 Latest detail increment adds optional luminance-noise reduction beside Color
 noise. It defaults off and is preserved through history, recipes, batch, and
 JPEG/TIFF. CPU/GPU use the same integer luminance shift; combined-filter native
@@ -26,7 +40,7 @@ and original hashes. Fit is scale-aware but approximate; texture can soften and
 automatic luminance advice is not implemented. The busy progress bar now keeps
 photo viewport dimensions stable. With both filters active, the checked D500
 GPU/CPU workflow measures 46/109 ms median slider response and 1.31/4.64 s export.
-The current 481-test suite passes (five GPU-only skips on CPU). Six rebuilt-EXE
+That increment's 481-test suite passes (five GPU-only skips on CPU). Six rebuilt-EXE
 runs retain exact source/native-detail output, including the old zero-noise
 recipe, with working warm-start caches and unchanged originals.
 

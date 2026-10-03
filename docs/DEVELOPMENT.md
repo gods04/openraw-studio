@@ -1321,7 +1321,7 @@ exclude RAW preparation from export; they are not universal speed guarantees.
 CPU-only filtering remains visibly slower. The unedited first preview still
 needs preparation (1.52/1.14 s in those already-compiled source runs).
 
-The full suite has 481 tests: all pass with GPU enabled; CPU-only runs skip the
+That increment's suite has 481 tests: all pass with GPU enabled; CPU-only runs skip the
 five GPU-only checks. Native 100%/200% desktop inspection passes 24 checks in
 each CPU/GPU run, including both retained noise amounts and exact full-render
 region comparisons. Six independent launches of the rebuilt EXE cover D500,
@@ -1339,3 +1339,66 @@ D500 and retain manual color noise 65 when Z f advice abstains, so they are not
 direct timing comparisons with the fixed-65 benchmark above. Timings exclude
 EXE startup. The bundle contains the new cached kernel source but no private
 RAWs, development reference decoder, public ZIP, or installer.
+
+### Measured Auto White-Balance Refinement
+
+After tonal recovery, Auto can refine Temperature/Tint using the current
+renderer's measured response. Original usable near-neutral pixels vote in a
+4x4 grid; at least six tiles, three agreeing quadrants, and 80% directional
+agreement are required. The display proxy must independently support the same
+cast. Low-key, very dark, dim red/blue-dominated, uncertain, or already-neutral
+scenes retain the preceding correction. These are conservative image heuristics,
+not semantic scene or illuminant classification.
+
+Two bounded probe renders estimate a local two-parameter response, including the
+camera matrix. The proposal targets half the residual cast, with absolute bounds
+of 0.35 Temperature and 0.25 Tint and one smaller backoff. It must reduce the
+selected neutral log-ratio error by at least 10% and 0.004 at both preview sizes;
+intermediate strengths must not worsen it beyond the 0.001 quantization allowance.
+Exposure, contrast, highlights, shadows, and saturation are unchanged by this
+stage. Existing clipping and shadow guards are reapplied to preview/native
+samples at full and intermediate strengths before acceptance.
+
+Neutral residuals share the existing render-measurement cache, so no adjustment
+is rendered twice for the added analysis. Each residual uses at most 4096 fixed
+original-pixel locations. An uncertain small proxy skips display-color analysis.
+The ten new tests cover two actual color matrices, spatial/ambient abstention,
+bounded sampling, singular renderer response, detail disagreement, backoff,
+intermediate color regression, native clipping, and low-key preservation.
+
+The final 33-photo CPU/GPU audit produces identical settings: four D500/Z f
+examples receive bounded color refinements, while 29 retain the previous Auto
+settings. All original hashes are unchanged. The four changed examples pass
+full-size clipping/shadow budgets at 25/50/70/100% Auto and color checks at both
+proxy sizes. Their selected-neutral endpoint error falls about 38-48%; this is
+not a ground-truth color-accuracy score. Comparisons were visually inspected,
+and early changes to dim ambient-color scenes were rejected before shipping.
+
+In that already-prepared corpus, median Auto time is 0.44 s on RTX 5070 and
+0.74 s on CPU. Refinement adds analysis work; it does not accelerate decoding,
+manual live rendering, or export. Two actual compact desktop workflows each
+pass 41 checks, including history, strength, both noise controls, comparison,
+JPEG/TIFF and session restoration. Auto takes 0.98 s on the checked D500 CPU
+workflow and 0.86 s on the Z f GPU workflow. These are local measurements.
+
+Pale colored surfaces remain ambiguous, and mixed lighting is not solved.
+Manual Temperature/Tint and original comparison remain available. No renderer
+or recipe field changes: existing saved settings render unchanged until the
+user runs Auto again. The full 491-test suite passes with GPU enabled and with
+five expected GPU-only skips on CPU.
+
+The refreshed EXE passes six independent CPU/GPU smoke launches on D500, Z f,
+synthetic DNG, and a dim ambient-color scene. Auto/noise advice and persisted
+settings match source execution, native-detail pixels match exactly, all JPEGs
+open, and originals are unchanged. Two preceding D500/Z f saved recipes also
+reproduce their previous native-detail output exactly. On the checked D500 CPU,
+Auto takes 2.27 s on the first launch after rebuilding and 0.84 s after restart;
+first-use compilation remains possible. Checked D500/Z f GPU exports take
+1.21/1.50 s with luminance noise 60 and automatically selected color noise.
+These timings exclude EXE startup and are not speed guarantees. No private
+photos, development reference decoder, public ZIP, or installer are bundled.
+
+For hidden PowerShell smoke launches, quote each source/output path inside
+`Start-Process -ArgumentList`. Its joined command line does not preserve an
+unquoted path containing spaces; this caused a reproduced test-harness startup
+failure before the corrected command passed.

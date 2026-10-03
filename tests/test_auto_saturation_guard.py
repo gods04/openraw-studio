@@ -82,7 +82,7 @@ class AutoSaturationGuardTests(unittest.TestCase):
             with self.subTest(color=color):
                 self.assertEqual(result.as_overrides(), expected.as_overrides())
                 self.assertEqual(result.metrics["saturation_guarded"], 0)
-                self.assertEqual(result.metrics["validation_renders"], 1)
+                self.assertEqual(result.metrics["validation_renders"], 1 + result.metrics.get("white_balance_response_probes", 0))
 
 
 if __name__ == "__main__":

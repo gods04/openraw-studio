@@ -133,6 +133,9 @@ Then import `sample-data\openraw-synthetic.DNG` or
   joint exposure/contrast/highlight recovery retains useful corrections on difficult dim scenes
 - Auto checks substantial shadow midtones so a brighter background cannot hide
   contrast-darkened subjects, and can reduce added saturation to retain useful exposure
+- Auto can refine a spatially consistent near-neutral color cast using measured
+  renderer response. Color benefit, highlights, and shadows are rechecked before
+  accepting it; uncertain or dim color-dominated scenes retain the prior correction.
 - Highlight-limited Auto can add a bounded shadow lift, checking visible benefit
   and clipping at both preview sizes; low-key and predominantly dark scenes are excluded
 - Optional `Detail > Color noise` and `Luminance noise` controls, with GPU/CPU
@@ -188,6 +191,9 @@ Then import `sample-data\openraw-synthetic.DNG` or
   Nikon samples; generic DNG and preview-only files do not gain automatic advice.
 - Auto is a deterministic luminance/color heuristic, not semantic AI or
   sensor highlight recovery. It cannot reconstruct clipped detail.
+- Auto white-balance refinement is not gray-card calibration or illuminant
+  recognition. Pale colored materials can resemble neutrals; manual Temperature
+  and Tint remain available. Existing saved settings do not change until Auto is run.
 - MHC is linear gradient-corrected interpolation, not edge-adaptive demosaic or
   denoise. Existing Nikon recipes now render differently at full/native resolution;
   fast Fit previews and original RAW files are unchanged.
