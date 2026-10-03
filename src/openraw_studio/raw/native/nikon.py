@@ -807,9 +807,9 @@ def _nikon_black_levels(
     levels = _tag_int_tuple(maker_ifd, 0x003D) if maker_ifd is not None else None
     if levels is not None and len(levels) == 4:
         validated = tuple(int(value) for value in levels)
-        # J5 MakerNotes express black in 14-bit units even in a 12-bit NEF.
+        # Verified J5 and Z5 MakerNotes retain 14-bit black units in 12-bit NEFs.
         if (
-            metadata.summary.get("model") == "NIKON 1 J5"
+            (metadata.summary.get("model") or "").strip().upper() in {"NIKON 1 J5", "NIKON Z 5"}
             and metadata.summary.get("bits_per_sample") == 12
         ):
             validated = tuple(value >> 2 for value in validated)

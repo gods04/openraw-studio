@@ -19,11 +19,12 @@ Nikon NEF/NRW embedded JPEG preview support
 Nikon MakerNote compression metadata summary for 34713 render blockers
 Nikon 34713 lossless Huffman sensor decode support for supported files
 Nikon 1 J5 12-bit D20 non-split sensor decode
-Nikon Z f HE* 14-bit verified-profile sensor decode with approximate nonlinear mapping
+Nikon Z5 12/14-bit lossless FX sensor decode verified; D40 lossy remains unsupported
+Nikon Z f HE/HE* 14-bit verified-profile sensor decode with approximate nonlinear mapping
 optimized Python bitstream/render loops for the current Nikon 34713 path
 Nikon MakerNote black levels with conservative inactive-border fallback
 standard Nikon as-shot white balance from MakerNote tag 0x000c
-exact-model Nikon D500, 1 J5, and Z f camera profiles to linear sRGB
+exact-model Nikon D500, 1 J5, Z5, and Z f camera profiles to linear sRGB
 EXIF orientation handling for native Nikon renders
 simple PNG preview support for narrow uncompressed DNG/Nikon files
 local JPEG quality and lossless 8-bit TIFF export support for renderable DNG/Nikon files
@@ -31,8 +32,8 @@ safe camera/capture derivative metadata without GPS passthrough
 12/14-bit packed strip payloads supported for the current DNG/Nikon path
 16-bit strip and tile payloads supported for the current DNG/Nikon path
 guarded Nikon NEF/NRW native sensor decode for TIFF-style uncompressed Bayer payloads
-compressed Nikon 34713 uses half-resolution preview and full-resolution bilinear final export
-camera-aware color profiles cover D500, 1 J5, and Z f; other models use generic color
+compressed Nikon 34713 uses half-resolution preview and full-resolution MHC final export
+camera-aware color profiles cover D500, 1 J5, Z5, and Z f; other models use generic color
 other compressed/proprietary Nikon NEF/NRW sensor payload variants not decoded yet
 edge-aware demosaic and 16-bit linear TIFF export not implemented yet
 ```

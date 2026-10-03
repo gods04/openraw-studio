@@ -1,4 +1,4 @@
-"""Guarded adapter for the locally verified Nikon Z f HE* 14-bit profile.
+"""Guarded adapter for the verified Nikon Z f HE/HE* 14-bit profile.
 
 Unknown profile bytes, black levels, CFA layouts, and camera modes are rejected.
 The nonlinear mapping is a bounded approximation, not a lossless codec claim.
@@ -40,8 +40,8 @@ def read_zf_he_payload(path, metadata):
     maker = summarize_nikon_makernote(metadata)
     if ((summary.get("make") or "").strip().upper() != "NIKON CORPORATION"
             or (summary.get("model") or "").strip().upper() != "NIKON Z F"
-            or maker is None or maker.compression_mode != 14):
-        raise NikonCompressionError("Nikon High Efficiency: only the verified Z f HE* profile is supported")
+            or maker is None or maker.compression_mode not in {13, 14}):
+        raise NikonCompressionError("Nikon High Efficiency: only the verified Z f HE/HE* profile is supported")
     if maker.black_levels != (1008, 1008, 1008, 1008):
         raise NikonCompressionError("Nikon High Efficiency: unverified black-level profile")
     pixel = _nikon_pixel_ifd(metadata)
@@ -87,20 +87,21 @@ def decode_zf_he(path, metadata):
     summary = metadata.summary
     make, model = summary.get("make"), summary.get("model")
     pixel = _nikon_pixel_ifd(metadata)
+    starred = maker.compression_mode == 14
     return NikonDecodedPixelData(
         width=header.width, height=header.height, source_bits_per_sample=14,
         output_bits_per_sample=16, samples_per_pixel=1, byte_order="little",
         raw_bytes=samples.astype("<u2", copy=False).tobytes(),
-        storage_layout="nikon-he-star-strips",
+        storage_layout="nikon-he-star-strips" if starred else "nikon-he-strips",
         strip_offsets=_required_int_tuple(pixel, 273, "StripOffsets"),
         strip_byte_counts=_required_int_tuple(pixel, 279, "StripByteCounts"),
         rows_per_strip=_optional_int(pixel, 278), black_level=1008,
         black_levels=(1008, 1008, 1008, 1008), white_level=16383,
         cfa_pattern=(0, 1, 1, 2), compression=34713,
         compression_setup=NikonCompressionSetup(
-            version="HE* Zf profile 1", huffman_select=-1,
+            version=f"{'HE*' if starred else 'HE'} Zf profile 1", huffman_select=-1,
             initial_predictors=((0, 0), (0, 0)), active_area=maker.active_area,
-            compression_mode=14,
+            compression_mode=maker.compression_mode,
         ),
         white_balance=extract_nikon_as_shot_white_balance(metadata),
         camera_profile=find_camera_color_profile(make, model),

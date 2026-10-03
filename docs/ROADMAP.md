@@ -7,7 +7,8 @@ strength control, original RAW comparison, undo/redo, local edit retention,
 manual and sampled Auto color-noise reduction, native-pixel 100%/200% inspection, JPEG/TIFF export, and cancellable per-photo
 batch modes. Supported compressed
 Nikon paths include F-series lossless, 12-bit D20 non-split (verified on 1 J5),
-and the verified Z f HE* 14-bit profile with approximate nonlinear mapping.
+verified Z5 12/14-bit lossless FX, and the verified Z f HE/HE* 14-bit profile
+with approximate nonlinear mapping.
 Local Windows EXE builds are available; this is not a public installer release.
 
 Next quality work: Auto under difficult lighting, broader camera calibration
@@ -16,7 +17,23 @@ and sensor/luminance denoise. Further first-use initialization and broader verif
 also remain open.
 Semantic portrait/scene AI and mobile remain later phases.
 
-Latest verified increment: a separate `Auto color noise` wand command analyzes
+Latest decoder increment: the public Z f HE sample matches all 24,498,560
+nonlinear Bayer values against the isolated development reference, with at most
+1 DN difference in the approximate linear mapping. HE* and ordinary Z f lossless
+public samples also pass. Both Z5 lossless bit depths match all 24,353,280 sensor
+samples exactly; 12-bit black normalization is corrected to 252, and an exact-model
+DNG 13.2 camera calibration is added. All five files pass native Auto and full-size
+JPEG export with unchanged sources. Z5 D40 lossy, other HE profiles, and other
+Z5 crop/firmware variants still need verification. See the public sample IDs,
+hashes, and reference boundaries in `DEVELOPMENT.md`.
+All 431 tests pass with GPU and CPU-only (four GPU-only skips). Two actual desktop
+workflows pass 24 checks each. The refreshed EXE verifies exact recipe/native-detail
+agreement with source execution and unchanged originals. HE GPU export is 1.38 s;
+the Z5 CPU case is 2.86 s after restart with cached compilation. Live edits measure
+59 / 72 ms median on those different HE GPU / Z5 CPU samples, while first RAW
+display still takes 4.93 / 2.29 s. No public ZIP or installer is released.
+
+Earlier quality increment: a separate `Auto color noise` wand command analyzes
 retained native Nikon regions at the current tones. It changes only the noise
 amount, requires measured benefit and tone/color guards, and retains existing
 settings when evidence is insufficient. It is not semantic texture recognition,

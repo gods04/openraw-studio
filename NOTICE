@@ -12,7 +12,7 @@ https://helpx.adobe.com/camera-raw/desktop/dng-and-file-formats/digital-negative
 Nikon Camera Calibration Data
 -----------------------------
 
-OpenRAW Native includes numeric Nikon D500, 1 J5, and Z f camera-calibration constants
+OpenRAW Native includes numeric Nikon D500, 1 J5, Z5, and Z f camera-calibration constants
 published as Adobe DNG Converter profile data. The OpenRAW transform and render
 implementation is project-authored. LibRaw was used as a development reference
 and validation oracle; no LibRaw code or binary is bundled as a runtime
@@ -20,6 +20,10 @@ dependency.
 
 Reference table:
 https://github.com/LibRaw/LibRaw/blob/master/src/tables/colordata.cpp
+
+Z5 uses the DNG Converter 13.2 calibration values recorded in RawTherapee's
+camera-data table, not its processing code or a RawTherapee runtime:
+https://github.com/RawTherapee/RawTherapee/blob/dev/rtengine/camconst.json
 
 Nikon Compression Format Data
 ----------------------------
@@ -39,7 +43,7 @@ The read-only HE research diagnostic uses published stream-framing facts and
 local file observations, not external decoder implementation code.
 https://github.com/zidage/LibRaw/blob/main_alcedo/doc/nikon_he_public_algorithm.md
 
-The guarded Z f HE* entropy, inverse-wavelet, and color-lifting modules are project-authored from
+The guarded Z f HE/HE* entropy, inverse-wavelet, and color-lifting modules are project-authored from
 format facts, mathematical operations, and synthetic/local numerical validation.
 Technical references include the JPEG XS decoder documentation and the uniform
 quantizer reconstruction described by the SVT-JPEG-XS project. No SVT-JPEG-XS or

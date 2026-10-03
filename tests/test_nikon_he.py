@@ -40,7 +40,9 @@ def he_fixture(*, model="NIKON Z f", mode=14, black=1008, payload_change=None, w
     for index in range(18):
         if index % 16 == 0:
             previous = None
-        block, previous, _ = encode_precinct(header, previous, quantization=0, dc=(256, 0, 0, 0))
+        block, previous, _ = encode_precinct(
+            header, previous, quantization=4 if mode == 13 else 0, dc=(256, 0, 0, 0)
+        )
         blocks.append(block)
     stream = bytearray(frame_stream(blocks))
     picture = stream.index(b"\xff\x12") + 4
@@ -104,9 +106,14 @@ class HeColorTests(unittest.TestCase):
 
 class NativeHeTests(unittest.TestCase):
     def test_guarded_profile_decode_matches_python_fallback(self):
+        for mode in (13, 14):
+            with self.subTest(mode=mode):
+                self.check_guarded_profile(mode)
+
+    def check_guarded_profile(self, mode):
         with tempfile.TemporaryDirectory() as folder:
             source = Path(folder) / "sample.NEF"
-            original = he_fixture()
+            original = he_fixture(mode=mode)
             source.write_bytes(original)
             metadata = DngMetadataReader().read(source)
             self.assertFalse(can_decode_nikon_34713_lossless(metadata))
@@ -115,7 +122,10 @@ class NativeHeTests(unittest.TestCase):
             with patch.object(compiled_he, "decode", None):
                 slow = decode_nikon_34713_lossless(source)
             self.assertEqual(fast.raw_bytes, slow.raw_bytes)
-            self.assertEqual(fast.storage_layout, "nikon-he-star-strips")
+            self.assertEqual(fast.storage_layout, "nikon-he-star-strips" if mode == 14 else "nikon-he-strips")
+            self.assertEqual(fast.compression_setup.compression_mode, mode)
+            label = "HE*" if mode == 14 else "HE"
+            self.assertEqual(fast.compression_setup.version, f"{label} Zf profile 1")
             self.assertEqual(fast.black_levels, (1008,) * 4)
             self.assertEqual(fast.white_level, 16383)
             self.assertEqual(fast.camera_profile.model, "NIKON Z F")
@@ -123,12 +133,13 @@ class NativeHeTests(unittest.TestCase):
             self.assertEqual(fast.compression_setup.active_area, (2, 2, 60, 68))
             support = inspect_native_support(source)
             self.assertTrue(support.can_render)
+            self.assertIn(f"Compression: Nikon Z f {label} verified 14-bit profile", support.details)
             self.assertIn("approximation", " ".join(support.details))
             self.assertEqual(source.read_bytes(), original)
 
     def test_unknown_camera_mode_black_or_curve_never_claim_supported(self):
         for options in (
-            {"model": "NIKON Z 5"}, {"model": "NIKON Z fc"}, {"mode": 13},
+            {"model": "NIKON Z 5"}, {"model": "NIKON Z fc"}, {"mode": 15},
             {"black": 1024}, {"width": 72},
             {"payload_change": lambda data, picture: data.__setitem__(picture + 36, 0)},
             {"payload_change": lambda data, _picture: data.__setitem__(-1, 0)},
@@ -143,23 +154,28 @@ class NativeHeTests(unittest.TestCase):
                     decode_nikon_34713_lossless(source)
 
     def test_raw_packet_or_depth_hint_mode_is_rejected_before_editing(self):
-        for relative in (5, 12):
+        for mode, relative in ((13, 5), (13, 12), (14, 5), (14, 12)):
             def damage(stream, _picture, relative=relative):
                 start = read_header(stream).precinct_start
                 stream[start + relative] = 0x80
 
-            with self.subTest(relative=relative), tempfile.TemporaryDirectory() as folder:
+            with self.subTest(mode=mode, relative=relative), tempfile.TemporaryDirectory() as folder:
                 source = Path(folder) / "other-coding.NEF"
-                source.write_bytes(he_fixture(payload_change=damage))
+                source.write_bytes(he_fixture(mode=mode, payload_change=damage))
                 self.assertFalse(inspect_native_support(source).can_render)
                 with self.assertRaises(NikonCompressionError):
                     decode_nikon_34713_lossless(source)
 
     def test_pipeline_preview_edit_and_export_reuse_native_decode(self):
+        for mode in (13, 14):
+            with self.subTest(mode=mode):
+                self.check_pipeline(mode)
+
+    def check_pipeline(self, mode):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             source = root / "sample.NEF"
-            original = he_fixture()
+            original = he_fixture(mode=mode)
             source.write_bytes(original)
             pipeline = LocalPhotoPipeline()
             photo = prepare_interactive_photo(pipeline.raw_processor, source, max_dimension=64)

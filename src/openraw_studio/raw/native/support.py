@@ -405,8 +405,9 @@ def _evaluate_nikon_summary(
         issues = [issue for issue in issues if "compression" not in issue.lower()]
         issues = [issue for issue in issues if issue != "Missing scalar black level."]
         issues = [issue for issue in issues if issue != "Missing scalar white level."]
-        if maker_note and maker_note.compression_mode == 14:
-            details.append("Compression: Nikon Z f HE* verified 14-bit profile")
+        if maker_note and maker_note.compression_mode in {13, 14}:
+            mode = "HE*" if maker_note.compression_mode == 14 else "HE"
+            details.append(f"Compression: Nikon Z f {mode} verified 14-bit profile")
             details.append("HE nonlinear mapping: approximation, <=1 DN versus the development reference")
         else:
             details.append("Compression: Nikon 34713 Huffman (F lossless / 12-bit D20 non-split)")

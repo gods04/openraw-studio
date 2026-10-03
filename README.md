@@ -79,10 +79,12 @@ Then import `sample-data\openraw-synthetic.DNG` or
   fallback, and full-resolution RGB export for supported files
 - Native Nikon 1 J5 12-bit D20 non-split compressed NEF decoding, linearization,
   corrected black levels, exact camera profile, and full-size JPEG/TIFF export
-- Native Nikon Z f HE* 14-bit decoding for the verified profile, with real RAW
+- Verified Nikon Z5 12/14-bit lossless sensor decoding, camera color calibration,
+  corrected 12-bit black levels, and 6016 x 4016 export on the tested FX samples
+- Native Nikon Z f HE/HE* 14-bit decoding for the verified profile, with real RAW
   adjustments and full-size JPEG/TIFF export. Its computed nonlinear mapping is
   approximate: at most 1 DN difference against the development reference in
-  nine tested sensor planes. Other HE profiles are not implied to be supported.
+  eleven tested sensor planes. Other HE profiles are not implied to be supported.
 - Reused HE horizontal-transform work buffers reduce first-use compilation;
   cached compiled decoding and the NumPy fallback retain the same integer math
 - Automatic OpenCL GPU selection for live adjustments and full-resolution Nikon
@@ -95,7 +97,7 @@ Then import `sample-data\openraw-synthetic.DNG` or
   detail, with matching GPU, compiled CPU, and NumPy paths; the Fit proxy stays fast
 - Vectorized Nikon preview lookup construction and bounded-memory RGB histogram/QC,
   retaining the scalar fallback and existing preview/clipping behavior
-- Camera-aware Nikon D500, 1 J5, and Z f rendering with standard as-shot white balance, an
+- Camera-aware Nikon D500, 1 J5, Z5, and Z f rendering with standard as-shot white balance, an
   exact camera-to-linear-sRGB profile, and EXIF orientation handling
 - Native extraction for simple uncompressed DNG 12/14-bit packed strip payloads
   and 16-bit strip/tile pixel payloads
@@ -158,15 +160,16 @@ Then import `sample-data\openraw-synthetic.DNG` or
   gamut mapping are not implemented yet
 - OpenRAW Native has a first optimized Nikon 34713 lossless decode/render path,
   with a half-resolution preview and full-resolution MHC final export.
-  Camera profiles are provided for the D500, 1 J5, and Z f, with generic color for other models;
+  Camera profiles are provided for the D500, 1 J5, Z5, and Z f, with generic color for other models;
   first-use compiler/GPU initialization still adds latency, while edge-aware
   demosaic quality, further speed work, and more profiles remain
 - Other compressed/proprietary Nikon `.NEF` / `.NRW` sensor payload variants
   are not decoded yet. J5 D20 support is limited to 12-bit, non-split streams;
-  HE* support is restricted to the verified Z f 14-bit profile with matching
-  stream configuration and black levels. HE (non-star), other HE* profiles, and
-  D20 split-row streams remain unsupported for RAW editing/export. Z5 sensor
-  support has not been verified with a real sample. Check each file with
+  HE/HE* support is restricted to the verified Z f 14-bit profile with matching
+  stream configuration and black levels. Other HE/HE* profiles, D20 split-row
+  streams, and Z5 D40 lossy compressed files remain unsupported for RAW
+  editing/export. Z5 verification covers 12/14-bit lossless FX samples, not every
+  crop mode, firmware, or the Z5 II. Check each file with
   `openraw inspect`.
 - Broad proprietary RAW rendering support is not implemented yet
 - TIFF export is currently 8-bit sRGB; 16-bit linear/working-space TIFF is not implemented yet
@@ -394,7 +397,7 @@ is still an early V0.1 render. It applies available DNG `AsShotNeutral`, inverts
 adaptation, and converts to linear sRGB before tone mapping. Dual-illuminant
 DNG profiles are still future work. Supported Nikon 34713 files use a fast
 half-resolution preview and full-resolution MHC final JPEG/TIFF. The D500,
-1 J5, and Z f have native camera profiles; other models use generic camera RGB.
+1 J5, Z5, and Z f have native camera profiles; other models use generic camera RGB.
 Final JPEG/TIFF files retain safe photographic metadata such as camera, ISO,
 shutter, aperture, focal length, and capture date. Exported pixels are already
 oriented, so Orientation is written as `1`; location/GPS metadata is not copied.

@@ -285,7 +285,8 @@ This is an approximation, **not** bit-exact Nikon curve reproduction. The adapte
 requires Nikon Z f, HE* mode 14, 14-bit RGGB, the observed black levels, matching
 container/stream dimensions, and exact PIH profile bytes. Unknown configurations,
 raw-coded packets, and unverified depth hints fail before claiming edit support.
-HE mode 13, other cameras/profiles, and Z5 remain unverified.
+At that milestone HE mode 13, other cameras/profiles, and Z5 were unverified;
+the public-sample validation below subsequently adds Z f HE and Z5 lossless.
 
 All nine samples pass native preparation, Auto, and full-resolution JPEG export
 without source changes. Landscape exports are 6048 x 4032 after active cropping;
@@ -305,6 +306,78 @@ CPU-only portrait run prepared in 4.98 s and exported in 6.01 s at 4032 x 6048.
 These are different photographs, not a controlled GPU speedup ratio. Neither
 run changed its source. All fourteen D500 regression exports also still pass.
 The bundle contains no private photographs or external reference decoder.
+
+### Public Z f HE and Z5 Lossless Validation
+
+Seven public samples were obtained from the [raw.pixls.us catalogue](https://raw.pixls.us/)
+and checked against the SHA-256 values in its
+[structured catalogue](https://raw.pixls.us/json/getrepository.php?set=all).
+Each entry is labeled CC0. Files, derivatives, and development reports stay in
+ignored `output/public-nikon`; no photograph or reference binary is shipped.
+
+| Camera / Mode | Catalogue ID / Original Filename | SHA-256 |
+| --- | --- | --- |
+| Z5 lossless 14-bit | 4136 / DSC_0517.NEF | `9870248c45532080c2459f3b52cdcc4a07bc8846ad50cbb81c7c1c6dc5e36d91` |
+| Z5 lossless 12-bit | 4137 / DSC_0518.NEF | `ac11b88c978958222af79946c01071f270e0d660ae8fb5e1f15e4c965a25aa54` |
+| Z5 D40 lossy 12-bit (blocked) | 4138 / DSC_0519.NEF | `d893b6f7e7d2c0aa7d4b016a559bf0d9af440c9ec7486119085c2b2368c7a2a4` |
+| Z5 D40 lossy 14-bit (blocked) | 4139 / DSC_0520.NEF | `e675138e7185b026000c97b654b80ac230c5796f48a9180633672ddacee01bed` |
+| Z f lossless 14-bit | 6885 / DSC_0040.NEF | `83c82be0be8865d796096dfbcc8ef2abf5af1bd37db44dfad6715070b0c99d15` |
+| Z f HE* 14-bit | 6886 / DSC_0042.NEF | `c888f109dc420e359853a2ce768d8a6274b8ba0109b2f5cb6e0c982981d5a624` |
+| Z f HE 14-bit | 6887 / DSC_0043.NEF | `98d6ca8e6c98048ca7ffed68ccaeda7b2b9f03807f0d320d97d5678db21748c2` |
+
+The HE samples' catalogue labels say 8-bit, but the sensor IFD and HE components
+are 14-bit. Support decisions use actual container/stream metadata, not the
+catalogue label. The HE and HE* samples have the same verified PIH configuration,
+black levels, CFA, and packet coding as the existing guarded profile. The native
+adapter now accepts MakerNote modes 13 and 14 and reports their names separately;
+it does not relax any nonlinear, geometry, packet, depth-hint, or camera guard.
+
+All 24,498,560 nonlinear Bayer values per HE/HE* file match the isolated oracle
+at `3f82ade9b65cfbb0a29020b76819b1a7b6e4ec78` exactly. Linear sensor differences
+are bounded by 1 DN, with MAE 0.32388 / 0.32412 respectively. This remains an
+approximate nonlinear mapping, not Nikon bit-exact or lossless reproduction.
+The ordinary Z f lossless sample matches all 24,498,560 sensor values exactly.
+
+Both Z5 lossless samples match all 24,353,280 sensor values exactly. The 12-bit
+MakerNote stores black as 1008 in 14-bit units; native normalization now uses
+252, matching the independent metadata reference. 14-bit black remains 1008.
+White levels remain 4095 / 16383. This conversion is limited to verified J5/Z5
+models; unrelated models are not guessed. Z5 now uses the DNG Converter 13.2
+numeric calibration recorded in the
+[RawTherapee camera-data table](https://github.com/RawTherapee/RawTherapee/blob/dev/rtengine/camconst.json).
+No external decoder, image-processing implementation, or runtime is integrated.
+The two Z5 D40 samples remain explicitly blocked rather than silently borrowing
+the older J5 D20 implementation. Z5 II, crop variants, and other HE profiles have
+not been established by this small sample set.
+
+All five supported public files pass native preparation, Auto70, full-size JPEG,
+and unchanged source hashes. Z5 outputs 6016 x 4016; Z f outputs 6048 x 4032.
+On this RTX 5070, cached-decoder export takes 1.21-1.57 s; these are per-sample
+measurements, not first-import or universal latency guarantees. Contact sheets
+were inspected for color/crop artifacts, not used as proof of sensor accuracy.
+Actual compact Tk workflows pass 24 checks each on HE/GPU and Z5 12-bit/CPU,
+including pointer edits, history, Auto, original comparison, JPEG/TIFF,
+zoom/pan, saved edits, and sampled noise advice.
+
+The 431-test suite passes with automatic GPU selection and CPU-only (four
+GPU-only skips). The refreshed local Windows EXE passes HE/GPU and Z5 12-bit/CPU
+Auto/export/native-detail checks; recipes and detail pixels match source execution
+exactly. HE GPU export takes 1.38 s. Z5 CPU export takes 3.26 s initially and
+2.86 s after restarting with cached compilation; corresponding Auto times are
+2.37 / 0.96 s. No runtime/compiler/cache fallback occurs. The existing optional
+TBB packaging warning remains; no reference decoder, photo, public ZIP, or
+installer is included in this local update.
+
+Separate actual Tk latency runs measure 59 ms median slider-to-display on HE/GPU
+and 72 ms on Z5/CPU, with 49 / 48 intermediate frames during 50 drag changes.
+First RAW display remains 4.93 / 2.29 s respectively. These are different photos
+and decode formats, not a controlled GPU speedup ratio; first-use initialization
+is still unfinished work.
+
+The final local metadata inventory also covers 50 previously uncatalogued files:
+47 J5 NEFs, two D500 NEFs, and one Lightroom RGB smart-preview DNG. There is still
+no private Z5 capture in the authorized photo roots. Inventory is not full-image
+decode verification, and a Lightroom smart preview is not original sensor RAW.
 
 ### HE Import Acceleration and Frozen Caches
 
