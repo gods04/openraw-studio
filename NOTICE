@@ -28,7 +28,7 @@ https://github.com/RawTherapee/RawTherapee/blob/dev/rtengine/camconst.json
 Nikon Compression Format Data
 ----------------------------
 
-The native Huffman tables are numeric file-format constants. D20 decoding uses
+The native Huffman tables are numeric file-format constants. D20/D40 decoding uses
 OpenRAW's own bitstream reader and validates/interpolates the curve stored in
 the input NEF. Independent development comparisons do not introduce a LibRaw
 runtime dependency. Format-data reference:

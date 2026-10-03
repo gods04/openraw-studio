@@ -319,8 +319,8 @@ ignored `output/public-nikon`; no photograph or reference binary is shipped.
 | --- | --- | --- |
 | Z5 lossless 14-bit | 4136 / DSC_0517.NEF | `9870248c45532080c2459f3b52cdcc4a07bc8846ad50cbb81c7c1c6dc5e36d91` |
 | Z5 lossless 12-bit | 4137 / DSC_0518.NEF | `ac11b88c978958222af79946c01071f270e0d660ae8fb5e1f15e4c965a25aa54` |
-| Z5 D40 lossy 12-bit (blocked) | 4138 / DSC_0519.NEF | `d893b6f7e7d2c0aa7d4b016a559bf0d9af440c9ec7486119085c2b2368c7a2a4` |
-| Z5 D40 lossy 14-bit (blocked) | 4139 / DSC_0520.NEF | `e675138e7185b026000c97b654b80ac230c5796f48a9180633672ddacee01bed` |
+| Z5 D40 lossy 12-bit | 4138 / DSC_0519.NEF | `d893b6f7e7d2c0aa7d4b016a559bf0d9af440c9ec7486119085c2b2368c7a2a4` |
+| Z5 D40 lossy 14-bit | 4139 / DSC_0520.NEF | `e675138e7185b026000c97b654b80ac230c5796f48a9180633672ddacee01bed` |
 | Z f lossless 14-bit | 6885 / DSC_0040.NEF | `83c82be0be8865d796096dfbcc8ef2abf5af1bd37db44dfad6715070b0c99d15` |
 | Z f HE* 14-bit | 6886 / DSC_0042.NEF | `c888f109dc420e359853a2ce768d8a6274b8ba0109b2f5cb6e0c982981d5a624` |
 | Z f HE 14-bit | 6887 / DSC_0043.NEF | `98d6ca8e6c98048ca7ffed68ccaeda7b2b9f03807f0d320d97d5678db21748c2` |
@@ -346,8 +346,8 @@ models; unrelated models are not guessed. Z5 now uses the DNG Converter 13.2
 numeric calibration recorded in the
 [RawTherapee camera-data table](https://github.com/RawTherapee/RawTherapee/blob/dev/rtengine/camconst.json).
 No external decoder, image-processing implementation, or runtime is integrated.
-The two Z5 D40 samples remain explicitly blocked rather than silently borrowing
-the older J5 D20 implementation. Z5 II, crop variants, and other HE profiles have
+The two Z5 D40 samples were initially blocked; the subsequent D40 implementation
+below validates them independently of J5 D20. Z5 II, crop variants, and other HE profiles have
 not been established by this small sample set.
 
 All five supported public files pass native preparation, Auto70, full-size JPEG,
@@ -378,6 +378,54 @@ The final local metadata inventory also covers 50 previously uncatalogued files:
 47 J5 NEFs, two D500 NEFs, and one Lightroom RGB smart-preview DNG. There is still
 no private Z5 capture in the authorized photo roots. Inventory is not full-image
 decode verification, and a Lightroom smart preview is not original sensor RAW.
+
+### Native D40 Non-Split Decoding
+
+The public Z5 samples `DSC_0519.NEF` and `DSC_0520.NEF` have D40 tables (`44 40`),
+257 equally spaced knots, and no split row. D40 entropy indexes span one quarter
+of the declared sensor range (1024 for 12-bit, 4096 for 14-bit). The project-owned
+decoder uses the appropriate numeric canonical Huffman table, predicts indexes,
+then interpolates the file's curve with integer floor arithmetic. The 14-bit
+lossy Huffman table is format data, not an imported decoder implementation;
+see the [numeric format reference](https://github.com/LibRaw/LibRaw/blob/master/src/decoders/decoders_dcraw.cpp).
+
+The sensor white point must not be the last reconstructable curve value: on these
+files those values are 4092 / 16380, while white remains 4095 / 16383. The setup
+records the D40 white separately from the index lookup. Existing D20 and lossless
+normalization stay unchanged. D40 predictor values outside the index domain
+raise an error in both compiled and Python paths rather than being clamped into
+plausible pixels. Split rows, invalid/descending/out-of-range knots, unknown
+tables, and truncated entropy fail explicitly. No claim is made for all Nikon
+models or every Z5 crop/firmware combination.
+
+Both real D40 files match all 48,706,560 linear sensor values exactly against the
+isolated development oracle. Black/white levels also match the independent
+rawpy development check. All seven public samples listed above pass sensor
+verification (HE/HE* retain the documented <=1 DN nonlinear approximation).
+The 26 selected private D500/J5/Z f captures retain their previous sensor hashes
+and black/white levels. All originals have unchanged SHA-256 hashes.
+
+Synthetic D40 coverage includes both bit depths, both MakerNote byte orders,
+nonlinear curve endpoints, predictor parity, compiled/Python equality, malformed
+metadata/entropy, range rejection, crop/orientation, non-destructive editing,
+JPEG/TIFF export, and decoder reuse. Both real D40 samples pass native Auto70 and
+full-size 6016 x 4016 GPU JPEG export in 1.20-1.23 s with decoded data cached.
+Their rendered contact sheet was inspected; no camera-JPEG substitution is used.
+
+All 436 tests pass with automatic GPU selection and CPU-only (four GPU-only
+skips). Two compact desktop workflows pass 24 checks each on D40 12-bit/CPU and
+14-bit/GPU, including live pointer edits, history, Auto, comparison, JPEG/TIFF,
+saved edits, and safe noise advice. A mixed CLI batch exports all seven public
+Z5/Z f lossless, D40, HE, and HE* samples with no skips or failures; every JPEG
+opens at the expected full size and all source hashes remain unchanged.
+
+The refreshed local Windows EXE passes both D40 paths, with recipes and native
+detail pixels matching source execution exactly. CPU 12-bit preparation/Auto/
+JPEG export take 2.08/2.32/3.13 s on this first updated-bundle run; the separate
+GPU 14-bit sample takes 1.46/0.55/1.25 s. These are different photographs, not a
+controlled acceleration ratio or first-use guarantee. Compilation stays active
+without fallback. The existing optional TBB packaging warning remains; no
+external RAW decoder, photo, public ZIP, or installer is bundled or published.
 
 ### HE Import Acceleration and Frozen Caches
 

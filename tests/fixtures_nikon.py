@@ -229,9 +229,13 @@ def _pack_rational_values(values: tuple[float, ...]) -> bytes:
     return b"".join(_pack_rational(round(value * denominator), denominator) for value in values)
 
 
-def _tiff_makernote_bytes(entries: list[tuple[int, int, int, bytes]]) -> bytes:
+def _tiff_makernote_bytes(
+    entries: list[tuple[int, int, int, bytes]], *, byte_order: str = "little",
+) -> bytes:
+    endian = {"little": "<", "big": ">"}[byte_order]
     entry_count = len(entries)
-    header = b"Nikon\x00\x02\x11\x00\x00II" + struct.pack("<H", 42) + struct.pack("<I", 8)
+    header = b"Nikon\x00\x02\x11\x00\x00" + (b"II" if byte_order == "little" else b"MM")
+    header += struct.pack(endian + "HI", 42, 8)
     ifd_size = 2 + entry_count * 12 + 4
     external_base = len(header) + ifd_size - 10
     external_data = bytearray()
@@ -240,14 +244,14 @@ def _tiff_makernote_bytes(entries: list[tuple[int, int, int, bytes]]) -> bytes:
         type_size = {1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 7: 1, 8: 2, 9: 4, 10: 8}[field_type]
         byte_count = type_size * count
         if byte_count <= 4:
-            return struct.pack("<HHI", tag, field_type, count) + payload.ljust(4, b"\x00")
+            return struct.pack(endian + "HHI", tag, field_type, count) + payload.ljust(4, b"\x00")
         offset = external_base + len(external_data)
         external_data.extend(payload)
         if len(external_data) % 2:
             external_data.extend(b"\x00")
-        return struct.pack("<HHII", tag, field_type, count, offset)
+        return struct.pack(endian + "HHII", tag, field_type, count, offset)
 
-    ifd = struct.pack("<H", entry_count) + b"".join(encode(*entry) for entry in entries) + struct.pack("<I", 0)
+    ifd = struct.pack(endian + "H", entry_count) + b"".join(encode(*entry) for entry in entries) + struct.pack(endian + "I", 0)
     return header + ifd + bytes(external_data)
 
 

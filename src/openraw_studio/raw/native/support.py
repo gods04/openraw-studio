@@ -410,7 +410,7 @@ def _evaluate_nikon_summary(
             details.append(f"Compression: Nikon Z f {mode} verified 14-bit profile")
             details.append("HE nonlinear mapping: approximation, <=1 DN versus the development reference")
         else:
-            details.append("Compression: Nikon 34713 Huffman (F lossless / 12-bit D20 non-split)")
+            details.append("Compression: Nikon 34713 Huffman (F lossless / D20 12-bit / D40 12/14-bit non-split)")
         details.append(
             "Levels: native sample range with MakerNote black level or inactive-border fallback"
         )

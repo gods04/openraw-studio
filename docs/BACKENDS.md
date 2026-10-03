@@ -19,7 +19,7 @@ Nikon NEF/NRW embedded JPEG preview support
 Nikon MakerNote compression metadata summary for 34713 render blockers
 Nikon 34713 lossless Huffman sensor decode support for supported files
 Nikon 1 J5 12-bit D20 non-split sensor decode
-Nikon Z5 12/14-bit lossless FX sensor decode verified; D40 lossy remains unsupported
+Nikon Z5 12/14-bit lossless and D40 non-split lossy FX sensor decode verified
 Nikon Z f HE/HE* 14-bit verified-profile sensor decode with approximate nonlinear mapping
 optimized Python bitstream/render loops for the current Nikon 34713 path
 Nikon MakerNote black levels with conservative inactive-border fallback

@@ -16,7 +16,7 @@ except (ImportError, OSError) as error:
     NumbaError = RuntimeError
 
 
-def _decode(payload, width, height, table, initial, maximum):
+def _decode(payload, width, height, table, initial, maximum, strict_range):
     output = np.empty(width * height, dtype=np.uint16)
     vertical = initial.copy()
     byte_pos = 0
@@ -73,6 +73,8 @@ def _decode(payload, width, height, table, initial, maximum):
                 sample = even
             if column < 2:
                 vertical[row & 1, column] = sample
+            if strict_range and (sample < 0 or sample > maximum):
+                return output, 3
             output[row * width + column] = min(max(sample, 0), maximum)
     return output, 0
 
@@ -85,7 +87,7 @@ except RuntimeError:
     decode = njit(nogil=True)(_decode) if njit is not None else None
 
 
-def decode_samples(payload, width, height, table, initial, maximum):
+def decode_samples(payload, width, height, table, initial, maximum, strict_range=False):
     global decode, last_error, cache_disabled_reason
     if decode is None:
         return None
@@ -96,6 +98,7 @@ def decode_samples(payload, width, height, table, initial, maximum):
         np.asarray(table, dtype=np.int64),
         np.asarray(initial, dtype=np.int64),
         maximum,
+        strict_range,
     )
     try:
         try:
@@ -115,9 +118,10 @@ def decode_samples(payload, width, height, table, initial, maximum):
         return None
     last_error = None
     if error:
-        raise ValueError(
-            "Nikon compressed bitstream ended early"
-            if error == 1
-            else "invalid Nikon Huffman prefix"
-        )
+        messages = {
+            1: "Nikon compressed bitstream ended early",
+            2: "invalid Nikon Huffman prefix",
+            3: "Nikon compressed predictor is outside the linearization range",
+        }
+        raise ValueError(messages[error])
     return output

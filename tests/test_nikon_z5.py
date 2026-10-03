@@ -72,7 +72,7 @@ class NikonZ5Tests(unittest.TestCase):
             self.assertEqual(decoded.black_levels, (1008,) * 4)
             self.assertIsNone(decoded.camera_profile)
 
-    def test_z5_d40_lossy_stays_blocked(self):
+    def test_z5_d40_missing_curve_stays_blocked(self):
         for bits in (12, 14):
             with self.subTest(bits=bits), tempfile.TemporaryDirectory() as folder:
                 table = b"D@" + bytes(624)
@@ -86,5 +86,5 @@ class NikonZ5Tests(unittest.TestCase):
                     compressed_sensor_payload=b"\x00" * 32,
                 ))
                 self.assertFalse(inspect_native_support(source).can_render)
-                with self.assertRaisesRegex(NikonCompressionError, "compression table version"):
+                with self.assertRaisesRegex(NikonCompressionError, "linearization knot count"):
                     decode_nikon_34713_lossless(source)

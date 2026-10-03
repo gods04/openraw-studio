@@ -7,7 +7,7 @@ strength control, original RAW comparison, undo/redo, local edit retention,
 manual and sampled Auto color-noise reduction, native-pixel 100%/200% inspection, JPEG/TIFF export, and cancellable per-photo
 batch modes. Supported compressed
 Nikon paths include F-series lossless, 12-bit D20 non-split (verified on 1 J5),
-verified Z5 12/14-bit lossless FX, and the verified Z f HE/HE* 14-bit profile
+verified Z5 12/14-bit lossless and D40 non-split lossy FX, and the verified Z f HE/HE* 14-bit profile
 with approximate nonlinear mapping.
 Local Windows EXE builds are available; this is not a public installer release.
 
@@ -17,13 +17,28 @@ and sensor/luminance denoise. Further first-use initialization and broader verif
 also remain open.
 Semantic portrait/scene AI and mobile remain later phases.
 
-Latest decoder increment: the public Z f HE sample matches all 24,498,560
+Latest decoder increment: D40 non-split 12/14-bit Nikon decoding is native.
+Both public Z5 lossy captures match all 48,706,560 sensor values against the
+development reference, including their black/white levels. D40's quarter-sized
+entropy domain and full sensor white point are handled separately; invalid
+predictors, malformed curves, unsupported tables, and split rows are rejected.
+The 26 private D500/J5/Z f regression files retain identical sensor bytes and
+black/white levels, with unchanged original hashes. Both new Z5 samples pass
+Auto and 6016 x 4016 JPEG export on GPU (about 1.2 s with decoded data cached).
+Additional crop/firmware variants and split-row D20/D40 still need verification.
+All 436 tests pass with GPU and CPU-only (four GPU-only skips). Two real desktop
+workflows pass 24 checks each; a mixed seven-file batch exports everything
+without skips or failures. The refreshed local EXE reproduces source recipes
+and native-detail pixels exactly. D40 CPU 12-bit export measures 3.13 s and the
+separate GPU 14-bit sample 1.25 s, excluding preparation. No public release is made.
+
+Earlier public-sample increment: the public Z f HE sample matches all 24,498,560
 nonlinear Bayer values against the isolated development reference, with at most
 1 DN difference in the approximate linear mapping. HE* and ordinary Z f lossless
 public samples also pass. Both Z5 lossless bit depths match all 24,353,280 sensor
 samples exactly; 12-bit black normalization is corrected to 252, and an exact-model
 DNG 13.2 camera calibration is added. All five files pass native Auto and full-size
-JPEG export with unchanged sources. Z5 D40 lossy, other HE profiles, and other
+JPEG export with unchanged sources. Other HE profiles and other
 Z5 crop/firmware variants still need verification. See the public sample IDs,
 hashes, and reference boundaries in `DEVELOPMENT.md`.
 All 431 tests pass with GPU and CPU-only (four GPU-only skips). Two actual desktop

@@ -133,7 +133,7 @@ class NativeSupportTests(unittest.TestCase):
         self.assertTrue(report.can_render)
         self.assertEqual(report.status, "supported")
         self.assertIn("Nikon 34713", report.reason)
-        self.assertIn("Compression: Nikon 34713 Huffman (F lossless / 12-bit D20 non-split)", report.details)
+        self.assertIn("Compression: Nikon 34713 Huffman (F lossless / D20 12-bit / D40 12/14-bit non-split)", report.details)
         self.assertIn("Render: native Nikon 34713 sensor decode", report.details)
 
     def test_nikon_support_reports_as_shot_white_balance_source(self) -> None:

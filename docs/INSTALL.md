@@ -79,9 +79,9 @@ remain portable artifacts. No edit operation modifies the source RAW.
 
 Nikon 1 J5 12-bit D20 non-split compressed files are also supported, with an
 exact camera color profile and a 5584 x 3724 output for the tested landscape files.
-Nikon Z5 12/14-bit lossless files have verified native decoding and camera color,
+Nikon Z5 12/14-bit lossless and D40 non-split lossy files have verified native decoding and camera color,
 including correct black levels in 12-bit mode (6016 x 4016 for tested FX files).
-Z5 D40 lossy compressed files are not supported for RAW editing/export yet.
+D40 split-row streams are not supported for RAW editing/export yet.
 The verified Nikon Z f HE/HE* 14-bit profile supports native editing and full-size
 JPEG/TIFF export (6048 x 4032 for the tested landscape files). Its computed
 nonlinear mapping is approximate, with at most 1 DN difference from the

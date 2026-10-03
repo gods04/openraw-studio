@@ -79,7 +79,7 @@ Then import `sample-data\openraw-synthetic.DNG` or
   fallback, and full-resolution RGB export for supported files
 - Native Nikon 1 J5 12-bit D20 non-split compressed NEF decoding, linearization,
   corrected black levels, exact camera profile, and full-size JPEG/TIFF export
-- Verified Nikon Z5 12/14-bit lossless sensor decoding, camera color calibration,
+- Verified Nikon Z5 12/14-bit lossless and D40 non-split lossy sensor decoding, camera color calibration,
   corrected 12-bit black levels, and 6016 x 4016 export on the tested FX samples
 - Native Nikon Z f HE/HE* 14-bit decoding for the verified profile, with real RAW
   adjustments and full-size JPEG/TIFF export. Its computed nonlinear mapping is
@@ -166,9 +166,9 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - Other compressed/proprietary Nikon `.NEF` / `.NRW` sensor payload variants
   are not decoded yet. J5 D20 support is limited to 12-bit, non-split streams;
   HE/HE* support is restricted to the verified Z f 14-bit profile with matching
-  stream configuration and black levels. Other HE/HE* profiles, D20 split-row
-  streams, and Z5 D40 lossy compressed files remain unsupported for RAW
-  editing/export. Z5 verification covers 12/14-bit lossless FX samples, not every
+  stream configuration and black levels. Other HE/HE* profiles and D20/D40
+  split-row streams remain unsupported for RAW editing/export. Z5 verification
+  covers 12/14-bit lossless and D40 non-split lossy FX samples, not every
   crop mode, firmware, or the Z5 II. Check each file with
   `openraw inspect`.
 - Broad proprietary RAW rendering support is not implemented yet

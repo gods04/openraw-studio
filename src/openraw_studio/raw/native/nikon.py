@@ -46,6 +46,10 @@ _NIKON_HUFFMAN_TABLES = {
         (0, 1, 4, 2, 3, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0),
         (5, 4, 6, 3, 7, 2, 8, 1, 9, 0, 10, 11, 12),
     ),
+    3: (
+        (0, 1, 4, 3, 1, 1, 1, 1, 1, 2, 0, 0, 0, 0, 0, 0),
+        (5, 6, 4, 7, 8, 3, 9, 2, 1, 0, 10, 11, 12, 13, 14),
+    ),
     5: (
         (0, 1, 4, 2, 2, 3, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0),
         (7, 6, 8, 5, 9, 4, 10, 3, 11, 12, 2, 0, 1, 13, 14),
@@ -107,6 +111,7 @@ class NikonCompressionSetup:
     active_area: tuple[int, ...] | None = None
     compression_mode: int | None = None
     linearization: tuple[int, ...] | None = None
+    linearization_white_level: int | None = None
 
 
 @dataclass(frozen=True)
@@ -214,8 +219,8 @@ def extract_nikon_as_shot_white_balance(metadata: DngMetadata) -> NikonWhiteBala
 def decode_nikon_34713_lossless(path: str | Path, metadata: DngMetadata | None = None) -> NikonDecodedPixelData:
     """Decode supported Nikon data; the legacy API name is retained.
 
-    F-series lossless and 12-bit D20 non-split lossy streams are supported.
-    D20 samples are linearized before any black-level or color processing.
+    F-series lossless, 12-bit D20, and 12/14-bit D40 non-split streams are supported.
+    Lossy indices are linearized before any black-level or color processing.
     """
 
     source_path = Path(path)
@@ -256,7 +261,8 @@ def decode_nikon_34713_lossless(path: str | Path, metadata: DngMetadata | None =
         width=width,
         height=height,
         setup=setup,
-        maximum=(1 << bits_per_sample) - 1,
+        maximum=len(setup.linearization) - 1 if setup.linearization else (1 << bits_per_sample) - 1,
+        strict_range=setup.version == "D@",
     )
     white_level = (1 << bits_per_sample) - 1
     if setup.linearization is not None:
@@ -266,7 +272,10 @@ def decode_nikon_34713_lossless(path: str | Path, metadata: DngMetadata | None =
         indices = np.frombuffer(samples, dtype=np.uint16)
         samples = array("H")
         samples.frombytes(curve[indices].tobytes())
-        white_level = int(curve[-1])
+        white_level = (
+            setup.linearization_white_level
+            if setup.linearization_white_level is not None else int(curve[-1])
+        )
     black_levels = _nikon_black_levels(
         source_metadata,
         samples,
@@ -586,10 +595,11 @@ def _nikon_compression_setup(metadata: DngMetadata, bits_per_sample: int) -> Nik
     v0 = compression_payload[0]
     v1 = compression_payload[1]
     is_d20 = (v0, v1) == (0x44, 0x20) and bits_per_sample == 12
-    if v0 != 0x46 and not is_d20:
+    is_d40 = (v0, v1) == (0x44, 0x40) and bits_per_sample in {12, 14}
+    if v0 != 0x46 and not (is_d20 or is_d40):
         raise NikonCompressionError(f"unsupported Nikon compression table version: 0x{v0:02x} 0x{v1:02x}")
 
-    huffman_select = 0 if is_d20 else 2
+    huffman_select = 0 if is_d20 or is_d40 else 2
     if bits_per_sample == 14:
         huffman_select += 3
     if huffman_select not in _NIKON_HUFFMAN_TABLES:
@@ -597,33 +607,43 @@ def _nikon_compression_setup(metadata: DngMetadata, bits_per_sample: int) -> Nik
 
     unpack_u16 = _u16_unpacker(byte_order)
     linearization = None
-    if is_d20:
-        # D20 stores evenly spaced linearization knots and an optional split row.
+    linearization_white_level = None
+    if is_d20 or is_d40:
+        # D40 uses a quarter-sized index domain; the curve still outputs the
+        # sensor's full bit-depth range, including its white endpoint.
+        family = "D40" if is_d40 else "D20"
+        domain = 1 << (bits_per_sample - (2 if is_d40 else 0))
         if len(compression_payload) < 564:
-            raise NikonCompressionError("Nikon D20 compression table is too short")
+            raise NikonCompressionError(f"Nikon {family} compression table is too short")
         if unpack_u16(compression_payload[562:564]) != 0:
             raise NikonCompressionError(
-                "Nikon D20 split-row compression is not supported yet"
+                f"Nikon {family} split-row compression is not supported yet"
             )
         count = unpack_u16(compression_payload[10:12])
-        if count < 2 or count > 257 or 4096 % (count - 1) or 12 + count * 2 > 562:
-            raise NikonCompressionError("invalid Nikon D20 linearization knot count")
+        if count < 2 or count > 257 or domain % (count - 1) or 12 + count * 2 > 562:
+            raise NikonCompressionError(f"invalid Nikon {family} linearization knot count")
         knots = [
             unpack_u16(compression_payload[12 + i * 2 : 14 + i * 2])
             for i in range(count)
         ]
-        if knots[-1] <= knots[0] or any(a > b for a, b in zip(knots, knots[1:])):
-            raise NikonCompressionError("invalid Nikon D20 linearization curve")
-        step = 4096 // (count - 1)
+        if (knots[-1] <= knots[0] or any(a > b for a, b in zip(knots, knots[1:]))
+                or (is_d40 and knots[-1] > (1 << bits_per_sample) - 1)):
+            raise NikonCompressionError(f"invalid Nikon {family} linearization curve")
+        step = domain // (count - 1)
         linearization = tuple(
             (knots[i // step] * (step - i % step) + knots[i // step + 1] * (i % step))
             // step
-            for i in range(4096)
+            for i in range(domain)
         )
+        if is_d40:
+            # The final reconstructable value can be below the sensor white.
+            linearization_white_level = (1 << bits_per_sample) - 1
     initial_predictors = (
         (unpack_u16(compression_payload[2:4]), unpack_u16(compression_payload[6:8])),
         (unpack_u16(compression_payload[4:6]), unpack_u16(compression_payload[8:10])),
     )
+    if is_d40 and any(value >= domain for row in initial_predictors for value in row):
+        raise NikonCompressionError("Nikon D40 initial predictor is outside the linearization range")
     return NikonCompressionSetup(
         version=bytes(compression_payload[:2]).decode("ascii", errors="replace"),
         huffman_select=huffman_select,
@@ -631,6 +651,7 @@ def _nikon_compression_setup(metadata: DngMetadata, bits_per_sample: int) -> Nik
         active_area=_tag_int_tuple(maker_ifd, 0x0045),
         compression_mode=compression_mode,
         linearization=linearization,
+        linearization_white_level=linearization_white_level,
     )
 
 
@@ -641,6 +662,7 @@ def _decode_nikon_lossless_samples(
     height: int,
     setup: NikonCompressionSetup,
     maximum: int,
+    strict_range: bool = False,
 ) -> array:
     from openraw_studio.raw.native.compiled_decode import decode_samples
 
@@ -651,7 +673,7 @@ def _decode_nikon_lossless_samples(
     try:
         accelerated = decode_samples(
             payload, width, height, _build_huffman_lookup(setup.huffman_select),
-            setup.initial_predictors, maximum,
+            setup.initial_predictors, maximum, strict_range,
         )
     except ValueError as exc:
         raise NikonCompressionError(str(exc)) from exc
@@ -660,13 +682,13 @@ def _decode_nikon_lossless_samples(
         output.frombytes(accelerated.tobytes())
         return output
     return _decode_nikon_lossless_samples_python(
-        payload, width=width, height=height, setup=setup, maximum=maximum,
+        payload, width=width, height=height, setup=setup, maximum=maximum, strict_range=strict_range,
     )
 
 
 def _decode_nikon_lossless_samples_python(
     payload: bytes, *, width: int, height: int,
-    setup: NikonCompressionSetup, maximum: int,
+    setup: NikonCompressionSetup, maximum: int, strict_range: bool = False,
 ) -> array:
     table = _build_huffman_lookup(setup.huffman_select)
     prefix_bits = (len(table) - 1).bit_length()
@@ -751,6 +773,8 @@ def _decode_nikon_lossless_samples_python(
                         row1_even = even_predictor
                     else:
                         row0_even = even_predictor
+            if strict_range and not 0 <= sample <= maximum:
+                raise NikonCompressionError("Nikon compressed predictor is outside the linearization range")
             if sample < 0:
                 output[index] = 0
             elif sample > maximum:
