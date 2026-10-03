@@ -58,6 +58,7 @@ class NativeRawProcessor:
                 "camera_color_matrix": "dng-color-matrix-1-to-linear-srgb-v0.2",
                 "tone_adjustments": "exposure-contrast-highlights-shadows-temperature-tint-saturation-v0.1",
                 "color_noise_reduction": "rendered-chroma-bilateral-v0.1",
+                "luminance_noise_reduction": "rendered-luminance-bilateral-v0.1",
                 "shadow_curve": "black-anchored-v0.2",
                 "nikon_highlights": "neutral-white-balance-ceiling-v0.1",
                 "packed_bayer_strips": "12-14-bit-row-aligned-v0.1",
@@ -153,6 +154,7 @@ class NativeRawProcessor:
                     tint=adjustments.tint,
                     saturation=adjustments.saturation,
                     color_noise=adjustments.color_noise,
+                    luminance_noise=adjustments.luminance_noise,
                     max_dimension=max_dimension,
                 )
                 return ImageRef(
@@ -173,6 +175,7 @@ class NativeRawProcessor:
                 tint=adjustments.tint,
                 saturation=adjustments.saturation,
                 color_noise=adjustments.color_noise,
+                luminance_noise=adjustments.luminance_noise,
                 max_dimension=max_dimension,
             )
         except (DngMetadataError, NotImplementedError, ValueError) as exc:
@@ -213,6 +216,7 @@ class NativeRawProcessor:
                     tint=adjustments.tint,
                     saturation=adjustments.saturation,
                     color_noise=adjustments.color_noise,
+                    luminance_noise=adjustments.luminance_noise,
                     max_dimension=request.max_dimension,
                     jpeg_quality=request.quality,
                     jpeg_exif=jpeg_exif,
@@ -236,6 +240,7 @@ class NativeRawProcessor:
                 tint=adjustments.tint,
                 saturation=adjustments.saturation,
                 color_noise=adjustments.color_noise,
+                luminance_noise=adjustments.luminance_noise,
             )
             if output_suffix in {".jpg", ".jpeg"}:
                 write_jpeg(rendered, plan.output_path, quality=request.quality, exif=jpeg_exif)
@@ -338,6 +343,7 @@ class RenderAdjustments:
     tint: float = 0.0
     saturation: float = 0.0
     color_noise: float = 0.0
+    luminance_noise: float = 0.0
 
 
 def _recipe_render_adjustments(recipe: Mapping[str, Any] | None) -> RenderAdjustments:
@@ -354,6 +360,7 @@ def _recipe_render_adjustments(recipe: Mapping[str, Any] | None) -> RenderAdjust
         tint=_bounded_float(raw.get("tint", 0.0), minimum=-1.0, maximum=1.0),
         saturation=_bounded_float(raw.get("saturation", 0.0), minimum=-1.0, maximum=1.0),
         color_noise=_bounded_float(raw.get("color_noise", 0.0), minimum=0.0, maximum=1.0),
+        luminance_noise=_bounded_float(raw.get("luminance_noise", 0.0), minimum=0.0, maximum=1.0),
     )
 
 

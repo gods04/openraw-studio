@@ -356,6 +356,7 @@ class DesktopHelperTests(unittest.TestCase):
             "tint": -1.3,
             "saturation": 1.4,
             "color_noise": 3,
+            "luminance_noise": -2,
         }
 
         self.assertEqual(
@@ -369,6 +370,7 @@ class DesktopHelperTests(unittest.TestCase):
                 "tint": -1.0,
                 "saturation": 1.0,
                 "color_noise": 1.0,
+                "luminance_noise": 0.0,
             },
         )
 
@@ -400,6 +402,7 @@ class DesktopHelperTests(unittest.TestCase):
                 "tint": 0.0,
                 "saturation": 0.3,
                 "color_noise": 0.0,
+                "luminance_noise": 0.0,
             },
         )
 
@@ -643,6 +646,7 @@ class DesktopHelperTests(unittest.TestCase):
                 "tint": -0.15,
                 "saturation": 0.2,
                 "color_noise": .65,
+                "luminance_noise": 0.0,
             },
         )
 

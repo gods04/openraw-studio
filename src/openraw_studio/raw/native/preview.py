@@ -37,6 +37,7 @@ def render_png_preview(
     tint: float = 0.0,
     saturation: float = 0.0,
     color_noise: float = 0.0,
+    luminance_noise: float = 0.0,
     max_dimension: int | None = None,
 ) -> PreviewRgbImage:
     """Render the current simple native DNG pipeline to a PNG preview."""
@@ -52,6 +53,7 @@ def render_png_preview(
         tint=tint,
         saturation=saturation,
         color_noise=color_noise,
+        luminance_noise=luminance_noise,
         max_dimension=max_dimension,
     )
     write_png(preview, output_path)
@@ -78,6 +80,7 @@ def render_preview_image(
     tint: float = 0.0,
     saturation: float = 0.0,
     color_noise: float = 0.0,
+    luminance_noise: float = 0.0,
     max_dimension: int | None = None,
 ) -> PreviewRgbImage:
     """Render a source RAW file into an 8-bit RGB preview image."""
@@ -92,6 +95,7 @@ def render_preview_image(
         tint=tint,
         saturation=saturation,
         color_noise=color_noise,
+        luminance_noise=luminance_noise,
         max_dimension=max_dimension,
     ):
         return preview
@@ -114,6 +118,7 @@ def render_preview_image(
         tint=tint,
         saturation=saturation,
         color_noise=color_noise,
+        luminance_noise=luminance_noise,
     )
     return resize_preview(preview, max_dimension=max_dimension)
 
@@ -129,6 +134,7 @@ def _render_nikon_34713_preview_image(
     tint: float,
     saturation: float,
     color_noise: float,
+    luminance_noise: float,
     max_dimension: int | None,
 ) -> PreviewRgbImage | None:
     if source_path.suffix.lower() not in NIKON_RAW_EXTENSIONS:
@@ -155,6 +161,7 @@ def _render_nikon_34713_preview_image(
         tint=tint,
         saturation=saturation,
         color_noise=color_noise,
+        luminance_noise=luminance_noise,
     )
     return PreviewRgbImage(
         width=rendered.width,

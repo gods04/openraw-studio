@@ -22,10 +22,13 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--geometry", default="1280x820")
     parser.add_argument("--color-noise", type=float, default=0)
+    parser.add_argument("--luminance-noise", type=float, default=0)
     parser.add_argument("--auto-color-noise", action="store_true")
     args = parser.parse_args()
     if not 0 <= args.color_noise <= 1:
         parser.error("--color-noise must be within [0, 1]")
+    if not 0 <= args.luminance_noise <= 1:
+        parser.error("--luminance-noise must be within [0, 1]")
     args.output.mkdir(parents=True, exist_ok=True)
     source = args.source or write_synthetic_dng(
         args.output / "sample.DNG", width=80, height=60
@@ -60,7 +63,8 @@ def main():
         report["checks"].append(message)
 
     def frame_current():
-        return app.last_preview_overrides == app._current_overrides()
+        app.root.update_idletasks()
+        return app.live_after_id is None and app.resize_after_id is None and app.last_preview_overrides == app._current_overrides()
 
     def descendants(widget):
         for child in widget.winfo_children():
@@ -119,28 +123,43 @@ def main():
             )
             state["phase"] = "redo"
         elif phase == "redo" and frame_current():
-            if args.color_noise:
-                state['before_noise_pixels'] = ImageTk.getimage(app.after_photo).tobytes()
+            state['noise_controls'] = [(key, amount) for key, amount in (
+                ('color_noise', args.color_noise), ('luminance_noise', args.luminance_noise)
+            ) if amount]
+            state['noise_amounts'] = {}
+            state['noise_index'] = 0
+            if state['noise_controls']:
                 header = next(w for w in descendants(app.root) if w.winfo_class() == "TCheckbutton" and str(w.cget("text")) == "Detail")
                 header.invoke()
                 app.root.update_idletasks()
                 app.controls_canvas.yview_moveto(1)
                 app.root.update_idletasks()
-                scale = next(w for w in app.edit_scales if str(w.cget("variable")) == str(app.color_noise_var))
-                require(app.controls_canvas.winfo_rooty() <= scale.winfo_rooty() < app.controls_canvas.winfo_rooty() + app.controls_canvas.winfo_height(), "Color-noise slider is accessible in compact window")
-                drag_scale(scale,args.color_noise)
-                require(abs(app.color_noise_var.get()-args.color_noise)<.02,"Pointer dragging changes color-noise strength")
-                state['noise']=app._current_overrides()['color_noise']
-                state['phase']='noise'
+                state['phase'] = 'start_noise'
             else:
                 state['phase']='start_auto'
+        elif phase == 'start_noise' and frame_current():
+            if state['noise_index'] == len(state['noise_controls']):
+                state['phase'] = 'start_auto'
+            else:
+                key, amount = state['noise_controls'][state['noise_index']]
+                variable = getattr(app, key + '_var')
+                state['before_noise_pixels'] = ImageTk.getimage(app.after_photo).tobytes()
+                scale = next(w for w in app.edit_scales if str(w.cget('variable')) == str(variable))
+                require(app.controls_canvas.winfo_rooty() <= scale.winfo_rooty() and scale.winfo_rooty() + scale.winfo_height() <= app.controls_canvas.winfo_rooty() + app.controls_canvas.winfo_height(), f'{key} slider is accessible in compact window')
+                drag_scale(scale, amount)
+                require(abs(variable.get() - amount) < .02, f'Pointer dragging changes {key}')
+                state['noise_amounts'][key] = app._current_overrides()[key]
+                state['phase'] = 'noise'
         elif phase == 'noise' and frame_current():
-            require(ImageTk.getimage(app.after_photo).tobytes() != state['before_noise_pixels'], 'Color-noise edit changes displayed pixels')
+            key, _ = state['noise_controls'][state['noise_index']]
+            variable = getattr(app, key + '_var')
+            require(ImageTk.getimage(app.after_photo).tobytes() != state['before_noise_pixels'], f'{key} edit changes displayed pixels')
             app.undo_button.invoke()
-            require(app.color_noise_var.get()==0,'Undo restores color-noise strength')
+            require(variable.get() == 0, f'Undo restores {key}')
             app.redo_button.invoke()
-            require(app.color_noise_var.get()==state['noise'],'Redo restores color-noise strength')
-            state['phase']='start_auto'
+            require(variable.get() == state['noise_amounts'][key], f'Redo restores {key}')
+            state['noise_index'] += 1
+            state['phase'] = 'start_noise'
         elif phase == 'start_auto' and frame_current():
             app.auto_adjust_button.invoke()
             state["auto_started"] = perf_counter()
@@ -158,16 +177,17 @@ def main():
             app.auto_strength_var.set(0)
             app._change_auto_strength()
             require(
-                all(v == 0 for k,v in app._current_overrides().items() if k != 'color_noise'),
+                all(v == 0 for k,v in app._current_overrides().items() if k not in ('color_noise', 'luminance_noise')),
                 "Zero Auto strength restores original tone settings",
             )
-            require(app.color_noise_var.get()==state.get('noise',0),'Auto strength preserves manual color-noise setting')
+            for key in ('color_noise', 'luminance_noise'):
+                require(getattr(app, key + '_var').get() == state['noise_amounts'].get(key, 0), f'Auto strength preserves manual {key}')
             app.auto_strength_var.set(100)
             app._change_auto_strength()
             app._commit_edit()
             state["phase"] = "auto_noise_start" if args.auto_color_noise else "compare"
         elif phase == "auto_noise_start" and frame_current():
-            if not args.color_noise:
+            if not args.color_noise and not args.luminance_noise:
                 header = next(w for w in descendants(app.root) if w.winfo_class() == "TCheckbutton" and str(w.cget("text")) == "Detail")
                 header.invoke()
             app.root.update_idletasks()
@@ -177,11 +197,17 @@ def main():
             require(app.controls_canvas.winfo_rooty() <= button.winfo_rooty() and button.winfo_rooty() + button.winfo_height() <= app.controls_canvas.winfo_rooty() + app.controls_canvas.winfo_height(), "Auto color-noise button is visible in compact window")
             state["before_auto_noise"] = app._current_overrides()
             state["before_auto_noise_pixels"] = ImageTk.getimage(app.after_photo).tobytes()
+            state["before_auto_noise_native"] = app.live_image.tobytes()
+            state["before_auto_noise_size"] = [app.after_photo.width(), app.after_photo.height()]
+            state["before_busy_preview_box"] = [app.preview_label.winfo_width(), app.preview_label.winfo_height()]
             state["noise_started"] = perf_counter()
             button.invoke()
             require(app.is_busy and str(button.cget("state")) == "disabled", "Auto color noise starts asynchronously and prevents duplicate work")
+            app.root.update_idletasks()
+            require([app.preview_label.winfo_width(), app.preview_label.winfo_height()] == state["before_busy_preview_box"], "Busy progress keeps photo viewport dimensions stable")
             state["phase"] = "auto_noise"
         elif phase == "auto_noise" and not app.is_busy and app.last_noise_suggestion is not None and frame_current():
+            require([app.preview_label.winfo_width(), app.preview_label.winfo_height()] == state["before_busy_preview_box"], "Completing noise advice keeps photo viewport dimensions stable")
             result = app.last_noise_suggestion
             report["auto_noise_seconds"] = perf_counter() - state["noise_started"]
             report["auto_noise"] = {"strength": result.strength, "status": result.status, "metrics": result.metrics}
@@ -196,6 +222,11 @@ def main():
                 app.redo_button.invoke()
                 require(app._current_overrides() == after, "Redo restores advised noise amount")
             else:
+                report["abstained_preview"] = {
+                    "native_unchanged": app.live_image.tobytes() == state["before_auto_noise_native"],
+                    "before_size": state["before_auto_noise_size"],
+                    "after_size": [app.after_photo.width(), app.after_photo.height()],
+                }
                 require(ImageTk.getimage(app.after_photo).tobytes() == state["before_auto_noise_pixels"], "Abstaining from noise advice preserves displayed pixels")
             from openraw_studio.decision.color_noise import ColorNoiseSuggestion
             app._apply_auto_color_noise(ColorNoiseSuggestion(.99, "suggested"), run_id=app.run_counter-1)

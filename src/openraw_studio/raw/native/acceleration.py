@@ -97,6 +97,27 @@ __kernel void malvar(__global const ushort *src, __global uchar *dst,
     vstore3(convert_uchar3_sat_rte(calibrated_color(rgb,p)*255.0f),i,dst);
 }
 #undef MHC
+__kernel void luminance_noise(__global const uchar *src, __global uchar *dst,
+    __global const int *weights, int w, int h, int amount) {
+    int i=get_global_id(0), y=i/w, x=i%w;
+    int3 rgb=convert_int3(vload3(i,src));
+    int weighted=54*rgb.x+183*rgb.y+19*rgb.z, guide=(weighted+128)>>8;
+    long sy=0, sw=0;
+    for(int dy=-2;dy<=2;dy++) for(int dx=-2;dx<=2;dx++) {
+        int yy=clamp(y+dy,0,h-1), xx=clamp(x+dx,0,w-1);
+        int3 n=convert_int3(vload3(yy*w+xx,src));
+        int nw=54*n.x+183*n.y+19*n.z;
+        long weight=weights[((dy+2)*5+dx+2)*256+abs(((nw+128)>>8)-guide)];
+        sw+=weight; sy+=weight*(long)(nw-weighted);
+    }
+    long numerator=sy*(long)amount, denominator=sw*(long)(256*65536);
+    long magnitude=numerator<0?-numerator:numerator;
+    long whole=magnitude/denominator, remainder=magnitude%denominator;
+    if(2*remainder>denominator || (2*remainder==denominator && whole%2==1)) whole++;
+    int delta=(int)(numerator<0?-whole:whole);
+    delta=clamp(delta,-min(rgb.x,min(rgb.y,rgb.z)),255-max(rgb.x,max(rgb.y,rgb.z)));
+    vstore3(convert_uchar3(rgb+delta),i,dst);
+}
 __kernel void chroma_noise(__global const uchar *src, __global uchar *dst,
     __global const float *spatial, __global const float *light, __global const float *color_range,
     int w, int h, float strength) {
@@ -189,6 +210,8 @@ class OpenClRenderer:
         self._malvar_validated = False
         self.chroma_kernel = cl.Kernel(self.program, "chroma_noise")
         self._chroma_validated = False
+        self.luminance_kernel = cl.Kernel(self.program, "luminance_noise")
+        self._luminance_validated = False
         self._cached_pixels = None
         self._pixel_buffer = None
 
@@ -214,6 +237,31 @@ class OpenClRenderer:
             self._pixel_buffer,
             destination,
             self.buffer(params),
+        )
+        self.cl.enqueue_copy(self.queue, output, destination).wait()
+        return output
+
+    def luminance(self, pixels, strength):
+        if not self._luminance_validated:
+            from openraw_studio.raw.native.luminance import _reference_chunk
+
+            sample = np.random.default_rng(217).integers(0, 256, (9, 11, 3), dtype=np.uint8)
+            expected = _reference_chunk(sample, 0, 9, .73)
+            actual = self._luminance(sample, .73)
+            if not np.array_equal(actual, expected):
+                raise RuntimeError("GPU luminance-noise validation failed")
+            self._luminance_validated = True
+        return self._luminance(pixels, strength)
+
+    def _luminance(self, pixels, strength):
+        from openraw_studio.raw.native.luminance import WEIGHTS
+
+        height, width, _ = pixels.shape
+        output = np.empty_like(pixels)
+        destination = self.cl.Buffer(self.context, self.cl.mem_flags.WRITE_ONLY, output.nbytes)
+        self.luminance_kernel(
+            self.queue, (height * width,), None, self.buffer(pixels), destination,
+            self.buffer(WEIGHTS), np.int32(width), np.int32(height), np.int32(round(strength * 65536)),
         )
         self.cl.enqueue_copy(self.queue, output, destination).wait()
         return output

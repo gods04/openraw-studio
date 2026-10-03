@@ -44,6 +44,8 @@ class NativeAutoSampleTests(unittest.TestCase):
         for edits in (
             {},
             {"color_noise": .75},
+            {"luminance_noise": .65},
+            {"color_noise": .75, "luminance_noise": .65},
             {
                 "exposure": 1.3,
                 "warmth": -0.4,
@@ -132,7 +134,7 @@ class NativeAutoSampleTests(unittest.TestCase):
                     )
                 )
             self.assertLessEqual(len(samples.locations), 128)
-            self.assertLessEqual(len(samples.decoded.raw_bytes), 128 * 40 * 40 * 2)
+            self.assertLessEqual(len(samples.decoded.raw_bytes), 128 * 44 * 44 * 2)
             self.assertLessEqual(samples.grid_count, 64)
             self.assertEqual(samples.source_size, (512, 384))
             self.assertNotEqual(samples.decoded.raw_bytes, data)

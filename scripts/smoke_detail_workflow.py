@@ -21,9 +21,12 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--geometry", default="1280x820")
     parser.add_argument("--color-noise", type=float, default=0)
+    parser.add_argument("--luminance-noise", type=float, default=0)
     args = parser.parse_args()
     if not 0 <= args.color_noise <= 1:
         parser.error("--color-noise must be within [0, 1]")
+    if not 0 <= args.luminance_noise <= 1:
+        parser.error("--luminance-noise must be within [0, 1]")
     args.output.mkdir(parents=True, exist_ok=True)
     checksum = sha256_file(args.source)
     app = launch_desktop_app(run_mainloop=False, session_dir=args.output / "sessions")
@@ -74,6 +77,7 @@ def main():
             require("100%" in app.zoom_combo.cget("values"), "Supported RAW exposes native zoom")
             app._reset_adjustments()
             app.color_noise_var.set(args.color_noise)
+            app.luminance_noise_var.set(args.luminance_noise)
             zoom("100%")
             state["phase"] = "native"
         elif phase == "native" and current_detail():
@@ -110,6 +114,7 @@ def main():
             state["phase"] = "auto"
         elif phase == "auto" and not app.is_busy and app.last_auto_suggestion is not None and current_detail():
             require(app.color_noise_var.get() == args.color_noise, "Auto preserves manual color-noise strength")
+            require(app.luminance_noise_var.get() == args.luminance_noise, "Auto preserves manual luminance-noise strength")
             require(app.last_auto_suggestion.metrics.get("detail_validation_pixels", 0) > 0, "Auto still analyzes the full photo while viewing a crop")
             check_pixels("Auto 200%")
             app.compare_button.invoke()

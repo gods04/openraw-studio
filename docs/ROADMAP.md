@@ -4,7 +4,8 @@
 
 Implemented: photo-first editor, continuous GPU/CPU preview, guarded Auto with
 strength control, original RAW comparison, undo/redo, local edit retention,
-manual and sampled Auto color-noise reduction, native-pixel 100%/200% inspection, JPEG/TIFF export, and cancellable per-photo
+manual color/luminance-noise reduction, sampled Auto color-noise advice,
+native-pixel 100%/200% inspection, JPEG/TIFF export, and cancellable per-photo
 batch modes. Supported compressed
 Nikon paths include F-series lossless, 12-bit D20 non-split (verified on 1 J5),
 verified Z5 12/14-bit lossless and D40 non-split lossy FX, and the verified Z f HE/HE* 14-bit profile
@@ -13,16 +14,28 @@ Local Windows EXE builds are available; this is not a public installer release.
 
 Next quality work: Auto under difficult lighting, broader camera calibration
 and gamut handling, edge-aware demosaic, actual sensor highlight reconstruction,
-and sensor/luminance denoise. Further first-use initialization and broader verified HE profiles
+and sensor-domain denoise with calibrated luminance-noise advice. Further first-use initialization and broader verified HE profiles
 also remain open.
 Semantic portrait/scene AI and mobile remain later phases.
+
+Latest detail increment adds optional luminance-noise reduction beside Color
+noise. It defaults off and is preserved through history, recipes, batch, and
+JPEG/TIFF. CPU/GPU use the same integer luminance shift; combined-filter native
+regions/samples match full renders. All 33 real-photo checks retain Auto settings
+and original hashes. Fit is scale-aware but approximate; texture can soften and
+automatic luminance advice is not implemented. The busy progress bar now keeps
+photo viewport dimensions stable. With both filters active, the checked D500
+GPU/CPU workflow measures 46/109 ms median slider response and 1.31/4.64 s export.
+The current 481-test suite passes (five GPU-only skips on CPU). Six rebuilt-EXE
+runs retain exact source/native-detail output, including the old zero-noise
+recipe, with working warm-start caches and unchanged originals.
 
 Latest Auto increment protects substantial shadow midtones from contrast
 darkening and can trade extra saturation for useful exposure without relaxing
 clipping guards. Across 33 private/public D500, Z f, 1 J5, and Z5 samples, six
 suggestions improve and 27 remain unchanged; CPU/GPU settings agree. All six
 changed cases pass full-size budgets at four strengths, with unchanged originals.
-The current 463-test suite, compact desktop/batch workflows, and frozen
+That increment's 463-test suite, compact desktop/batch workflows, and frozen
 recipe/native-detail comparisons pass. See `DEVELOPMENT.md` for limits and timing.
 
 The Windows launcher also tests atomic cache replacement and falls back to a

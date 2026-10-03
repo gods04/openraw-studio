@@ -70,6 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     batch.add_argument("--saturation", type=float, default=0.0, help="Saturation adjustment from -1.0 muted to 1.0 vivid.")
     batch.add_argument("--color-noise", type=float, default=0.0, help="Rendered color-noise reduction from 0.0 off to 1.0 full.")
+    batch.add_argument("--luminance-noise", type=float, default=0.0, help="Rendered luminance-noise reduction from 0.0 off to 1.0 full.")
     batch.add_argument("--limit", type=int, default=200, help="Maximum number of RAW-like files to scan.")
     batch.add_argument("--format", dest="export_format", choices=("jpeg", "tiff"), default="jpeg", help="Final export format.")
     batch.add_argument("--quality", dest="export_quality", type=int, default=92, help="JPEG quality from 1 to 100; TIFF is lossless.")
@@ -104,6 +105,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     process.add_argument("--saturation", type=float, default=0.0, help="Saturation adjustment from -1.0 muted to 1.0 vivid.")
     process.add_argument("--color-noise", type=float, default=0.0, help="Rendered color-noise reduction from 0.0 off to 1.0 full.")
+    process.add_argument("--luminance-noise", type=float, default=0.0, help="Rendered luminance-noise reduction from 0.0 off to 1.0 full.")
     process.add_argument("--format", dest="export_format", choices=("jpeg", "tiff"), default="jpeg", help="Final export format.")
     process.add_argument("--quality", dest="export_quality", type=int, default=92, help="JPEG quality from 1 to 100; TIFF is lossless.")
     process.add_argument(
@@ -223,6 +225,7 @@ def _run_process(args: argparse.Namespace) -> int:
                     "tint": args.tint,
                     "saturation": args.saturation,
                     "color_noise": args.color_noise,
+                    "luminance_noise": args.luminance_noise,
                 },
                 dry_run=args.dry_run,
                 preview_only=args.preview_only,
@@ -286,6 +289,7 @@ def _run_batch(args: argparse.Namespace) -> int:
             "tint": args.tint,
             "saturation": args.saturation,
             "color_noise": args.color_noise,
+            "luminance_noise": args.luminance_noise,
         },
         preview_only=args.preview_only,
         export_format=args.export_format,
@@ -349,6 +353,9 @@ def _validate_adjustment_args(args: argparse.Namespace) -> int | None:
         return 2
     if not 0.0 <= args.color_noise <= 1.0:
         print("error: --color-noise must be between 0.0 and 1.0", file=sys.stderr)
+        return 2
+    if not 0.0 <= args.luminance_noise <= 1.0:
+        print("error: --luminance-noise must be between 0.0 and 1.0", file=sys.stderr)
         return 2
     if not 1 <= args.export_quality <= 100:
         print("error: --quality must be between 1 and 100", file=sys.stderr)

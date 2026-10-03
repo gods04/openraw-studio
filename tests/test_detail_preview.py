@@ -31,9 +31,9 @@ class DetailPreviewTests(unittest.TestCase):
         ))
         return source
 
-    def check_regions(self, decoded, *, color_noise=0):
+    def check_regions(self, decoded, *, color_noise=0, luminance_noise=0):
         edits = {"exposure": .3, "contrast": .15, "warmth": -.2, "tint": .1,
-                 "highlights": -.25, "shadows": .2, "saturation": .3, "color_noise": color_noise}
+                 "highlights": -.25, "shadows": .2, "saturation": .3, "color_noise": color_noise, "luminance_noise": luminance_noise}
         for orientation in range(1, 9):
             photo = NikonDetailPhoto(replace(decoded, orientation=orientation))
             full = render_decoded_nikon_34713_image(photo.decoded, quality="full", **edits)
@@ -64,6 +64,15 @@ class DetailPreviewTests(unittest.TestCase):
                 for cfa in ((0, 1, 1, 2), (1, 0, 2, 1), (1, 2, 0, 1), (2, 1, 1, 0)):
                     self.check_regions(replace(decoded, cfa_pattern=cfa), color_noise=.8)
 
+    def test_luminance_and_combined_noise_regions_match_export(self):
+        with tempfile.TemporaryDirectory() as folder:
+            decoded = decode_nikon_34713_lossless(self.fixture(folder))
+            for color in (0, .8):
+                self.check_regions(decoded, color_noise=color, luminance_noise=.7)
+                with patch("openraw_studio.raw.native.acceleration.get_gpu", return_value=None):
+                    for cfa in ((0, 1, 1, 2), (1, 0, 2, 1), (1, 2, 0, 1), (2, 1, 1, 0)):
+                        self.check_regions(replace(decoded, cfa_pattern=cfa), color_noise=color, luminance_noise=.7)
+
     def test_native_detail_reuses_decode_and_limits_render_to_region_plus_halo(self):
         with tempfile.TemporaryDirectory() as folder:
             source = self.fixture(folder)
@@ -81,7 +90,7 @@ class DetailPreviewTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             source = write_synthetic_dng(Path(folder) / "sample.DNG", width=24, height=18)
             photo = prepare_detail_photo(NativeRawProcessor(), source)
-            edits = {"exposure": .2, "shadows": .1, "saturation": .2, "color_noise": .7}
+            edits = {"exposure": .2, "shadows": .1, "saturation": .2, "color_noise": .7, "luminance_noise": .6}
             expected = render_preview_image(source, **edits)
             self.assertEqual(photo.size, (expected.width, expected.height))
             region = np.asarray(photo.render_region(edits, (3, 5, 7, 8)), dtype=int)

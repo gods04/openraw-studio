@@ -161,11 +161,12 @@ class AutoColorNoiseTests(unittest.TestCase):
         from unittest.mock import Mock
 
         _, tiles = noisy_tiles(6)
-        edits = {"exposure": 0.3, "shadows": 0.4, "color_noise": 0.99}
+        edits = {"exposure": 0.3, "shadows": 0.4, "color_noise": 0.99, "luminance_noise": .5}
 
         def render(values):
             self.assertEqual(values["exposure"], 0.3)
             self.assertEqual(values["shadows"], 0.4)
+            self.assertEqual(values["luminance_noise"], .5)
             return filtered_tiles(tiles, values["color_noise"])
 
         native = SimpleNamespace(grid_count=16, render_tiles=Mock(side_effect=render))

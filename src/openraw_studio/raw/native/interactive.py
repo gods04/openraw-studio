@@ -24,12 +24,13 @@ class InteractivePhoto:
     orientation: int = 1
     linear_saturation: bool = False
     native_samples: NativeAutoSamples | None = None
+    native_size: tuple[int, int] | None = None
 
     def resized(self, max_dimension):
         """Derive an unedited scene-linear proxy, retaining color and orientation."""
         if max_dimension < 1:
             raise ValueError("Proxy dimension must be positive")
-        return replace(self, pixels=_resize_linear(self.pixels, max_dimension))
+        return replace(self, pixels=_resize_linear(self.pixels, max_dimension), native_size=self.native_size or self.pixels.shape[1::-1])
 
     def render(self, adjustments):
         warmth = np.clip(adjustments.get("warmth", 0), -1, 1)
@@ -51,10 +52,12 @@ class InteractivePhoto:
             },
         )
         rgb, backend = render_tone(self.pixels, params)
-        if adjustments.get("color_noise", 0) != 0:
-            from openraw_studio.raw.native.chroma import reduce_color_noise
+        if adjustments.get("color_noise", 0) != 0 or adjustments.get("luminance_noise", 0) != 0:
+            from openraw_studio.raw.native.noise import reduce_noise
 
-            rgb = reduce_color_noise(rgb, adjustments["color_noise"])
+            native = self.native_size or self.pixels.shape[1::-1]
+            scale = min(1, max(self.pixels.shape[1] / native[0], self.pixels.shape[0] / native[1]))
+            rgb = reduce_noise(rgb, color_noise=adjustments.get("color_noise", 0), luminance_noise=adjustments.get("luminance_noise", 0) * scale)
         image = _apply_exif_orientation(Image.fromarray(rgb), self.orientation)
         return image, backend
 
@@ -114,6 +117,7 @@ def prepare_interactive_photo(processor, source: Path, *, max_dimension=960):
         return InteractivePhoto(
             pixels, np.asarray(matrix, dtype=np.float32), gains, decoded.orientation,
             native_samples=prepare_native_auto_samples(decoded),
+            native_size=(width, height),
         )
 
     from openraw_studio.raw.native.color import (
@@ -135,4 +139,5 @@ def prepare_interactive_photo(processor, source: Path, *, max_dimension=960):
         np.eye(3, dtype=np.float32),
         (1, 1, 1),
         linear_saturation=True,
+        native_size=(rgb.width, rgb.height),
     )

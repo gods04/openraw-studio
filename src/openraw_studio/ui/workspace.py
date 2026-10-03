@@ -285,6 +285,7 @@ def build_workspace(app, filedialog, messagebox):
         footer, mode="determinate", style="Processing.Horizontal.TProgressbar"
     )
     app.progress_bar.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+    footer.rowconfigure(2, minsize=app.progress_bar.winfo_reqheight() + 6)
     app.progress_bar.grid_remove()
 
     inspector = ttk.Frame(root, width=292)
@@ -414,6 +415,7 @@ def build_workspace(app, filedialog, messagebox):
         (color, "tint", "Tint", -1, 1),
         (color, "saturation", "Saturation", -1, 1),
         (detail, "color_noise", "Color noise", 0, 1),
+        (detail, "luminance_noise", "Luminance noise", 0, 1),
     ):
         row = ttk.Frame(parent)
         row.pack(fill="x")

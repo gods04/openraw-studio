@@ -1261,3 +1261,81 @@ Auto/noise advice, persisted recipes, and exact native-detail pixels. The report
 captures tone/demosaic/noise compiler state after the entire workflow; none of
 these runs uses the compiler/cache fallback. The optional TBB packaging warning
 remains unrelated to the sequential kernels used here.
+
+### Rendered Luminance-Noise Control
+
+The optional `Detail > Luminance noise` slider reduces rendered brightness grain
+independently of the existing color filter. It is a local 5x5 bilateral filter
+with a 12-DN luminance range, not sensor-domain, ISO-calibrated, or learned denoise.
+The weighting is independently implemented from the domain/range idea in
+[Tomasi and Manduchi (ICCV 1998)](https://users.cs.duke.edu/~tomasi/papers/tomasi/tomasiIccv98.pdf).
+All channels receive the same bounded integer shift, preserving their color
+differences without per-channel truncation. Low-contrast texture can soften,
+especially at high amounts, and larger noise structures remain.
+
+Q16 lookup weights and strength, 64-bit accumulation, and explicit integer
+ties-to-even rounding make the luminance stage bit-exact on checked CPU/GPU
+inputs. Its maximum accumulator is below signed 64-bit limits for RGB8 and
+the 25-neighbor footprint. Sequential CPU scratch is chunk-bounded; unavailable
+GPU/compiler/disk caches retain the checked CPU/NumPy fallbacks. Zero bypasses
+the filter exactly, including in old recipes. The frozen hook keeps the new
+compiled module as source so its JIT cache can persist across restarts.
+
+The processing order is luminance then color. Native regions include the sum of
+both spatial footprints plus demosaic support. Retained Auto samples have six
+RAW pixels of halo; between filters they re-replicate the actual image boundary,
+not an already-filtered artificial extension. This fixes a reproduced one-DN
+sample/full-frame disagreement at combined-filter edges. Native detail uses the
+same full-size path. Fit remains approximate and scales the luminance amount by
+its linear size ratio, avoiding full-strength smoothing across oversized proxy
+footprints. It does not claim native noise accuracy at Fit resolution.
+
+The recipe field is `adjustments.raw.luminance_noise`, bounded to [0, 1] and
+defaulting to zero. CLI process/batch, desktop history, persisted sessions,
+saved recipes, JPEG/TIFF, and all batch modes retain it. Tonal Auto preserves
+manual noise settings. Color-noise advice measures the current luminance-filtered
+samples, but still changes only color-noise strength. There is no automatic
+luminance-noise advice in this increment.
+
+The 33-file D500/Z f/1 J5/public Z5 audit retains every previous CPU/GPU Auto
+suggestion and source hash. At Auto70 with both noise amounts at 65%, full-frame
+filter outputs agree within 1 DN between CPU/GPU; retained samples and inspected
+regions match the full render exactly. All 33 clipping/shadow budgets pass at
+these settings, with maximum newly clipped fraction 0.00021%, not zero. Five
+private native-crop comparisons were inspected for remaining grain and softened
+texture; these are not clean-ground-truth or exhaustive image-quality proofs.
+
+Compact D500/GPU and Z f/CPU desktop workflows pass 41/39 checks, including both
+sliders, undo/redo, retained Auto settings, accepted/abstained color-noise advice,
+comparison, JPEG/TIFF, and edit restoration. A reproduced viewport size change
+when the busy progress bar appeared is fixed by reserving its layout height;
+the workflow now checks unchanged dimensions during/after analysis and waits
+for idle layout before comparing displayed pixels. Eleven batch checks cover
+saved/current/Auto modes, noise retention, cancellation, and small-window access.
+
+On the same private D500 capture with color noise 65 and luminance noise 60,
+actual Tk slider-to-display median is 46 ms on RTX 5070 and 109 ms on CPU, with
+47/16 frames displayed during 50 drag edits. Full-size JPEG export takes
+1.31/4.64 s, respectively. These local measurements include both filters but
+exclude RAW preparation from export; they are not universal speed guarantees.
+CPU-only filtering remains visibly slower. The unedited first preview still
+needs preparation (1.52/1.14 s in those already-compiled source runs).
+
+The full suite has 481 tests: all pass with GPU enabled; CPU-only runs skip the
+five GPU-only checks. Native 100%/200% desktop inspection passes 24 checks in
+each CPU/GPU run, including both retained noise amounts and exact full-render
+region comparisons. Six independent launches of the rebuilt EXE cover D500,
+Z f, synthetic DNG, CPU/GPU, warm restart, and a legacy zero-noise recipe.
+Auto/noise advice, persisted edits, and native-detail pixels match source
+execution exactly; the legacy detail also matches the preceding EXE output.
+Source hashes are unchanged, and every exported JPEG opens at its reported size.
+
+With no explicit cache override, these launches select the verified private home
+cache and report no compiler/disk-cache fallback. On the high-ISO D500, CPU
+color-noise advice with luminance 60 takes 1.18 s on first use and 0.19 s after
+restart; the corresponding JPEG export takes 4.80/4.61 s. GPU exports for the
+checked D500/Z f take 1.20/1.68 s. These runs use suggested color noise 35 for
+D500 and retain manual color noise 65 when Z f advice abstains, so they are not
+direct timing comparisons with the fixed-65 benchmark above. Timings exclude
+EXE startup. The bundle contains the new cached kernel source but no private
+RAWs, development reference decoder, public ZIP, or installer.

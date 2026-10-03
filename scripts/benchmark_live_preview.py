@@ -23,11 +23,14 @@ def main():
     parser.add_argument("--screenshot", action="store_true")
     parser.add_argument("--highlights", type=float, help="Exercise a fixed highlight correction while dragging exposure")
     parser.add_argument("--color-noise", type=float, default=0.0)
+    parser.add_argument("--luminance-noise", type=float, default=0.0)
     args = parser.parse_args()
     if args.highlights is not None and not -1 <= args.highlights <= 1:
         parser.error("--highlights must be within [-1, 1]")
     if not 0 <= args.color_noise <= 1:
         parser.error("--color-noise must be within [0, 1]")
+    if not 0 <= args.luminance_noise <= 1:
+        parser.error("--luminance-noise must be within [0, 1]")
     if args.cpu:
         os.environ["OPENRAW_GPU"] = "off"
     from PIL import Image, ImageTk
@@ -45,6 +48,7 @@ def main():
         "source": str(args.source.resolve()),
         "highlights": args.highlights,
         "color_noise": args.color_noise,
+        "luminance_noise": args.luminance_noise,
         "mode": "CPU" if args.cpu else "auto",
         "slider_to_display_ms": [],
         "errors": [],
@@ -122,6 +126,7 @@ def main():
             if args.highlights is not None:
                 app.highlights_var.set(args.highlights)
             app.color_noise_var.set(args.color_noise)
+            app.luminance_noise_var.set(args.luminance_noise)
             slider = next(
                 w
                 for w in descendants(app.root)

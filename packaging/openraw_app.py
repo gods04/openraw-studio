@@ -9,7 +9,7 @@ from pathlib import Path
 from time import perf_counter
 
 
-def smoke_test(source: Path, output: Path, *, color_noise=0.0, auto_color_noise=False) -> int:
+def smoke_test(source: Path, output: Path, *, color_noise=0.0, luminance_noise=0.0, auto_color_noise=False) -> int:
     """Exercise frozen runtime imports, GPU/JIT, adjustment and full export."""
     from openraw_studio.core.files import sha256_file
     from openraw_studio.decision.auto_adjust import (
@@ -24,6 +24,7 @@ def smoke_test(source: Path, output: Path, *, color_noise=0.0, auto_color_noise=
         compiled_decode,
         compiled_he,
         compiled_he_transform,
+        compiled_luminance,
         compiled_tone,
         he_cpu,
     )
@@ -67,7 +68,7 @@ def smoke_test(source: Path, output: Path, *, color_noise=0.0, auto_color_noise=
         report["auto_seconds"] = perf_counter() - started
         report["auto"] = suggestion.as_overrides()
         report["auto_metrics"] = suggestion.metrics
-        edits = {**suggestion.as_overrides(), "color_noise": color_noise}
+        edits = {**suggestion.as_overrides(), "color_noise": color_noise, "luminance_noise": luminance_noise}
         if auto_color_noise:
             started = perf_counter()
             noise = suggest_color_noise_for_photo(photo, edits)
@@ -76,6 +77,7 @@ def smoke_test(source: Path, output: Path, *, color_noise=0.0, auto_color_noise=
             if noise.strength is not None:
                 edits["color_noise"] = noise.strength
         report["color_noise"] = edits["color_noise"]
+        report["luminance_noise"] = edits["luminance_noise"]
         started = perf_counter()
         result = pipeline.process(
             PipelineRequest(source, output, overrides=edits)
@@ -101,6 +103,9 @@ def smoke_test(source: Path, output: Path, *, color_noise=0.0, auto_color_noise=
         report["compiled_cpu_chroma"] = bool(getattr(compiled_chroma.chroma, "signatures", []))
         report["cpu_chroma_fallback_reason"] = compiled_chroma.last_error
         report["cpu_chroma_cache_disabled_reason"] = compiled_chroma.cache_disabled_reason
+        report["compiled_cpu_luminance"] = bool(getattr(compiled_luminance.luminance, "signatures", []))
+        report["cpu_luminance_fallback_reason"] = compiled_luminance.last_error
+        report["cpu_luminance_cache_disabled_reason"] = compiled_luminance.cache_disabled_reason
         report["source_unchanged"] = sha256_file(source) == before
         report["ok"] = report["source_unchanged"] and result.exports[0].path.is_file() and detail_image.size == region[2:]
     except Exception as error:  # noqa: BLE001 - Persist unexpected frozen-runtime failures.
@@ -122,6 +127,7 @@ def main() -> int:
     parser.add_argument("--smoke-test", action="store_true")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--color-noise", type=float, default=0.0)
+    parser.add_argument("--luminance-noise", type=float, default=0.0)
     parser.add_argument("--auto-color-noise", action="store_true", help="Select color-noise strength during --smoke-test.")
     args = parser.parse_args()
     if args.smoke_test:
@@ -129,7 +135,9 @@ def main() -> int:
             parser.error("--smoke-test requires a RAW source and --output directory")
         if not 0 <= args.color_noise <= 1:
             parser.error("--color-noise must be within [0, 1]")
-        return smoke_test(args.source, args.output, color_noise=args.color_noise, auto_color_noise=args.auto_color_noise)
+        if not 0 <= args.luminance_noise <= 1:
+            parser.error("--luminance-noise must be within [0, 1]")
+        return smoke_test(args.source, args.output, color_noise=args.color_noise, luminance_noise=args.luminance_noise, auto_color_noise=args.auto_color_noise)
     app = launch_desktop_app(run_mainloop=False)
     if args.source is not None:
         app.root.after(
