@@ -102,6 +102,7 @@ class _RenderGuard:
         self.shadow_midtones = (luma >= 0.08) & (luma < 0.35)
         self.shadow_midtone_fraction = float(np.mean(self.shadow_midtones))
         self.shadow_midtone_mean = self._shadow_mean(luma)
+        self.preserve_shadow_midtones = preserve_midtones and self.shadow_midtone_fraction >= 0.10
         self.headroom = self.pixels <= 250 / 255
         # Channel-level headroom protects small bright subjects even if a
         # different channel at that pixel was already clipped before editing.
@@ -132,8 +133,13 @@ class _RenderGuard:
 
     def tones_preserved(self, values, *, tolerance=0.01):
         checked = self.measure(values)
+        # Bright clothing/background can raise the median while contrast still
+        # darkens a substantial dim subject. Follow the original shadow pixels.
         return checked.crushed_shadows <= 0.005 and (
             not self.preserve_midtones or checked.median >= self.median - tolerance
+        ) and (
+            not self.preserve_shadow_midtones
+            or checked.shadow_midtone_mean >= self.shadow_midtone_mean - tolerance
         )
 
     def highlights_preserved(self, values):
@@ -164,6 +170,7 @@ class _RenderGuard:
             "validation_pixels": float(len(self.pixels)),
             "shadow_midtone_mean_before": self.shadow_midtone_mean,
             "shadow_midtone_mean_after": checked.shadow_midtone_mean,
+            "shadow_midtone_fraction": self.shadow_midtone_fraction,
         }
 
 
@@ -212,8 +219,8 @@ def suggest_auto_adjustments_from_preview(
     without rendering every rejected candidate at the larger resolution.
     Native samples can additionally catch detail/noise hidden by proxy averaging;
     their biased brightness distribution never sets the scene's midtone target.
-    Additional strength samples check the nonlinear exposure/highlight interaction
-    when a candidate relies on highlight compression. Full strength is always checked.
+    Additional strength samples check nonlinear exposure/highlight interactions
+    and contrast applied to substantial shadow midtones. Full strength is always checked.
     A highlight-limited result can receive bounded shadow refinement, measured on
     the same original shadow midtones and revalidated at both proxy resolutions.
     This is a local heuristic, not a trained AI model or semantic scene classifier.
@@ -369,11 +376,16 @@ def suggest_auto_adjustments_from_preview(
             guard.tones_preserved(values, tolerance=tolerance) for guard in guards
         )
 
+    def needs_strength_checks(values):
+        return values["highlights"] < 0 or (
+            values["contrast"] > 0 and any(guard.preserve_shadow_midtones for guard in guards)
+        )
+
     def highlights_preserved(values):
         # Compression can protect the endpoint while weaker settings still clip.
         # Reject on the small proxy before spending work at display resolution.
         samples = [values]
-        if values["highlights"] < 0:
+        if needs_strength_checks(values):
             samples.extend(
                 {key: value * strength for key, value in values.items()}
                 for strength in validation_strengths
@@ -426,11 +438,13 @@ def suggest_auto_adjustments_from_preview(
 
     exposure_guarded = False
     highlights_guarded = False
+    saturation_guarded = False
 
     def recover_tones():
         fractions = (1.0, 0.75, 0.5, 0.25, 0.125, 0.0) if suggestion.exposure > 0 else (1.0,)
         contrasts = (suggestion.contrast, 0.0) if suggestion.contrast > 0 else (suggestion.contrast,)
         for fraction in fractions:
+            color_candidate = None
             for candidate_contrast in contrasts:
                 values = {
                     **initial_values, "exposure": round(suggestion.exposure * fraction, 4),
@@ -440,14 +454,32 @@ def suggest_auto_adjustments_from_preview(
                 # that worked before limiting exposure may now defeat the lift.
                 if not primary.tones_preserved(values, tolerance=1e-6):
                     continue
+                color_candidate = values
                 if highlights_preserved(values) and tones_preserved(values, tolerance=1e-6):
                     return values
                 for candidate_highlights in (-0.16, -0.30):
                     if candidate_highlights >= suggestion.highlights:
                         continue
                     compressed = {**values, "highlights": candidate_highlights}
+                    color_candidate = compressed
                     if highlights_preserved(compressed) and tones_preserved(compressed, tolerance=1e-6):
                         return compressed
+            # A small saturation boost can consume the headroom needed for a
+            # useful exposure lift. Test one unboosted candidate per exposure,
+            # using the strongest compression/lowest contrast already tried.
+            if color_candidate is not None and color_candidate["saturation"] > 0:
+                unboosted = {**color_candidate, "saturation": 0.0}
+                if highlights_preserved(unboosted) and tones_preserved(unboosted, tolerance=1e-6):
+                    more_contrast = {**unboosted, "contrast": suggestion.contrast}
+                    if highlights_preserved(more_contrast) and tones_preserved(more_contrast, tolerance=1e-6):
+                        unboosted = more_contrast
+                    less_compressed = {**unboosted, "highlights": suggestion.highlights}
+                    if highlights_preserved(less_compressed) and tones_preserved(less_compressed, tolerance=1e-6):
+                        unboosted = less_compressed
+                    half_boost = {**unboosted, "saturation": round(suggestion.saturation * 0.5, 4)}
+                    if highlights_preserved(half_boost) and tones_preserved(half_boost, tolerance=1e-6):
+                        return half_boost
+                    return unboosted
         return None
 
     if not highlights_preserved(initial_values):
@@ -455,6 +487,7 @@ def suggest_auto_adjustments_from_preview(
         if values is not None:
             exposure_guarded = values["exposure"] != suggestion.exposure
             highlights_guarded = values["highlights"] != suggestion.highlights
+            saturation_guarded = values["saturation"] != suggestion.saturation
             contrast_guarded |= values["contrast"] != suggestion.contrast
             suggestion = replace(suggestion, **values)
 
@@ -476,6 +509,8 @@ def suggest_auto_adjustments_from_preview(
             ) + (
                 ("Compressed highlights to retain a useful tonal correction.",) if highlights_guarded else ()
             ) + (
+                ("Reduced added saturation to retain useful tones and highlight detail.",) if saturation_guarded else ()
+            ) + (
                 ("Reduced correction to protect highlights and shadows.",) if amount < 1 else ()
             ) + (
                 ("Lifted usable shadows after limiting global exposure.",) if shadows_refined else ()
@@ -493,9 +528,10 @@ def suggest_auto_adjustments_from_preview(
                     "contrast_guarded": float(contrast_guarded),
                     "exposure_guarded": float(exposure_guarded),
                     "highlights_guarded": float(highlights_guarded),
+                    "saturation_guarded": float(saturation_guarded),
                     "shadows_refined": float(shadows_refined),
                     "guard_strength": amount,
-                    "validated_strength_samples": float(1 + len(validation_strengths) if values["highlights"] < 0 else 1),
+                    "validated_strength_samples": float(1 + len(validation_strengths) if needs_strength_checks(values) else 1),
                 },
             )
     return suggestion

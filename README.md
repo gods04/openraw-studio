@@ -131,6 +131,8 @@ Then import `sample-data\openraw-synthetic.DNG` or
   black-preserving shadows, and rendered-highlight checks that also guard small
   bright subjects and individual color channels at two preview resolutions;
   joint exposure/contrast/highlight recovery retains useful corrections on difficult dim scenes
+- Auto checks substantial shadow midtones so a brighter background cannot hide
+  contrast-darkened subjects, and can reduce added saturation to retain useful exposure
 - Highlight-limited Auto can add a bounded shadow lift, checking visible benefit
   and clipping at both preview sizes; low-key and predominantly dark scenes are excluded
 - Optional `Detail > Color noise` control for rendered chroma noise, with GPU/CPU
@@ -143,7 +145,8 @@ Then import `sample-data\openraw-synthetic.DNG` or
   the export renderer, catching some small highlights/noisy shadows hidden by
   preview averaging. Sampling is not an exhaustive full-image quality guarantee.
 - Smooth negative-highlight roll-off preserves distinctions above display white;
-  Auto also checks intermediate strengths when it relies on highlight compression
+  Auto also checks intermediate strengths for highlight compression and contrast
+  applied to substantial shadow midtones
 - Folder export using current adjustments, per-photo saved edits, or Auto per
   photo; stopping finishes the current photo and cancels the remainder
 - Saved recipe detection that restores basic desktop adjustments for the same

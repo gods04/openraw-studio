@@ -106,10 +106,14 @@ finished EXE does not. `OPENRAW_BUILD_HE_CPU=off` skips the extension build;
 Other CPU kernels, including Nikon lossless decoding, can compile OpenRAW's own
 loops using Numba. The first launch may still take longer while those kernels
 and GPU kernels are initialized/cached.
-The Windows bundle keeps its compiled kernels under
+The Windows bundle normally keeps its compiled kernels under
 `%LOCALAPPDATA%\OpenRAW Studio\numba`, so restarting does not normally require
-recompilation. Updating the app can require a fresh compile. If the cache is
-unwritable, the app can still compile in memory and continue without it.
+recompilation. At startup it tests atomic file replacement as well as writing:
+Windows app virtualization can redirect files even in a writable directory.
+If that test fails, it tries `%USERPROFILE%\.cache\OpenRAW Studio\numba`.
+An explicitly configured `NUMBA_CACHE_DIR` is left unchanged. Updating the app
+can require a fresh compile. If neither private cache works, the app can still
+compile in memory and continue without it.
 This is separate from subsequent slider response; it does not replace our RAW
 engine with another photo application's decoder.
 

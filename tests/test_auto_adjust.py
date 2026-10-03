@@ -348,7 +348,7 @@ class AutoAdjustTests(unittest.TestCase):
         self.assertGreater(result.exposure, .4)
         self.assertEqual(result.metrics["exposure_guarded"], 0)
 
-    def test_saturation_clipping_backs_off_when_exposure_alone_cannot_help(self):
+    def test_saturation_clipping_removes_boost_without_disabling_tone(self):
         pixels = np.full((100, 100, 3), 60, dtype=np.uint8)
         pixels[:, :, 2] = 63
         pixels[45:50, 48:52] = (200, 195, 195)
@@ -363,7 +363,12 @@ class AutoAdjustTests(unittest.TestCase):
             return result
 
         result = suggest_auto_adjustments_from_preview(preview, render=render)
-        self.assertLess(result.metrics["guard_strength"], 1)
+        self.assertEqual(result.metrics["guard_strength"], 1)
+        self.assertEqual(result.metrics["saturation_guarded"], 1)
+        self.assertGreater(result.exposure, 0)
+        self.assertGreater(result.contrast, 0)
+        self.assertEqual(result.saturation, 0)
+        self.assertEqual(result.highlights, 0)
         self.assertEqual(result.metrics["highlight_detail_loss_fraction"], 0)
         self.assertEqual(len(rendered_settings), len(set(rendered_settings)))
         self.assertEqual(result.metrics["validation_renders"], len(rendered_settings))

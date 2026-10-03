@@ -449,9 +449,10 @@ Frozen kernels load as source modules through the PyInstaller hook, not PYZ
 bytecode with virtual source filenames. Merely adding .py files as data did not
 make Numba use the requested cache locator. Before importing Numba, the launcher
 selects a resolved per-user cache directory under `OpenRAW Studio/numba` unless
-`NUMBA_CACHE_DIR` was explicitly supplied. Resolving the existing directory also
-avoids the observed Windows app-virtualization cross-volume rename failure.
-Unavailable cache directories still use the in-memory JIT fallback.
+`NUMBA_CACHE_DIR` was explicitly supplied. Resolution alone was later found
+insufficient for Windows app-virtualized file writes; the launcher now tests
+atomic replacement and tries a private home cache before the in-memory JIT
+fallback (see "Verified Frozen Cache Selection" below).
 
 Actual independent EXE launches verify persistence: Z f preparation was 6.35 s
 with no compiled cache, then 2.14 s and 1.90 s after process restarts; exports were
@@ -1185,3 +1186,78 @@ EXE startup. All three frozen recipes and native-detail images match source
 execution exactly. Original hashes are unchanged, and no photos, private reports,
 rawpy, or decoder oracle are bundled/committed. The optional TBB warning remains;
 sequential kernels do not use it. No public ZIP or installer was released.
+
+### Auto Shadow Midtones And Saturation Headroom
+
+Auto now follows the same original pixels with rendered luminance in [0.08, 0.35)
+when they cover at least 10% of an unbiased preview. If the scene is not low-key
+and Auto is not intentionally reducing exposure, their mean must not fall by
+more than the existing tone tolerance (normally 0.01). This catches contrast
+darkening a dim subject while a bright background raises the overall median.
+Brightness-biased native samples do not set this target; their clipping/detail
+checks are unchanged. The 256-pixel analysis and display proxy both validate it.
+Positive contrast on these shadows also checks requested intermediate Auto
+strengths, even when highlight compression is off.
+
+When highlights reject a correction, tonal recovery tests one zero-added-saturation
+candidate per exposure level, after trying the existing tonal candidates. If
+accepted, it rechecks restoring contrast, reducing unnecessary highlight
+compression, and retaining half of the requested saturation boost. The usual
+clipping, shadow, native-sample, and strength guards still apply. It never adds
+negative saturation, changes white balance through this search, or bypasses a
+real exposure limit. Safe initial suggestions take the original fast path.
+
+The 33-sample D500/Z f/1 J5/public Z5 audit produces identical CPU/GPU settings:
+six suggestions change and 27 retain every previous adjustment. All six changed
+cases pass full-size clipping/shadow budgets at 25/50/70/100% strength (24 exports).
+Maximum newly clipped fraction is 0.0083%, not zero. On the mixed-light D500
+portrait, display-proxy shadow darkening falls from about 5 DN to 0.83 DN;
+full-size darkening is 0.87 DN at maximum strength. The sea and blue-hour examples
+gain 0.3 EV at full strength by omitting extra saturation; scene white balance
+is retained. All original hashes remain unchanged and comparisons stay local.
+
+This is deterministic global adjustment, not face detection, local masking,
+semantic lighting inference, or exhaustive protection of every dark region.
+Small shadow regions, low-key scenes, deliberate exposure reductions, and
+brightness-biased sampling have explicit limits. Live/manual rendering and
+existing recipes are unchanged. On this machine, Auto over the 33 samples has
+median/max CPU times of 0.48/1.48 s and GPU times of 0.30/0.87 s, excluding import.
+
+All 463 tests pass with automatic GPU selection and CPU-only (four GPU-only
+skips). Compact D500 CPU/GPU desktop runs pass 24/26 workflow checks, including
+live edits, reversible Auto/noise advice, strength, comparison, native inspection,
+session restoration, and JPEG/TIFF export. The nine batch-mode/cancellation
+checks pass too. Frozen Auto/noise advice, persisted settings, and native-detail
+pixels match source execution exactly on the checked D500/Z f examples.
+
+### Verified Frozen Cache Selection
+
+A normal-launch cache regression was reproduced on this Windows machine:
+file creation under LocalAppData was virtualized onto another volume, while
+atomic replacement still resolved differently. Resolving the directory alone
+did not catch this. Numba stayed compiled in memory, but discarded its disk
+cache each launch; the same D500 CPU Auto repeatedly took 2.87-2.90 s.
+
+The launcher now reserves two unique private probe files and verifies atomic
+replacement/readback before selecting the cache. If LocalAppData fails it tries
+`Path.home() / ".cache" / "OpenRAW Studio" / "numba"`. Only probe-owned files are
+cleaned; existing kernels and explicit `NUMBA_CACHE_DIR` overrides are preserved.
+When both private locations fail, the existing in-memory fallback remains.
+Nine focused tests cover source/explicit environments, missing/unwritable homes,
+cross-volume replacement, silent no-op replacement, and cleanup isolation.
+
+Without a cache override, independent EXE launches select the tested home cache.
+The D500 CPU example measures preparation at 1.80 s initially, then 0.64/0.65 s;
+Auto takes 1.65 s initially, then 0.42/0.41 s, with export at 2.32-2.41 s. On the
+high-ISO D500, color-noise advice takes 0.73 s initially and 0.15 s after restart;
+export with the suggested 35% amount is about 3.68 s. Separate D500/Z f GPU
+exports take 1.03/1.25 s. These are local timings excluding EXE startup, not
+universal guarantees or evidence that the cache fix accelerates every export.
+First-use compilation after updates remains possible. No original photos are
+modified, and no private captures/reports, reference decoder, public ZIP, or
+installer are bundled or released.
+The final rebuilt EXE passes seven independent CPU/GPU smoke runs, with matching
+Auto/noise advice, persisted recipes, and exact native-detail pixels. The report
+captures tone/demosaic/noise compiler state after the entire workflow; none of
+these runs uses the compiler/cache fallback. The optional TBB packaging warning
+remains unrelated to the sequential kernels used here.

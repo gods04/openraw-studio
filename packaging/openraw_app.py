@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 from time import perf_counter
 
@@ -31,7 +32,7 @@ def smoke_test(source: Path, output: Path, *, color_noise=0.0, auto_color_noise=
     from openraw_studio.ui.viewport import DetailView
 
     output.mkdir(parents=True, exist_ok=True)
-    report = {}
+    report = {"numba_cache_directory": os.environ.get("NUMBA_CACHE_DIR")}
     try:
         before = sha256_file(source)
         pipeline = LocalPhotoPipeline()
@@ -42,9 +43,6 @@ def smoke_test(source: Path, output: Path, *, color_noise=0.0, auto_color_noise=
         _image, backend = photo.render({})
         report["prepare_seconds"] = perf_counter() - started
         report["preview_backend"] = backend
-        report["compiled_cpu_tone"] = bool(getattr(compiled_tone.tone, "signatures", []))
-        report["cpu_tone_fallback_reason"] = compiled_tone.last_error
-        report["cpu_tone_cache_disabled_reason"] = compiled_tone.cache_disabled_reason
         report["compiled_decoder"] = bool(
             getattr(compiled_decode.decode, "signatures", [])
         )
@@ -83,12 +81,6 @@ def smoke_test(source: Path, output: Path, *, color_noise=0.0, auto_color_noise=
             PipelineRequest(source, output, overrides=edits)
         )
         report["export_seconds"] = perf_counter() - started
-        report["compiled_cpu_bayer"] = bool(getattr(compiled_bayer.malvar_demosaic, "signatures", []))
-        report["cpu_bayer_fallback_reason"] = compiled_bayer.last_error
-        report["cpu_bayer_cache_disabled_reason"] = compiled_bayer.cache_disabled_reason
-        report["compiled_cpu_chroma"] = bool(getattr(compiled_chroma.chroma, "signatures", []))
-        report["cpu_chroma_fallback_reason"] = compiled_chroma.last_error
-        report["cpu_chroma_cache_disabled_reason"] = compiled_chroma.cache_disabled_reason
         report["export_size"] = [result.exports[0].width, result.exports[0].height]
         started = perf_counter()
         detail = prepare_detail_photo(pipeline.raw_processor, source)
@@ -99,6 +91,16 @@ def smoke_test(source: Path, output: Path, *, color_noise=0.0, auto_color_noise=
         report["detail_region"] = region
         report["detail_size"] = detail_image.size
         detail_image.save(output / "native-detail.png")
+        # Auto/export/detail can compile additional signatures after preparation.
+        report["compiled_cpu_tone"] = bool(getattr(compiled_tone.tone, "signatures", []))
+        report["cpu_tone_fallback_reason"] = compiled_tone.last_error
+        report["cpu_tone_cache_disabled_reason"] = compiled_tone.cache_disabled_reason
+        report["compiled_cpu_bayer"] = bool(getattr(compiled_bayer.malvar_demosaic, "signatures", []))
+        report["cpu_bayer_fallback_reason"] = compiled_bayer.last_error
+        report["cpu_bayer_cache_disabled_reason"] = compiled_bayer.cache_disabled_reason
+        report["compiled_cpu_chroma"] = bool(getattr(compiled_chroma.chroma, "signatures", []))
+        report["cpu_chroma_fallback_reason"] = compiled_chroma.last_error
+        report["cpu_chroma_cache_disabled_reason"] = compiled_chroma.cache_disabled_reason
         report["source_unchanged"] = sha256_file(source) == before
         report["ok"] = report["source_unchanged"] and result.exports[0].path.is_file() and detail_image.size == region[2:]
     except Exception as error:  # noqa: BLE001 - Persist unexpected frozen-runtime failures.

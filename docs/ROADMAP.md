@@ -17,6 +17,20 @@ and sensor/luminance denoise. Further first-use initialization and broader verif
 also remain open.
 Semantic portrait/scene AI and mobile remain later phases.
 
+Latest Auto increment protects substantial shadow midtones from contrast
+darkening and can trade extra saturation for useful exposure without relaxing
+clipping guards. Across 33 private/public D500, Z f, 1 J5, and Z5 samples, six
+suggestions improve and 27 remain unchanged; CPU/GPU settings agree. All six
+changed cases pass full-size budgets at four strengths, with unchanged originals.
+The current 463-test suite, compact desktop/batch workflows, and frozen
+recipe/native-detail comparisons pass. See `DEVELOPMENT.md` for limits and timing.
+
+The Windows launcher also tests atomic cache replacement and falls back to a
+private home cache when app virtualization breaks LocalAppData writes. On the
+checked D500 CPU example, Auto after restart falls from about 2.88 s to 0.41 s;
+export remains about 2.3 s. This fixes repeated compilation, not first-use costs.
+The local EXE is refreshed; no public ZIP or installer is released.
+
 Latest decoder increment: D40 non-split 12/14-bit Nikon decoding is native.
 Both public Z5 lossy captures match all 48,706,560 sensor values against the
 development reference, including their black/white levels. D40's quarter-sized
