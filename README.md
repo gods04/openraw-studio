@@ -83,6 +83,8 @@ Then import `sample-data\openraw-synthetic.DNG` or
   adjustments and full-size JPEG/TIFF export. Its computed nonlinear mapping is
   approximate: at most 1 DN difference against the development reference in
   nine tested sensor planes. Other HE profiles are not implied to be supported.
+- Reused HE horizontal-transform work buffers reduce first-use compilation;
+  cached compiled decoding and the NumPy fallback retain the same integer math
 - Automatic OpenCL GPU selection for live adjustments and full-resolution Nikon
   rendering, with CPU fallback when a GPU/driver is unavailable
 - Fused, cached CPU compilation for live preview and Auto when no GPU is used;

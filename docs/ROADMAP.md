@@ -10,12 +10,30 @@ Nikon paths include F-series lossless, 12-bit D20 non-split (verified on 1 J5),
 and the verified Z f HE* 14-bit profile with approximate nonlinear mapping.
 Local Windows EXE builds are available; this is not a public installer release.
 
-Next quality work: first HE* import, broader verified HE profiles,
-broader camera calibration and gamut handling,
-edge-aware demosaic, actual sensor highlight reconstruction, and denoise.
+Next quality work: Auto under difficult lighting, broader camera calibration
+and gamut handling, edge-aware demosaic, actual sensor highlight reconstruction,
+and denoise. Further first-use initialization and broader verified HE profiles
+also remain open.
 Semantic portrait/scene AI and mobile remain later phases.
 
-Latest verified increment: TIFF binary fields stay compact instead of repeatedly
+Latest verified increment: HE horizontal synthesis reuses bounded work buffers,
+reducing first-call compilation from 2.17 to 0.53 s in a controlled empty-cache
+profile. CPU RAW preparation falls from 5.41 to 3.82 s there; warm throughput is
+essentially unchanged. All 367 tests pass with GPU and CPU-only (two GPU-only
+skips), including scratch boundaries, concurrent use, and cache/compiler fallback.
+All 23 private D500/Z f files retain identical metadata, sensor bytes, 69 previews,
+and 23 full-size renders, with unchanged originals. Actual cold-cache Z f desktop
+checks measure 5.24 s first RAW preview on CPU and 4.84 s on GPU, then 62/46 ms
+median slider response. Editing, JPEG/TIFF, native inspection, and batch checks
+pass. These are local measurements, not universal or instant-startup guarantees;
+other initialization costs and image-quality work remain.
+The refreshed EXE verifies cold/warm preparation at 4.38/1.98 s on GPU and
+4.31/1.82 s on CPU, excluding executable startup, with no compiler/cache fallback.
+Z f Auto, full-size export, and native inspection pass; GPU export stays near 1.4 s.
+
+### Earlier Verification
+
+TIFF binary fields stay compact instead of repeatedly
 expanding and converting integer tuples; numeric fields use checked bulk parsing.
 All 363 tests pass on GPU and CPU-only (two GPU-only skips). The 6,847-file metadata
 inventory matches its earlier results, including six rejected containers; this
@@ -29,8 +47,6 @@ was expanded. These are local sample timings, not universal performance promises
 The refreshed EXE verifies compiled CPU/GPU operation and restart cache reuse;
 D500 CPU export is 2.34-2.53 s warm and Z f GPU export 1.42 s. GPU HE* preparation
 still takes 6.34 s on first compilation and 2.24 s after restart.
-
-### Earlier Verification
 
 Vectorized Nikon preview tables and bounded RGB
 histogram/QC reduce the same D500 desktop export from 3.11 to 2.65 s on CPU and

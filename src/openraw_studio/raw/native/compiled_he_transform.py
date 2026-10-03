@@ -17,56 +17,54 @@ except (ImportError, OSError):
 
 
 @register_jitable
-def _dequantize(values, depths, threshold, size):
-    result = np.empty(size, np.int64)
+def _dequantize_into(output, values, depths, threshold, offset, group_offset, size):
     for index in range(size):
-        value = np.int64(values[index])
+        value = np.int64(values[offset + index])
         term = abs(value)
         magnitude = term
-        shift = max(1, int(depths[index // 4]) - threshold + 1)
+        shift = max(1, int(depths[group_offset + index // 4]) - threshold + 1)
         term >>= shift
         while term:
             magnitude += term
             term >>= shift
-        result[index] = (-magnitude if value < 0 else magnitude) * 16
-    return result
-
-
-@register_jitable
-def _inverse_row(low, high):
-    count = len(low)
-    if not len(high):
-        return low.copy()
-    output = np.empty(count + len(high), np.int64)
-    for column in range(count):
-        left, right = max(0, column - 1), min(column, len(high) - 1)
-        output[2 * column] = low[column] - ((high[left] + high[right] + 2) >> 2)
-    for column in range(len(high)):
-        right = min(column + 1, count - 1)
-        output[2 * column + 1] = high[column] + ((output[2 * column] + output[2 * right]) >> 1)
-    return output
+        output[index] = (-magnitude if value < 0 else magnitude) * 16
 
 
 def _horizontal(values, depths, thresholds, groups, width):
-    output = np.empty((8, width // 2), np.int32)
+    count = width // 2
+    output = np.empty((8, count), np.int32)
+    # Reuse two synthesis rows and one high band across every level/component.
+    # Avoid temporary slices/arrays and their first-use compiler machinery.
+    low = np.empty(count, np.int64)
+    work = np.empty(count, np.int64)
+    high = np.empty(count // 2, np.int64)
+    sizes = np.empty(5, np.int64)
     band = offset = group_offset = 0
     for row, levels in enumerate((5, 5, 0, 5, 1, 1, 0, 1)):
-        sizes = np.empty(5, np.int64)
-        size = width // 2
+        size = count
         for level in range(levels):
             sizes[level] = size // 2
             size -= size // 2
-        low = _dequantize(values[offset:], depths[group_offset:], thresholds[band], size)
+        _dequantize_into(low, values, depths, thresholds[band], offset, group_offset, size)
         offset += groups[band] * 4
         group_offset += groups[band]
         band += 1
         for level in range(levels - 1, -1, -1):
-            high = _dequantize(values[offset:], depths[group_offset:], thresholds[band], sizes[level])
-            low = _inverse_row(low, high)
+            high_size = sizes[level]
+            _dequantize_into(high, values, depths, thresholds[band], offset, group_offset, high_size)
+            for column in range(size):
+                left, right = max(0, column - 1), min(column, high_size - 1)
+                work[2 * column] = low[column] - ((high[left] + high[right] + 2) >> 2)
+            for column in range(high_size):
+                right = min(column + 1, size - 1)
+                work[2 * column + 1] = high[column] + ((work[2 * column] + work[2 * right]) >> 1)
+            low, work = work, low
+            size += high_size
             offset += groups[band] * 4
             group_offset += groups[band]
             band += 1
-        output[row] = low
+        for column in range(count):
+            output[row, column] = low[column]
     return output
 
 

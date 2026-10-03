@@ -721,3 +721,46 @@ exports in 2.97-3.00 s CPU and 1.42 s GPU. GPU HE* preparation still takes
 6.34 s initially and 2.24 s after restart, excluding executable startup.
 Warm Auto settings match the preceding bundle. No public ZIP was generated or
 released; these measurements do not imply first-use compilation was solved.
+
+### HE Horizontal Compilation Latency
+
+`compiled_he_transform.py` now dequantizes into reusable int64 buffers and
+performs the same integer 5/3 synthesis directly. It allocates two low/synthesis
+rows, one high band, a five-entry size buffer, and the eight-row int32 output per
+precinct. These buffers are reused across levels/components, not across calls or
+threads. Total array storage is `52 * (width / 2) + 40` bytes. The independent
+NumPy implementation, entropy decoder, color lift, profile mapping, and support
+guards are unchanged. There is no fastmath, new dependency, or extra thread pool.
+
+All 367 tests pass with GPU and CPU-only (two GPU-only skips). New tests cover
+odd band sizes, signed coefficients and threshold extremes, poisoned group
+padding, read-only inputs, fixed allocations, initialized scratch contents,
+independent concurrent calls, and horizontal cache/compiler failure. The 23-photo
+D500/Z f regression retains all metadata, decoded hashes, 69 previews, and 23
+full-size render hashes. All source hashes are unchanged. This validates the
+optimization against the preceding native version, not new Nikon profiles or
+bit-exact Nikon nonlinear mapping.
+
+Separate empty-cache processes in the build environment reduce the horizontal
+kernel's first call from 2.17 to 0.53 s, with remaining horizontal work unchanged
+at about 0.16 s. Total CPU RAW preparation falls from 5.41 to 3.82 s; the initial
+tone render still takes about 0.60 s. These timings exclude module/executable
+startup. A warm process prepares in 2.05 s with an 84 ms first CPU tone render.
+
+Actual Tk cold-cache checks on the Z f portrait measure 5.24 s first RAW display
+on CPU and 4.84 s on GPU, then 62/46 ms median slider latency. The camera JPEG
+remains an explicitly labeled transition while RAW preparation runs. CPU export
+takes 3.10 s including first-use Bayer compilation; GPU export takes 1.61 s.
+The CPU 16-step edit/JPEG/TIFF workflow, GPU 22-step native-detail workflow, and
+seven CPU batch checks pass. These are local sample measurements, not universal
+speed guarantees. Further initialization and image-quality improvements remain.
+
+The refreshed Windows EXE passes independent cold/warm processes with separate,
+initially empty CPU/GPU cache directories. GPU preparation is 4.38 s cold and
+1.98 s warm (preceding bundle's first run: 6.34 s). CPU preparation is 4.31 s
+cold and 1.82 s warm. These exclude executable startup. Auto, full-size export,
+native inspection, compiler activation, and disk-cache reuse pass without
+fallback; source hashes remain unchanged. Z f GPU export stays at 1.39-1.41 s,
+and CPU export measures 3.11 s including first Bayer compilation, 2.84 s warm.
+No public ZIP was generated or released. Next emphasis is image quality and
+Auto on difficult lighting; remaining startup costs are still open work.
