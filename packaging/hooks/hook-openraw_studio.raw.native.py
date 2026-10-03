@@ -5,4 +5,5 @@ module_collection_mode = {
     "openraw_studio.raw.native.compiled_decode": "py",
     "openraw_studio.raw.native.compiled_he": "py",
     "openraw_studio.raw.native.compiled_he_transform": "py",
+    "openraw_studio.raw.native.compiled_tone": "py",
 }

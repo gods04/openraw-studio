@@ -528,9 +528,65 @@ The portrait Z f exports in 2.09-2.12 s; preparation is 6.85 s for first-build J
 initialization and 2.20 s after process restart. The CPU sea sample exports in
 5.04 s with 1.17 s Auto. No public ZIP was generated or released.
 
-Next: faster CPU live tones, reduced import latency, improved color/gamut handling, and
+Next: faster CPU full-size export, reduced import latency, improved color/gamut handling, and
 expand verified profiles only with real samples. The reference decoder, wrapper, binaries, private
 images, and comparison reports stay in ignored `output/`; none is a runtime or
 distributed dependency. Primary algorithm references include
 [JPEG XS decoder design](https://github.com/OpenVisualCloud/SVT-JPEG-XS/blob/main/documentation/decoder/svt-jpegxs-decoder-design.md)
 and [Richter et al., Bayer CFA Pattern Compression With JPEG XS](https://doi.org/10.1109/TIP.2021.3095421).
+
+### Fused CPU Live Tones
+
+`raw/native/compiled_tone.py` combines gain/ceiling, matrix conversion, contrast,
+the existing tonal regions, gamma, and saturation in one compiled pass. Only the
+RGB8 output needs a full-frame allocation for normal contiguous float32 proxies.
+The preview resolution, tone curves, native decoder, and full-size export path
+are unchanged. Both saturation modes retain their existing ordering. Float32
+arithmetic can differ by 1 DN from NumPy; this is not bit-exact equivalence.
+
+Compilation is lazy, cached, sequential, and releases the GIL. No fastmath or
+parallel thread pool is enabled. Read-only array views normalize the JIT signature
+without copying ordinary proxies or changing caller flags. A successful GPU path
+does not compile CPU tones. Unwritable disk caches retry in-memory compilation;
+compiler failures disable that kernel for the process and retain the original
+NumPy renderer. Explicit `NUMBA_DISABLE_JIT=1` also selects NumPy instead of
+running the scalar pixel loop in Python. Other programming errors are not silently swallowed. Frozen
+bundles include the new module as source for Numba's cache locator, and their
+smoke report records whether compiled CPU tones actually ran.
+
+The 333-test suite passes with GPU selection and CPU-only (two GPU-only skips).
+New checks cover adjustment extremes, the white join, both saturation modes,
+readonly/strided/empty inputs, one stable compiled signature, shared-worker input
+safety, cache failure, and compiler fallback. The selected 23 D500/Z f photos
+pass 161 compiled/reference image comparisons at seven settings (maximum error
+1 DN). Auto suggestions are identical to the NumPy path for every sample, and
+all 184 rendered guard checks at four strengths/two sizes pass. Sources remain
+unchanged; these are local validation samples, not uploaded training data.
+A CPU sweep over every integer strength 1-100% at both sizes also passes all
+4,600 checks. The actual 16-step Z f CPU desktop workflow verifies pointer edits,
+history, Auto/strength, comparison, JPEG/TIFF export, and edit persistence.
+
+On the same D500 moon photo with Highlights at -1, the actual 1080x720 desktop
+benchmark improves CPU median slider-to-display response from 109 to 72 ms;
+50 consecutive edits show 48 frames instead of 16, with 92 ms from release to
+the final frame. CPU full-size JPEG export is still about 5.0 s. These local
+measurements exclude first-use JIT from steady edit latency and are not a
+universal responsiveness promise. First HE* import and CPU full-size export
+remain separate optimization targets.
+
+A repeated CPU run measures 62 ms median with 48 frames, 92 ms final-frame
+latency, and 5.09 s export, explicitly confirming the compiled kernel was active.
+The matching GPU regression measures 53 ms/49 frames and 2.08 s export, with
+CPU compilation correctly unused. All 22 D500 CPU native-detail checks pass,
+including byte-identical regions against the full RAW renderer. The benchmark
+reports compiler activation/failure as well as the displayed backend so a slow
+fallback cannot be mistaken for a successful compiled run.
+
+The refreshed EXE passes D500 CPU and Z f GPU Auto/export/native-detail smoke
+checks and independent-process cache reuse, preserving source hashes and the
+source-run Auto settings. The D500 CPU run confirms compiled tone activation,
+with 0.62-0.69 s Auto, 5.22-5.35 s export, and 0.69 s cached preparation after
+1.99 s first-build initialization. Z f GPU preparation remains 6.41 s initially
+and 2.22 s after restart; export takes 2.06-2.10 s. These preparation timings
+exclude executable startup. GPU runs do not compile the CPU tone kernel.
+All seven CPU batch checks pass as well. No public ZIP was generated or released.

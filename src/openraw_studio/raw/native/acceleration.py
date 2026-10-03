@@ -1,4 +1,4 @@
-"""Optional, validated OpenCL rendering with a NumPy fallback."""
+"""Optional OpenCL and compiled CPU rendering with a NumPy reference fallback."""
 
 from __future__ import annotations
 
@@ -234,4 +234,9 @@ def render_tone(pixels, params):
             return gpu.tone(pixels, params), "GPU: " + gpu.name
         except Exception:
             disable_gpu()
+    from openraw_studio.raw.native.compiled_tone import render
+
+    compiled = render(pixels, params)
+    if compiled is not None:
+        return compiled, "CPU"
     return tone_cpu(pixels, params), "CPU"

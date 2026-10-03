@@ -20,6 +20,7 @@ def smoke_test(source: Path, output: Path) -> int:
         compiled_decode,
         compiled_he,
         compiled_he_transform,
+        compiled_tone,
     )
     from openraw_studio.raw.native.detail import prepare_detail_photo
     from openraw_studio.raw.native.interactive import prepare_interactive_photo
@@ -37,6 +38,9 @@ def smoke_test(source: Path, output: Path) -> int:
         _image, backend = photo.render({})
         report["prepare_seconds"] = perf_counter() - started
         report["preview_backend"] = backend
+        report["compiled_cpu_tone"] = bool(getattr(compiled_tone.tone, "signatures", []))
+        report["cpu_tone_fallback_reason"] = compiled_tone.last_error
+        report["cpu_tone_cache_disabled_reason"] = compiled_tone.cache_disabled_reason
         report["compiled_decoder"] = bool(
             getattr(compiled_decode.decode, "signatures", [])
         )

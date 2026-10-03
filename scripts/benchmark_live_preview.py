@@ -82,6 +82,10 @@ def main():
             yield from descendants(child)
 
     def finish():
+        from openraw_studio.raw.native import compiled_tone
+
+        report["compiled_cpu_tone"] = bool(getattr(compiled_tone.tone, "signatures", []))
+        report["cpu_tone_fallback_reason"] = compiled_tone.last_error
         report["source_unchanged"] = sha256_file(args.source) == checksum
         (args.output / "benchmark.json").write_text(
             json.dumps(report, indent=2), encoding="utf-8"

@@ -84,6 +84,8 @@ Then import `sample-data\openraw-synthetic.DNG` or
   nine tested sensor planes. Other HE profiles are not implied to be supported.
 - Automatic OpenCL GPU selection for live adjustments and full-resolution Nikon
   rendering, with CPU fallback when a GPU/driver is unavailable
+- Fused, cached CPU compilation for live preview and Auto when no GPU is used;
+  the NumPy renderer remains available if compilation fails
 - Camera-aware Nikon D500, 1 J5, and Z f rendering with standard as-shot white balance, an
   exact camera-to-linear-sRGB profile, and EXIF orientation handling
 - Native extraction for simple uncompressed DNG 12/14-bit packed strip payloads

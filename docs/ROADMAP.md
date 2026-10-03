@@ -10,12 +10,28 @@ Nikon paths include F-series lossless, 12-bit D20 non-split (verified on 1 J5),
 and the verified Z f HE* 14-bit profile with approximate nonlinear mapping.
 Local Windows EXE builds are available; this is not a public installer release.
 
-Next quality work: faster CPU live tones and first HE* import, broader verified HE profiles,
+Next quality work: faster CPU full-size export and first HE* import, broader verified HE profiles,
 broader camera calibration and gamut handling,
 edge-aware demosaic, actual sensor highlight reconstruction, and denoise.
 Semantic portrait/scene AI and mobile remain later phases.
 
-Latest verified increment: a continuous negative-highlight shoulder retains distinctions
+Latest verified increment: fused CPU live tones reduce repeated full-frame memory
+passes without shrinking the preview. The same D500 desktop benchmark improves
+from 109 to 62-72 ms median response and from 16 to 48 displayed frames during 50
+edits. CPU full-size export remains about 5 seconds and is not changed here.
+Across 23 private photos and seven adjustment cases, compiled output stays within
+1 DN of the NumPy reference and all Auto suggestions are identical. Original
+hashes remain unchanged. All 333 tests pass on GPU selection and CPU-only
+(two GPU-only skips). These are sample-specific results, not universal timing
+or pixel-equality guarantees. NumPy remains the compiler-failure fallback.
+The CPU path also passes 4,600 Auto guard checks across every integer strength
+and both proxy sizes, plus the actual 16-step desktop edit/JPEG/TIFF workflow.
+All 22 native-detail workflow checks pass on CPU; the GPU regression measures
+53 ms median preview response and 2.08 s cached export on the same D500 sample.
+The refreshed local EXE verifies compiled CPU tones and cache reuse after restart;
+D500 sea Auto measures 0.62-0.69 s. Z f GPU export/detail remains working.
+
+A continuous negative-highlight shoulder retains distinctions
 above display white instead of applying a constant offset and clipping again.
 CPU, GPU, generic DNG, and Nikon preview/export paths share the curve. Auto now
 checks intermediate strengths for corrections relying on highlight compression;
