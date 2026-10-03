@@ -18,13 +18,23 @@ and sensor-domain denoise with calibrated luminance-noise advice. Further first-
 also remain open.
 Semantic portrait/scene AI and mobile remain later phases.
 
+Latest performance increment runs large compiled CPU Bayer/tone and noise
+strips on up to four bounded workers, retaining serial preview/fallback and
+unchanged pixel math. Sixteen paired JPEG/TIFF16 checks across D500/Z f/Z5/1 J5
+and synthetic DNG are byte-identical. The 552-test suite and eight rebuilt-EXE
+checks pass, with unchanged Auto settings, exported pixels, and original files.
+The checked D500 desktop JPEG export improves from 4.26 s serial to 2.17 s;
+frozen TIFF16 improves from 7.84 s to 4.09 s. GPU/CPU live medians remain 46/108 ms.
+Cold-start compilation remains; these are local samples, not speed guarantees.
+See `DEVELOPMENT.md` for scheduling limits and reproducible serial controls.
+
 Latest export increment adds genuine 16-bit rendered TIFF alongside the default
 8-bit JPEG/TIFF path, including CPU/GPU rendering, both noise filters, metadata,
 single/batch/CLI controls, and recipe restoration. Preview/Auto/QC remain 8-bit;
 linear or wider-gamut TIFF is still pending. Bounded parallel Deflate avoids
 serial compression becoming the main export cost. See `DEVELOPMENT.md` for
 precision limits and verification details.
-The 539-test suite and eight rebuilt-EXE checks pass. Checked GPU TIFF16 takes
+That increment's 539-test suite and eight rebuilt-EXE checks pass. Checked GPU TIFF16 takes
 2.56-3.57 s; CPU TIFF16 remains slower. Actual live response stays at 46/108 ms
 median GPU/CPU with both noise filters. No public installer is released.
 

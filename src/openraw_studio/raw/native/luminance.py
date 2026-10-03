@@ -71,12 +71,17 @@ def reduce_luminance_noise(pixels, strength, *, use_gpu=True, use_compiled=True,
             except Exception:  # noqa: BLE001 - A driver failure must retain CPU rendering.
                 disable_gpu()
     output = np.empty_like(pixels)
-    for start in range(0, pixels.shape[0], chunk_rows):
-        end = min(pixels.shape[0], start + chunk_rows)
+    def render_strip(start, end):
         part = None
         if use_compiled:
             from openraw_studio.raw.native.compiled_luminance import render_chunk
 
             part = render_chunk(pixels, start, end, strength, WEIGHTS)
         output[start:end] = part if part is not None else _reference_chunk(pixels, start, end, strength)
+        return part is not None
+
+    from openraw_studio.raw.native.cpu_chunks import render_chunks
+
+    render_chunks(render_strip, height=pixels.shape[0], width=pixels.shape[1], chunk_rows=chunk_rows,
+                  scratch_bytes=pixels.shape[1] * (min(pixels.shape[0], chunk_rows) + 4) * 16)
     return output

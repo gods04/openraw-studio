@@ -95,7 +95,8 @@ except RuntimeError:
 
 def render_chunk(pixels, start, end, strength, spatial, light, color):
     global chroma, last_error, cache_disabled_reason
-    if chroma is None:
+    kernel = chroma
+    if kernel is None:
         return None
     if (
         pixels.ndim != 3
@@ -112,7 +113,7 @@ def render_chunk(pixels, start, end, strength, spatial, light, color):
     pixels.flags.writeable = False
     try:
         try:
-            output = chroma(pixels, start, end, strength, spatial, light, color)
+            output = kernel(pixels, start, end, strength, spatial, light, color)
         except OSError as cache_error:
             uncached = njit(nogil=True)(_filter)
             output = uncached(pixels, start, end, strength, spatial, light, color)

@@ -67,7 +67,8 @@ except RuntimeError:
 
 def render_chunk(pixels, start, end, strength, weights):
     global luminance, last_error, cache_disabled_reason
-    if luminance is None:
+    kernel = luminance
+    if kernel is None:
         return None
     if pixels.ndim != 3 or pixels.shape[2] != 3 or pixels.dtype not in (np.uint8, np.uint16) or not 0 <= start < end <= pixels.shape[0] or pixels.shape[1] < 1 or weights.shape != (5, 5, 256):
         raise ValueError("Luminance chunk requires valid RGB8 or RGB16 bounds and range tables")
@@ -76,7 +77,7 @@ def render_chunk(pixels, start, end, strength, weights):
     amount = round(strength * 65536)
     try:
         try:
-            output = luminance(pixels, start, end, amount, weights)
+            output = kernel(pixels, start, end, amount, weights)
         except OSError as cache_error:
             uncached = njit(nogil=True)(_filter)
             output = uncached(pixels, start, end, amount, weights)

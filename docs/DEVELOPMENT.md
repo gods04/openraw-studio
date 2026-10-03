@@ -1469,3 +1469,58 @@ median on GPU and 108 ms on warmed CPU, with 48/17 visible frames during a
 4.12 s; the first run after a kernel change is 7.02 s. First-use compilation is
 not removed and these local results are not universal speed guarantees. The
 Windows EXE is refreshed; no public ZIP/installer or private photos are shipped.
+
+### Bounded Parallel CPU Strips
+
+Large compiled Bayer/tone and color/luminance-noise renders use independent row
+strips on at most four GIL-releasing workers. The first strip warms its kernels
+synchronously. Frames below two million pixels, compiler/reference fallbacks,
+and hosts with fewer than three logical CPUs stay serial. A nonblocking process
+gate permits only one parallel frame at a time; other callers continue serially.
+Lane count reserves one logical CPU and caps estimated compiled strip scratch
+at 128 MiB. That estimate is not a total process-memory limit: decoded input,
+full output, compiler state, and encoder allocations are separate.
+
+Workers share read-only inputs and write disjoint output rows. A late compilation
+or thread-start failure finishes only missing strips serially, after joining
+existing workers. Unexpected pixel-processing errors still propagate. No fastmath,
+resampling, extra quantization, or different denoise math is introduced. GPU
+rendering returns before the CPU scheduler; preview and Auto kernels are unchanged.
+`OPENRAW_CPU_WORKERS=1` selects the serial render/noise baseline for diagnostics;
+values 2-4 request fewer workers within the same limits. This variable does not
+control the separate bounded TIFF compression pool.
+
+Thirteen added tests cover warmup, worker/scratch limits, exactly-once rows,
+concurrent callers, thread-start and compiler failures, error propagation,
+immutable/strided inputs, all Bayer layouts, both demosaics, and RGB8/RGB16 parity.
+A private paired audit covers seven real D500/Z f/Z5/1 J5 captures plus a tiny
+synthetic DNG: all sixteen JPEG/TIFF16 comparisons are byte-identical between
+serial and parallel output, with unchanged original hashes and no kernel fallback.
+Public Z5 lossless and D40 lossy profiles are both included. Assets remain ignored.
+
+On this i5-12500H, a repeated already-decoded D500 test with both noise filters
+reduces warmed JPEG rendering from 3.10-3.23 s to 1.78-1.83 s, and TIFF16 from
+4.24-4.27 s to 2.97-3.05 s. A paired actual Tk workflow measures JPEG export at
+4.26 s serial and 2.17 s parallel, including the pipeline. CPU slider median
+stays at 108 ms with 18 visible frames during 50 drag events, and 138 ms from
+release to final frame. GPU remains 46 ms median / 46 frames / 48 ms release,
+with 1.39 s export. These are local sample measurements, not speed guarantees;
+first-use compilation and RAW import remain separate costs.
+
+The compact Z f CPU workflow passes 44 checks including Auto, both noise controls,
+history, JPEG/TIFF16, comparison, and session restoration. Its screenshots verify
+mapped controls and the visible 16-bit selector at 900x640.
+
+All 552 tests pass in the source and packaging environments, with six expected
+GPU-only skips when GPU is disabled. The refreshed Windows EXE passes eight
+independent checks on D500, Z f, Z5 D40, and DNG. Auto/noise advice and saved
+parameters are unchanged; native detail and full TIFF16 pixels match their
+previous same-backend EXE or serial-source reference exactly. All original
+hashes are unchanged and no compiler/cache fallback is reported.
+
+For the same D500 TIFF16 recipe, the rebuilt EXE measures 7.84 s with serial CPU
+strips and 4.09 s with four workers (previous EXE: 7.63 s). First use of the
+new build still takes 6.48 s for export, plus preparation/Auto compilation;
+this change does not remove cold-start costs. Checked GPU TIFF16 export stays
+at 2.55 s for D500 and 3.54 s for Z f. These exclude EXE startup. The local EXE
+is refreshed without creating a public ZIP, installer, or private-photo bundle.

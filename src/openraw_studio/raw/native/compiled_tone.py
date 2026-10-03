@@ -84,8 +84,8 @@ def _tone16(pixels, params):
     return _tone_into(pixels, params, np.empty(pixels.shape, np.uint16), np.float32(65535))
 
 
-# No fastmath or parallel thread pool: retain the curve and avoid oversubscribing
-# the preview and Auto workers. Only the output frame needs a full-size allocation.
+# No fastmath or Numba parallel pool: callers may schedule independent export
+# strips while preview/Auto kernels remain sequential.
 try:
     tone = njit(cache=True, nogil=True)(_tone) if njit is not None else None
 except RuntimeError:

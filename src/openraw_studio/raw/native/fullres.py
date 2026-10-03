@@ -127,8 +127,7 @@ def render_bayer_full_resolution(
             shadows=shadows, saturation=saturation, highlight_ceiling=highlight_ceiling,
         )
 
-    for core_start in range(0, height, chunk_rows):
-        core_end = min(height, core_start + chunk_rows)
+    def render_strip(core_start, core_end):
         camera = None
         if use_compiled:
             args = (source, crop, core_start, core_end, pattern, black_levels, white_level, channel_gains)
@@ -137,7 +136,7 @@ def render_bayer_full_resolution(
             rendered = compiled_tone.render(camera, params, bit_depth=16) if bit_depth == 16 else compiled_tone.render(camera, params)
             if rendered is not None:
                 output[core_start:core_end] = rendered
-                continue
+                return True
             camera_planes = [camera[:, :, channel] for channel in range(3)]
         else:
             if demosaic == "malvar":
@@ -165,6 +164,12 @@ def render_bayer_full_resolution(
         rgb *= float(maximum)
         np.rint(rgb, out=rgb)
         output[core_start:core_end] = rgb.astype(dtype)
+        return False
+
+    from openraw_studio.raw.native.cpu_chunks import render_chunks
+
+    render_chunks(render_strip, height=height, width=width, chunk_rows=chunk_rows,
+                  scratch_bytes=width * min(height, chunk_rows) * 20)
 
     return FullResolutionRgbImage(width=width, height=height, rgb_bytes=output.tobytes(), bit_depth=bit_depth)
 
