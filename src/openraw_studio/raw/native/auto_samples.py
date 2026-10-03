@@ -18,15 +18,40 @@ class NativeAutoSamples:
     decoded: NikonDecodedPixelData
     locations: tuple[tuple[int, int], ...]
     core_size: int
+    source_size: tuple[int, int]
+    grid_count: int
 
     def render(self, adjustments):
+        return self.render_tiles(adjustments).reshape(-1, 3)
+
+    def render_tiles(self, adjustments):
+        values = dict(adjustments)
+        strength = values.pop("color_noise", 0)
         rendered = render_decoded_nikon_34713_image(
-            self.decoded, quality="full", **adjustments
+            self.decoded, quality="full", **values
+        )
+        span = self.core_size + 8
+        pixels = np.frombuffer(rendered.rgb_bytes, np.uint8).reshape(-1, span, span, 3)
+        if strength == 0:
+            return pixels[:, 4:-4, 4:-4]
+        from openraw_studio.raw.native.chroma import reduce_color_noise
+
+        # Two RAW pixels support demosaic; the next two RGB pixels support the
+        # color filter. At real image edges, replicate RGB as the full render does.
+        width, height = self.source_size
+        offsets = np.arange(-2, self.core_size + 2)
+        tiles = np.stack(
+            [
+                pixels[index][
+                    (np.clip(y + offsets, 0, height - 1) - y + 4)[:, None],
+                    (np.clip(x + offsets, 0, width - 1) - x + 4)[None, :],
+                ]
+                for index, (x, y) in enumerate(self.locations)
+            ]
         )
         span = self.core_size + 4
-        pixels = np.frombuffer(rendered.rgb_bytes, np.uint8).reshape(-1, span, span, 3)
-        # Discard the two-pixel halo: adjacent atlas tiles must never contribute.
-        return pixels[:, 2:-2, 2:-2].reshape(-1, 3)
+        filtered = reduce_color_noise(tiles.reshape(-1, span, 3), strength)
+        return filtered.reshape(-1, span, span, 3)[:, 2:-2, 2:-2]
 
 
 def prepare_native_auto_samples(decoded):
@@ -53,6 +78,7 @@ def prepare_native_auto_samples(decoded):
     for y in np.linspace(core // 2, height - core // 2, 8):
         for x in np.linspace(core // 2, width - core // 2, 8):
             add(x, y)
+    grid_count = len(locations)
     # Each CFA plane votes separately so a small colored light is not averaged
     # away by the Fit proxy. Selection uses decoded sensor data, not filenames/ISO.
     for row in range(2):
@@ -65,7 +91,7 @@ def prepare_native_auto_samples(decoded):
                     block = plane[y0:y1, x0:x1]
                     dy, dx = np.unravel_index(np.argmax(block), block.shape)
                     add(2 * (x0 + dx) + col, 2 * (y0 + dy) + row)
-    offsets = np.arange(-2, core + 2)
+    offsets = np.arange(-4, core + 4)
     tiles = [
         cropped[
             _reflect(y + offsets, height)[:, None],
@@ -73,7 +99,7 @@ def prepare_native_auto_samples(decoded):
         ]
         for x, y in locations
     ]
-    atlas = np.stack(tiles).reshape(-1, core + 4)
+    atlas = np.stack(tiles).reshape(-1, core + 8)
     # _render_crop aligns the original crop and every sample to an even CFA phase.
     packed = replace(
         decoded,
@@ -86,4 +112,6 @@ def prepare_native_auto_samples(decoded):
             active_area=(0, 0, atlas.shape[1], atlas.shape[0]),
         ),
     )
-    return NativeAutoSamples(packed, tuple(locations), core)
+    return NativeAutoSamples(
+        packed, tuple(locations), core, (width, height), grid_count
+    )

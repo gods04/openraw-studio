@@ -8,12 +8,13 @@ from pathlib import Path
 from time import perf_counter
 
 
-def smoke_test(source: Path, output: Path, *, color_noise=0.0) -> int:
+def smoke_test(source: Path, output: Path, *, color_noise=0.0, auto_color_noise=False) -> int:
     """Exercise frozen runtime imports, GPU/JIT, adjustment and full export."""
     from openraw_studio.core.files import sha256_file
     from openraw_studio.decision.auto_adjust import (
         suggest_auto_adjustments_for_photo,
     )
+    from openraw_studio.decision.color_noise import suggest_color_noise_for_photo
     from openraw_studio.pipeline.interfaces import PipelineRequest
     from openraw_studio.pipeline.local import LocalPhotoPipeline
     from openraw_studio.raw.native import (
@@ -66,7 +67,14 @@ def smoke_test(source: Path, output: Path, *, color_noise=0.0) -> int:
         report["auto"] = suggestion.as_overrides()
         report["auto_metrics"] = suggestion.metrics
         edits = {**suggestion.as_overrides(), "color_noise": color_noise}
-        report["color_noise"] = color_noise
+        if auto_color_noise:
+            started = perf_counter()
+            noise = suggest_color_noise_for_photo(photo, edits)
+            report["auto_color_noise_seconds"] = perf_counter() - started
+            report["auto_color_noise"] = {"strength": noise.strength, "status": noise.status, "metrics": noise.metrics}
+            if noise.strength is not None:
+                edits["color_noise"] = noise.strength
+        report["color_noise"] = edits["color_noise"]
         started = perf_counter()
         result = pipeline.process(
             PipelineRequest(source, output, overrides=edits)
@@ -109,13 +117,14 @@ def main() -> int:
     parser.add_argument("--smoke-test", action="store_true")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--color-noise", type=float, default=0.0)
+    parser.add_argument("--auto-color-noise", action="store_true", help="Select color-noise strength during --smoke-test.")
     args = parser.parse_args()
     if args.smoke_test:
         if args.source is None or args.output is None:
             parser.error("--smoke-test requires a RAW source and --output directory")
         if not 0 <= args.color_noise <= 1:
             parser.error("--color-noise must be within [0, 1]")
-        return smoke_test(args.source, args.output, color_noise=args.color_noise)
+        return smoke_test(args.source, args.output, color_noise=args.color_noise, auto_color_noise=args.auto_color_noise)
     app = launch_desktop_app(run_mainloop=False)
     if args.source is not None:
         app.root.after(

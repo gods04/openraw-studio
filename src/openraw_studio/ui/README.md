@@ -44,6 +44,8 @@ The UI should keep the image workspace first:
 - true 100%/200% native detail, with click-centered zoom and original comparison
 - optional `Detail > Color noise` slider, persisted in recipes/history/sessions;
   Auto and its strength slider preserve this manual setting, while Reset clears it
+- separate Lucide wand button for sampled `Auto color noise` advice at the current
+  tone settings, with asynchronous work, stale-result rejection, and undo/redo
 - per-photo Auto or saved-edit batch export with between-photo cancellation
 
 The UI uses the pipeline and recipe contracts for saved artifacts and export.
@@ -81,3 +83,8 @@ atomic local edit persistence. Worker callbacks enter Tk through a main-thread q
 Color-noise reduction runs after tone rendering, before orientation/resize/crop,
 on both preview and export paths. Fit remains approximate because its input is a
 downsampled linear proxy; native-pixel inspection is the authoritative detail view.
+Noise advice reuses the prepared photo's retained native Nikon tiles, with a
+four-pixel RAW halo for exact demosaic-plus-filter sampling. It never estimates
+noise from a downsampled Fit image. Low-noise evidence sets zero; insufficient
+evidence, rejected benefit, or an unsupported sampling path retain existing edits.
+This is an explicit independent command, not a new default for tonal/batch Auto.

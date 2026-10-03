@@ -947,3 +947,75 @@ RAW preparation falls from 4.57 to 2.20 s after restart, excluding EXE startup.
 There is no compiler/cache fallback. The known optional TBB packaging warning
 remains; the sequential kernels do not require it. No public ZIP or installer
 was generated or released.
+
+### Sampled Auto Color-Noise Advice
+
+The Detail slider now has a separate Lucide wand command, `Auto color noise`.
+It analyzes the current tonal settings with color filtering off, then changes
+only the color-noise amount. Toolbar Auto, its strength slider, and batch Auto
+still preserve that amount; no default denoise or new camera support is implied.
+Accepted advice uses normal history/session/recipe/export retention. Analysis
+runs off the Tk thread, disables duplicate work, and rejects stale run IDs.
+Low-noise evidence sets zero. Insufficient samples, unavailable native sampling,
+or candidates without verified benefit leave all existing settings unchanged.
+
+`decision/color_noise.py` evaluates at most 256 native 16x16 blocks from the
+retained grid tiles. It subtracts per-channel planes from R-G/B-G and rendered
+luma, measuring robust residual dispersion. Clipped/dark pixels, coarse structure,
+and strong four-pixel periodic correlation exclude many unreliable blocks. At
+least 12 blocks from six sampled regions are required; each region gets one vote.
+This is a bounded rendered-chroma heuristic, not Gaussian sensor variance,
+ISO calibration, semantic recognition, or a probability/confidence estimate.
+Random fine color texture can still be mistaken for noise.
+
+Candidate strength is capped at 70, with one half-strength backoff. Acceptance
+requires at least 5% less dispersion on the same selected blocks, the existing
+native highlight/shadow budgets, bounded coarse-color changes in unselected
+blocks, bounded mean-color drift everywhere, and no more than 0.5 DN change in
+the filter's weighted luminance. This samples a global control; it is not a
+spatially selective denoiser or exhaustive full-frame protection. Generic DNG
+currently lacks retained native tiles and receives no automatic advice.
+
+Native sampling now retains four RAW pixels around each core, bounded at 409,600
+raw bytes for 128 tiles. Tonal-only sample pixels remain identical. Filtered
+sampling first demosaics the atlas, supplies the correct two-pixel RGB halo,
+and replicates at actual image edges before filtering, so neighboring atlas
+tiles and reflected out-of-image RGB cannot leak into the result. Grid samples
+vote on noise; additional bright samples only validate tones. No new RAW decode
+is needed when the desktop's prepared photo is still current.
+
+All 427 tests pass with GPU and CPU-only (four GPU-only skips). Added coverage
+includes clean gradients, known noisy ground truth with improved pixel error,
+gray grain, periodic color textures, dark/clipped regions, insufficient coverage,
+biased bright samples, candidate backoff, color/tone damage, readonly inputs,
+invalid bounds and callback shapes, preservation of current tones, and missing
+native data. Extended native-sample tests match filtered full export across
+Bayer layouts, image/crop edges, and tiny dimensions.
+
+All 26 D500/Z f/1 J5 private captures produce matching CPU/GPU advice and exact
+native-sample/full-export pixels with unchanged original hashes. All 23 existing
+tonal Auto suggestions are unchanged. At Auto70 (neutral for 1 J5), three samples
+receive strengths 30-45, thirteen receive zero, and ten retain their previous
+setting because evidence/benefit is insufficient. Across neutral and 25/50/70/100%
+tone settings, 130 cases yield 15 nonzero recommendations; all 15 pass full-frame
+clipping/shadow checks. These are local sample results, not universal guarantees.
+Visual native crops show mild color-speckle reduction, not removal of luma grain,
+large blotches, defocus, or all fine-texture risk.
+
+Actual compact-window workflows cover positive advice, zero advice, abstention,
+unsupported DNG advice, asynchronous state, displayed pixels, stale callbacks,
+undo/redo, tonal Auto preservation, local retention, and JPEG/TIFF export. The
+D500 high-ISO CPU case takes 0.27 s for advice; Z f GPU takes 0.20 s and preserves
+the existing amount without sufficient benefit. These include desktop scheduling,
+not RAW import or universal first-use latency. The manual filter/export algorithms
+and slider rendering are unchanged in this increment.
+
+The refreshed local EXE reproduces the high-ISO CPU recommendation (35), a
+blue-hour GPU recommendation (50), and a Z f GPU abstention preserving the
+existing amount (75). All three recipes and native-detail pixels match source
+execution, with unchanged originals. CPU advice takes 0.65 s on first use and
+0.15 s after restarting with cached compilation; the two GPU cases take
+0.06-0.08 s, excluding RAW preparation and EXE startup. Full-size exports measure
+3.91 s for the cached high-ISO CPU case and 1.28/1.66 s for those GPU cases.
+No compiler/cache fallback occurs. The bundled wand asset matches the source;
+the existing optional TBB warning remains. No public ZIP/installer was produced.

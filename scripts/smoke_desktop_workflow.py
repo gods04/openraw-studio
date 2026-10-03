@@ -22,6 +22,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--geometry", default="1280x820")
     parser.add_argument("--color-noise", type=float, default=0)
+    parser.add_argument("--auto-color-noise", action="store_true")
     args = parser.parse_args()
     if not 0 <= args.color_noise <= 1:
         parser.error("--color-noise must be within [0, 1]")
@@ -161,6 +162,47 @@ def main():
                 "Zero Auto strength restores original tone settings",
             )
             require(app.color_noise_var.get()==state.get('noise',0),'Auto strength preserves manual color-noise setting')
+            app.auto_strength_var.set(100)
+            app._change_auto_strength()
+            app._commit_edit()
+            state["phase"] = "auto_noise_start" if args.auto_color_noise else "compare"
+        elif phase == "auto_noise_start" and frame_current():
+            if not args.color_noise:
+                header = next(w for w in descendants(app.root) if w.winfo_class() == "TCheckbutton" and str(w.cget("text")) == "Detail")
+                header.invoke()
+            app.root.update_idletasks()
+            app.controls_canvas.yview_moveto(1)
+            app.root.update_idletasks()
+            button = app.auto_color_noise_button
+            require(app.controls_canvas.winfo_rooty() <= button.winfo_rooty() and button.winfo_rooty() + button.winfo_height() <= app.controls_canvas.winfo_rooty() + app.controls_canvas.winfo_height(), "Auto color-noise button is visible in compact window")
+            state["before_auto_noise"] = app._current_overrides()
+            state["before_auto_noise_pixels"] = ImageTk.getimage(app.after_photo).tobytes()
+            state["noise_started"] = perf_counter()
+            button.invoke()
+            require(app.is_busy and str(button.cget("state")) == "disabled", "Auto color noise starts asynchronously and prevents duplicate work")
+            state["phase"] = "auto_noise"
+        elif phase == "auto_noise" and not app.is_busy and app.last_noise_suggestion is not None and frame_current():
+            result = app.last_noise_suggestion
+            report["auto_noise_seconds"] = perf_counter() - state["noise_started"]
+            report["auto_noise"] = {"strength": result.strength, "status": result.status, "metrics": result.metrics}
+            before = state["before_auto_noise"]
+            after = app._current_overrides()
+            require(all(after[k] == before[k] for k in after if k != "color_noise"), "Auto color noise preserves every tone control")
+            require(after["color_noise"] == (result.strength if result.strength is not None else before["color_noise"]), "Auto color noise applies advice or retains settings when evidence is insufficient")
+            if before != after:
+                require(ImageTk.getimage(app.after_photo).tobytes() != state["before_auto_noise_pixels"], "Noise advice changes displayed preview pixels")
+                app.undo_button.invoke()
+                require(app._current_overrides() == before, "Undo restores setting before noise advice")
+                app.redo_button.invoke()
+                require(app._current_overrides() == after, "Redo restores advised noise amount")
+            else:
+                require(ImageTk.getimage(app.after_photo).tobytes() == state["before_auto_noise_pixels"], "Abstaining from noise advice preserves displayed pixels")
+            from openraw_studio.decision.color_noise import ColorNoiseSuggestion
+            app._apply_auto_color_noise(ColorNoiseSuggestion(.99, "suggested"), run_id=app.run_counter-1)
+            require(app._current_overrides() == after, "Stale noise advice is ignored")
+            app.auto_strength_var.set(50)
+            app._change_auto_strength()
+            require(app.color_noise_var.get() == after["color_noise"], "Tonal Auto strength preserves accepted noise advice")
             app.auto_strength_var.set(100)
             app._change_auto_strength()
             app._commit_edit()

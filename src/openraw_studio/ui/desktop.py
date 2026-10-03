@@ -20,6 +20,7 @@ from openraw_studio.decision.auto_adjust import (
     AutoAdjustSuggestion,
     suggest_auto_adjustments_for_photo,
 )
+from openraw_studio.decision.color_noise import suggest_color_noise_for_photo
 from openraw_studio.raw.native.interactive import prepare_interactive_photo
 from openraw_studio.export.formats import export_display_name, normalize_export_format, validate_export_quality
 from openraw_studio.pipeline.batch import BatchItemResult, BatchResult, run_batch_export
@@ -690,6 +691,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.session_store = SessionStore(session_dir)
             self.edit_after_id = None
             self.last_auto_suggestion = None
+            self.last_noise_suggestion = None
             self.pan_origin = None
             self.pan_offset = [0.0, 0.0]
             self.callbacks = queue.SimpleQueue()
@@ -987,6 +989,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.pan_offset = [0.0, 0.0]
             self.last_auto_suggestion = None
             self.auto_summary_var.set("")
+            self.last_noise_suggestion = None
             self.current_can_preview = None
             self.current_can_render = None
             self.source_var.set(source.name)
@@ -1351,6 +1354,50 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.color_noise_var.set(0.0)
             self._sync_adjustment_labels()
             self._commit_edit()
+
+        def _auto_color_noise(self) -> None:
+            if self.is_busy or not self.current_can_render or self.source_path is None:
+                return
+            self._commit_edit()
+            self.run_counter += 1
+            self.last_noise_suggestion = None
+            self._set_busy(True)
+            self.status_var.set("Analyzing color noise...")
+            threading.Thread(
+                target=self._auto_color_noise_worker,
+                args=(self.run_counter, self.source_path, self._current_overrides()),
+                daemon=True,
+            ).start()
+
+        def _auto_color_noise_worker(self, run_id, source, adjustments) -> None:
+            try:
+                photo = self.live_worker.get_prepared_photo(source)
+                if photo is None:
+                    photo = prepare_interactive_photo(self.pipeline.raw_processor, source)
+                result = suggest_color_noise_for_photo(photo, adjustments)
+            except (PipelineError, OSError, ValueError, RuntimeError, NotImplementedError) as exc:
+                message = _friendly_error_message(exc)
+                self._post(lambda: self._show_error(message, run_id=run_id))
+                return
+            self._post(lambda: self._apply_auto_color_noise(result, run_id=run_id))
+
+        def _apply_auto_color_noise(self, result, *, run_id) -> None:
+            if run_id != self.run_counter:
+                return
+            self.last_noise_suggestion = result
+            self._set_busy(False)
+            if result.strength is None:
+                self.status_var.set({
+                    "native-samples-unavailable": "Native color-noise analysis unavailable for this file",
+                    "insufficient-samples": "Not enough reliable noise samples; settings unchanged",
+                    "no-safe-benefit": "No verified noise improvement; settings unchanged",
+                }[result.status])
+                return
+            self.color_noise_var.set(result.strength)
+            self._sync_adjustment_labels()
+            self._commit_edit()
+            self.status_var.set(f"Color noise: {result.strength * 100:.0f}")
+            self._schedule_live_preview()
 
         def _auto_adjust(self) -> None:
             if self.is_busy or not self.current_can_render:
@@ -1907,6 +1954,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                 else "disabled"
             )
             self.auto_adjust_button.configure(state=render_state)
+            self.auto_color_noise_button.configure(state=render_state)
             self.zoom_combo.configure(values=("Fit", "2x", "4x", "100%", "200%") if can_render else ("Fit", "2x", "4x"))
             self.preview_button.configure(state=preview_state)
             self.process_button.configure(state=render_state)

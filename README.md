@@ -134,6 +134,9 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - Optional `Detail > Color noise` control for rendered chroma noise, with GPU/CPU
   fallback, live preview, undo/redo, saved edits, and JPEG/TIFF export. It defaults
   to off; Auto preserves the manual setting instead of guessing a noise level.
+- Separate `Auto color noise` wand button beside the Detail slider. It checks
+  retained native Nikon samples at the current tones, applies a bounded amount
+  only after validating benefit, and leaves settings unchanged without evidence.
 - Supported compressed Nikon Auto also checks bounded original-size samples with
   the export renderer, catching some small highlights/noisy shadows hidden by
   preview averaging. Sampling is not an exhaustive full-image quality guarantee.
@@ -168,11 +171,14 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - Broad proprietary RAW rendering support is not implemented yet
 - TIFF export is currently 8-bit sRGB; 16-bit linear/working-space TIFF is not implemented yet
 - QC currently checks rendered 8-bit preview clipping only; sensor-domain
-  headroom, sharpness, noise, and color-accuracy checks are not implemented yet
+  headroom, sharpness, calibrated noise, and color-accuracy checks are not implemented yet
 - No AI model weights included
 - Color-noise reduction is a local filter on rendered RGB8, not RAW sensor-domain,
   luminance, ISO-adaptive, or AI denoise. Fine low-contrast color texture can soften;
   larger color blotches and luminance grain remain. Inspect at 100%/200%.
+- Auto color noise is sampled rendered-chroma advice, not a calibrated noise
+  model or semantic texture recognition. It currently requires native compressed
+  Nikon samples; generic DNG and preview-only files do not gain automatic advice.
 - Auto is a deterministic luminance/color heuristic, not semantic AI or
   sensor highlight recovery. It cannot reconstruct clipped detail.
 - MHC is linear gradient-corrected interpolation, not edge-adaptive demosaic or
@@ -313,6 +319,12 @@ Color noise is a 0-100 control in `Adjust > Detail`; its recipe field is
 It preserves rendered luminance while filtering local color differences. Fit
 remains a fast proxy; native inspection uses the same filter as full-size export.
 The CLI accepts `--color-noise 0.75` on `process` and `batch`.
+The wand button beside the Color noise value runs `Auto color noise` independently
+of tonal Auto. It evaluates the current tones with filtering temporarily off,
+then changes only the color-noise amount. A low-noise result sets zero; missing
+samples or unverified benefit leave the current amount unchanged. Accepted values
+participate in undo/redo, saved edits, and export just like a manual slider edit.
+The toolbar Auto and batch Auto continue to preserve your chosen amount.
 Nikon embedded
 previews are currently extracted as camera-authored JPEGs without applying
 those adjustments yet.

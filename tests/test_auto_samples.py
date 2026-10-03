@@ -43,6 +43,7 @@ class NativeAutoSampleTests(unittest.TestCase):
         left, top, _, _ = _render_crop(decoded)
         for edits in (
             {},
+            {"color_noise": .75},
             {
                 "exposure": 1.3,
                 "warmth": -0.4,
@@ -131,7 +132,9 @@ class NativeAutoSampleTests(unittest.TestCase):
                     )
                 )
             self.assertLessEqual(len(samples.locations), 128)
-            self.assertLessEqual(len(samples.decoded.raw_bytes), 128 * 36 * 36 * 2)
+            self.assertLessEqual(len(samples.decoded.raw_bytes), 128 * 40 * 40 * 2)
+            self.assertLessEqual(samples.grid_count, 64)
+            self.assertEqual(samples.source_size, (512, 384))
             self.assertNotEqual(samples.decoded.raw_bytes, data)
             self.assertEqual(value.raw_bytes, data)
 

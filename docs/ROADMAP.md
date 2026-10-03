@@ -4,7 +4,7 @@
 
 Implemented: photo-first editor, continuous GPU/CPU preview, guarded Auto with
 strength control, original RAW comparison, undo/redo, local edit retention,
-manual color-noise reduction, native-pixel 100%/200% inspection, JPEG/TIFF export, and cancellable per-photo
+manual and sampled Auto color-noise reduction, native-pixel 100%/200% inspection, JPEG/TIFF export, and cancellable per-photo
 batch modes. Supported compressed
 Nikon paths include F-series lossless, 12-bit D20 non-split (verified on 1 J5),
 and the verified Z f HE* 14-bit profile with approximate nonlinear mapping.
@@ -16,7 +16,29 @@ and sensor/luminance denoise. Further first-use initialization and broader verif
 also remain open.
 Semantic portrait/scene AI and mobile remain later phases.
 
-Latest verified increment: optional `Adjust > Detail > Color noise` filters
+Latest verified increment: a separate `Auto color noise` wand command analyzes
+retained native Nikon regions at the current tones. It changes only the noise
+amount, requires measured benefit and tone/color guards, and retains existing
+settings when evidence is insufficient. It is not semantic texture recognition,
+a calibrated sensor-noise model, or automatic denoise in toolbar/batch Auto.
+All 427 tests pass with GPU and CPU-only (four GPU-only skips). Across 26 private
+D500/Z f/1 J5 captures, advice agrees between CPU/GPU and all sampled pixels match
+full export. The 23 existing tonal Auto suggestions remain unchanged. At five
+tone settings per photo (130 cases), all 15 nonzero recommendations pass the
+full-size clipping/shadow budgets; originals are unchanged. Compact-window
+workflows verify accepted, zero, abstained, and unavailable results, undo/redo,
+saved edits, JPEG/TIFF, and stale-result rejection. Noise advice takes 0.27 s for
+the D500 high-ISO CPU example and 0.20 s for the Z f GPU example. These are local
+measurements, not universal latency or full-image quality guarantees. The visible
+improvement remains mild; luminance grain and large color blotches are unresolved.
+The refreshed local EXE verifies positive and abstained advice, matching recipes
+and exact native-detail pixels, with unchanged originals. Cached CPU advice is
+0.15 s; two GPU samples take 0.06-0.08 s, excluding import and EXE startup. First
+CPU use takes 0.65 s. No public ZIP or installer was generated or released.
+
+### Earlier Verification
+
+Optional `Adjust > Detail > Color noise` filters
 rendered color speckles on GPU, compiled CPU, or the NumPy fallback. Zero is an
 exact bypass and the default for old recipes. History, local saved edits,
 JPEG/TIFF, native inspection, and batch modes retain the setting; Auto preserves
@@ -39,8 +61,6 @@ The refreshed local EXE verifies saved amounts, exact native-detail pixels,
 unchanged originals, and cached CPU compilation. With color noise at 75, warm
 export measures 4.48 s D500 CPU and 1.64 s Z f GPU. First-use compilation still
 adds latency; no public ZIP or installer was generated or released.
-
-### Earlier Verification
 
 Supported compressed Nikon full-size export and
 100%/200% inspection use MHC gradient-corrected demosaic on GPU, compiled CPU,

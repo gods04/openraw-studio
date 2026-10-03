@@ -418,6 +418,12 @@ def build_workspace(app, filedialog, messagebox):
         row = ttk.Frame(parent)
         row.pack(fill="x")
         ttk.Label(row, text=title, style="Panel.TLabel").pack(side="left")
+        if key == "color_noise":
+            app.auto_color_noise_button = button(
+                row, "wand-sparkles", "Auto color noise", app._auto_color_noise,
+                disabled=True,
+            )
+            app.auto_color_noise_button.pack(side="right", padx=(4, 0))
         ttk.Label(
             row, textvariable=getattr(app, key + "_label_var"), style="Muted.TLabel"
         ).pack(side="right")
