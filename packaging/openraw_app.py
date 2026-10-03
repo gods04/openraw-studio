@@ -24,6 +24,7 @@ def smoke_test(source: Path, output: Path, *, color_noise=0.0, auto_color_noise=
         compiled_he,
         compiled_he_transform,
         compiled_tone,
+        he_cpu,
     )
     from openraw_studio.raw.native.detail import prepare_detail_photo
     from openraw_studio.raw.native.interactive import prepare_interactive_photo
@@ -52,6 +53,8 @@ def smoke_test(source: Path, output: Path, *, color_noise=0.0, auto_color_noise=
         report["compiled_he_decoder"] = bool(
             getattr(compiled_he.decode, "signatures", [])
         )
+        report["he_aot_available"] = he_cpu.extension is not None
+        report["he_aot_import_error"] = he_cpu.import_error
         report["he_decoder_fallback_reason"] = compiled_he.last_error
         report["he_decoder_disk_cache_disabled"] = compiled_he.cache_disabled_reason is not None
         report["compiled_he_transforms"] = {

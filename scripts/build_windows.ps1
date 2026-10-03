@@ -47,6 +47,9 @@ try {
     & $PythonExe -m pip install -e ".[packaging]"
     if ($LASTEXITCODE -ne 0) { throw "Could not install packaging dependencies." }
 
+    & $PythonExe -c "from openraw_studio.raw.native import he_cpu; assert he_cpu.extension is not None, he_cpu.import_error"
+    if ($LASTEXITCODE -ne 0) { throw "The Windows app requires the HE CPU extension. Install Visual Studio C++ Build Tools and rebuild." }
+
     if (-not $SkipTests) {
         Write-Host "Running tests before packaging..."
         & $PythonExe -m unittest discover -s tests

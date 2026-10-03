@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import numpy as np
 
-from openraw_studio.raw.native import compiled_he
+from openraw_studio.raw.native import compiled_he, he_cpu
 from openraw_studio.raw.native.he import (
     BitReader,
     HeEntropyDecoder,
@@ -168,7 +168,7 @@ class HeEntropyTests(unittest.TestCase):
     def test_fallback_when_compiler_unavailable(self):
         header = synthetic_header()
         block, _, coefficients = encode_precinct(header)
-        with patch.object(compiled_he, "decode", None):
+        with patch.object(he_cpu, "extension", None), patch.object(compiled_he, "decode", None):
             result = HeEntropyDecoder(header).decode(block)
         for actual, expected in zip(result.coefficients, coefficients):
             np.testing.assert_array_equal(actual, expected)
@@ -177,7 +177,7 @@ class HeEntropyTests(unittest.TestCase):
         if compiled_he.njit is None:
             self.skipTest("Numba unavailable")
         arrays = (b"\x80", b"", b"", b"")
-        with patch.object(compiled_he, "decode", side_effect=OSError("cache unavailable")), patch.object(
+        with patch.object(he_cpu, "extension", None), patch.object(compiled_he, "decode", side_effect=OSError("cache unavailable")), patch.object(
             compiled_he, "njit", return_value=lambda function: function
         ):
             lengths, values = compiled_he.decode_packet(arrays, (1,), (0,), (np.zeros(1, np.uint8),))

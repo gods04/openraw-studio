@@ -27,6 +27,14 @@ jobs:
       - name: Run tests
         run: python -m unittest discover -s tests
 
+      - name: Verify prebuilt HE CPU kernels
+        run: python -c "from openraw_studio.raw.native import he_cpu; assert he_cpu.extension is not None, he_cpu.import_error"
+
+      - name: Run HE tests without the optional extension
+        env:
+          OPENRAW_HE_AOT: "off"
+        run: python -m unittest discover -s tests -p 'test_nikon_he*.py'
+
       - name: Check CLI entry point
         run: |
           openraw --version

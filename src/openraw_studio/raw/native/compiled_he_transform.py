@@ -1,8 +1,10 @@
-"""Optional JIT for OpenRAW's HE synthesis math, with NumPy fallback at callers."""
+"""Prebuilt/JIT HE synthesis math, with NumPy fallback at callers."""
 
 from __future__ import annotations
 
 import numpy as np
+
+from . import he_cpu
 
 try:
     from numba import njit
@@ -151,6 +153,8 @@ def _run(name, *args):
 
 
 def horizontal_rows(precinct, width):
+    if he_cpu.extension is not None:
+        return he_cpu.horizontal_rows(precinct, width)
     if kernels["horizontal"] is None:
         return None
     return _run(
@@ -161,4 +165,6 @@ def horizontal_rows(precinct, width):
 
 
 def linear_color(components, curve):
+    if he_cpu.extension is not None:
+        return he_cpu.linear_color(components, curve)
     return _run("color", components, curve)

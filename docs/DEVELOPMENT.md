@@ -1140,3 +1140,48 @@ execution, with unchanged originals. CPU advice takes 0.65 s on first use and
 3.91 s for the cached high-ISO CPU case and 1.28/1.66 s for those GPU cases.
 No compiler/cache fallback occurs. The bundled wand asset matches the source;
 the existing optional TBB warning remains. No public ZIP/installer was produced.
+
+### Prebuilt HE CPU Kernels
+
+`raw/native/_he_cpu.cpp` compiles OpenRAW's existing packet, horizontal synthesis,
+and linear-color arithmetic ahead of time. `he_cpu.py` supplies owned output
+arrays through the Python buffer protocol, without a NumPy C-ABI dependency or
+third-party RAW decoder. The integer operations, profile guards, and approximate
+Z f linearization curve are unchanged. Wavelet work rows are reused; color
+conversion keeps the existing bounded tiles and source-derived bottom halo.
+
+The binary interface validates native-endian types, alignment, dimensions,
+contiguity, writable outputs, non-aliasing, band sizes, and coefficient limits.
+Packet parsing still rejects truncation, excessive unary codes, and nonzero
+padding. CPU loops release the GIL, own their scratch memory, and restore the
+GIL before reporting errors or releasing buffer exports. Corrupt-data errors
+propagate, never triggering a quieter fallback. Absent/unloadable extensions
+retain the existing Numba and NumPy/Python paths. Source builds may omit the
+extension; Windows packaging and CI require it and also test the fallback.
+
+All 445 tests pass on GPU and CPU-only (four GPU-only skips). HE tests also pass
+with `OPENRAW_HE_AOT=off`, and from a pure-Python wheel built with
+`OPENRAW_BUILD_HE_CPU=off` (eight extension-specific skips). Added cases cover
+exact reference pixels, padded coefficients, odd bands, int32 extremes, readonly
+and unsafe buffers, output aliasing, corrupt metadata, concurrent calls, and
+buffer-export cleanup after errors. Nine private Z f sensor hashes match the
+previous implementation exactly. Seven public Nikon samples pass the isolated
+reference audit, retaining the existing HE nonlinear/linear accuracy bounds.
+
+Three interleaved fresh-process trials on one private 24 MP Z f HE capture,
+with new Numba caches and integrity-check-warmed filesystem data, measure median
+decode at 1.60 s versus 3.71 s with JIT. In-process warm decode is 1.31 s versus
+1.23 s: this primarily removes startup compilation, not every processing cost.
+The actual Tk GPU benchmark measures first RAW preview at 2.78 s, median
+slider-to-display at 47 ms, 49 displayed frames for 50 drag changes, and full-size
+JPEG export at 1.45 s. These are local sample timings, not universal guarantees.
+
+Compact HE/GPU and D500/CPU workflows pass Auto, color-noise advice, history,
+comparison, panning, session restoration, JPEG, and TIFF checks. The refreshed
+Windows EXE includes the verified binary: HE/GPU preparation takes 2.31 s versus
+4.18 s with the extension disabled, both using new Numba caches; export is
+1.53 s either way. HE*/CPU preparation/export measure 2.56/2.83 s. These exclude
+EXE startup. All three frozen recipes and native-detail images match source
+execution exactly. Original hashes are unchanged, and no photos, private reports,
+rawpy, or decoder oracle are bundled/committed. The optional TBB warning remains;
+sequential kernels do not use it. No public ZIP or installer was released.

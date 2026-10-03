@@ -15,7 +15,7 @@ from test_nikon_he_entropy import encode_precinct, frame_stream, synthetic_heade
 
 from openraw_studio.pipeline.interfaces import PipelineRequest
 from openraw_studio.pipeline.local import LocalPhotoPipeline
-from openraw_studio.raw.native import compiled_he
+from openraw_studio.raw.native import compiled_he, he_cpu
 from openraw_studio.raw.native.dng import DngMetadataReader
 from openraw_studio.raw.native.he import HeFormatError, read_header
 from openraw_studio.raw.native.he_transform import (
@@ -119,7 +119,7 @@ class NativeHeTests(unittest.TestCase):
             self.assertFalse(can_decode_nikon_34713_lossless(metadata))
             self.assertTrue(can_decode_nikon_34713_lossless(metadata, source))
             fast = decode_nikon_34713_lossless(source)
-            with patch.object(compiled_he, "decode", None):
+            with patch.object(he_cpu, "extension", None), patch.object(compiled_he, "decode", None):
                 slow = decode_nikon_34713_lossless(source)
             self.assertEqual(fast.raw_bytes, slow.raw_bytes)
             self.assertEqual(fast.storage_layout, "nikon-he-star-strips" if mode == 14 else "nikon-he-strips")

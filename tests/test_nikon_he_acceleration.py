@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 import numpy as np
 from test_nikon_he_entropy import encode_precinct, frame_stream, synthetic_header
 
-from openraw_studio.raw.native import compiled_he_transform, he_transform
+from openraw_studio.raw.native import compiled_he_transform, he_cpu, he_transform
 from openraw_studio.raw.native.he import (
     EntropyPrecinct,
     HeEntropyDecoder,
@@ -108,7 +108,7 @@ class HeAccelerationTests(unittest.TestCase):
             self.skipTest("Numba unavailable")
         block = self.random_precinct(72, 5)
         expected = horizontal_rows(block, 72)
-        with patch.dict(compiled_he_transform.kernels), patch.dict(
+        with patch.object(he_cpu, "extension", None), patch.dict(compiled_he_transform.kernels), patch.dict(
             compiled_he_transform.last_errors
         ), patch.dict(compiled_he_transform.cache_disabled_reasons):
             compiled_he_transform.kernels["horizontal"] = Mock(side_effect=OSError("cache unavailable"))
@@ -177,7 +177,7 @@ class HeAccelerationTests(unittest.TestCase):
         block, _, _ = encode_precinct(synthetic_header())
         batch = [HeEntropyDecoder(synthetic_header()).decode(block)]
         components = np.arange(4 * 130 * 8, dtype=np.int32).reshape(4, 130, 8) - 2000
-        with patch.dict(compiled_he_transform.kernels, horizontal=None, color=None):
+        with patch.object(he_cpu, "extension", None), patch.dict(compiled_he_transform.kernels, horizontal=None, color=None):
             np.testing.assert_array_equal(_horizontal_batch(batch, 64)[:, 0], horizontal_rows(batch[0], 64))
             np.testing.assert_array_equal(
                 reconstruct_zf_he_bayer(components), linearize_zf_he_bayer(_color_lift_chunk(components))
@@ -189,7 +189,7 @@ class HeAccelerationTests(unittest.TestCase):
         values = np.zeros((4, 2, 2), np.int32)
         curve = he_transform._zf_linearization_curve()
         expected = linearize_zf_he_bayer(_color_lift_chunk(values))
-        with patch.dict(compiled_he_transform.kernels), patch.dict(
+        with patch.object(he_cpu, "extension", None), patch.dict(compiled_he_transform.kernels), patch.dict(
             compiled_he_transform.last_errors
         ), patch.dict(compiled_he_transform.cache_disabled_reasons):
             compiled_he_transform.kernels["color"] = Mock(side_effect=OSError("cache unavailable"))

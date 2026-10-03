@@ -94,8 +94,18 @@ If no usable GPU/driver is present, or GPU rendering fails, processing falls bac
 to the CPU. No driver installation or GPU selection is required inside the app.
 The preview status identifies the active backend.
 
-Nikon lossless and verified HE/HE* decoding can compile OpenRAW's own loops using Numba. The first
-launch may take longer while machine code and GPU kernels are initialized/cached.
+The Windows app includes prebuilt OpenRAW CPU kernels for verified HE/HE*
+entropy decoding, horizontal synthesis, and color reconstruction. These do not
+need first-use compilation and do not use another application's RAW decoder.
+Source installs build the optional extension when a C++ compiler is available;
+otherwise HE uses the existing Numba and NumPy/Python fallback paths. Building
+the Windows app itself requires Visual Studio C++ Build Tools, but running the
+finished EXE does not. `OPENRAW_BUILD_HE_CPU=off` skips the extension build;
+`OPENRAW_HE_AOT=off` disables it at runtime for troubleshooting.
+
+Other CPU kernels, including Nikon lossless decoding, can compile OpenRAW's own
+loops using Numba. The first launch may still take longer while those kernels
+and GPU kernels are initialized/cached.
 The Windows bundle keeps its compiled kernels under
 `%LOCALAPPDATA%\OpenRAW Studio\numba`, so restarting does not normally require
 recompilation. Updating the app can require a fresh compile. If the cache is

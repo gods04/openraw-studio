@@ -1,8 +1,10 @@
-"""Optional compilation of OpenRAW's experimental HE packet bit loops."""
+"""Prebuilt or JIT compilation of OpenRAW's guarded HE packet bit loops."""
 
 from __future__ import annotations
 
 import numpy as np
+
+from . import he_cpu
 
 last_error = None
 cache_disabled_reason = None
@@ -98,6 +100,8 @@ except RuntimeError:
 def decode_packet(streams, groups, thresholds, previous):
     """Return None only when compilation is unavailable, never on corrupt data."""
     global decode, last_error, cache_disabled_reason
+    if he_cpu.extension is not None:
+        return he_cpu.decode_packet(streams, groups, thresholds, previous)
     if decode is None:
         return None
     arguments = (
