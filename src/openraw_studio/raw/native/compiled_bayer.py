@@ -1,8 +1,10 @@
-"""Optional bounded-memory compilation of native bilinear Bayer interpolation."""
+"""Optional bounded-memory compilation of native Bayer interpolation."""
 
 from __future__ import annotations
 
 import numpy as np
+
+from openraw_studio.raw.native.malvar import STANDARD_BAYER
 
 last_error = None
 cache_disabled_reason = None
@@ -61,16 +63,76 @@ def _demosaic(source, crop, start, end, pattern, black, white, gains):
     return output
 
 
+def _sample(source, crop, y, x, pattern, black, white, gains):
+    left, top, width, height = crop
+    y, x = abs(y), abs(x)
+    if y >= height:
+        y = abs(2 * height - 2 - y)
+    if x >= width:
+        x = abs(2 * width - 2 - x)
+    position = ((y + top) & 1) * 2 + ((x + left) & 1)
+    value = (np.float32(source[y + top, x + left]) - black[position]) / (white - black[position])
+    return min(np.float32(1), max(np.float32(0), value)) * gains[pattern[position]]
+
+
+if njit is not None:
+    _sample = njit(inline="always")(_sample)
+
+
+def _malvar(source, crop, start, end, pattern, black, white, gains):
+    left, top, width, _height = crop
+    output = np.empty((end - start, width, 3), dtype=np.float32)
+    for y in range(start, end):
+        for x in range(width):
+            center = _sample(source, crop, y, x, pattern, black, white, gains)
+            horizontal = (_sample(source, crop, y, x-1, pattern, black, white, gains)
+                          + _sample(source, crop, y, x+1, pattern, black, white, gains))
+            vertical = (_sample(source, crop, y-1, x, pattern, black, white, gains)
+                        + _sample(source, crop, y+1, x, pattern, black, white, gains))
+            far_x = (_sample(source, crop, y, x-2, pattern, black, white, gains)
+                     + _sample(source, crop, y, x+2, pattern, black, white, gains))
+            far_y = (_sample(source, crop, y-2, x, pattern, black, white, gains)
+                     + _sample(source, crop, y+2, x, pattern, black, white, gains))
+            diagonal = ((_sample(source, crop, y-1, x-1, pattern, black, white, gains)
+                         + _sample(source, crop, y-1, x+1, pattern, black, white, gains))
+                        + _sample(source, crop, y+1, x-1, pattern, black, white, gains)
+                        + _sample(source, crop, y+1, x+1, pattern, black, white, gains))
+            position = ((y + top) & 1) * 2 + ((x + left) & 1)
+            channel = pattern[position]
+            if channel == 1:
+                along_x = (np.float32(5)*center + np.float32(4)*horizontal - diagonal - far_x + np.float32(.5)*far_y) / np.float32(8)
+                along_y = (np.float32(5)*center + np.float32(4)*vertical - diagonal - far_y + np.float32(.5)*far_x) / np.float32(8)
+                red_horizontal = pattern[position ^ 1] == 0
+                red, green, blue = (along_x if red_horizontal else along_y), center, (along_y if red_horizontal else along_x)
+            else:
+                green = (np.float32(4)*center + np.float32(2)*(horizontal + vertical) - (far_x + far_y)) / np.float32(8)
+                opposite = (np.float32(6)*center + np.float32(2)*diagonal - np.float32(1.5)*(far_x + far_y)) / np.float32(8)
+                red, blue = (center if channel == 0 else opposite), (center if channel == 2 else opposite)
+            output[y-start, x, 0] = red
+            output[y-start, x, 1] = green
+            output[y-start, x, 2] = blue
+    return output
+
+
 try:
     demosaic = njit(cache=True, nogil=True)(_demosaic) if njit is not None else None
 except RuntimeError:
     demosaic = njit(nogil=True)(_demosaic) if njit is not None else None
 
+try:
+    malvar_demosaic = njit(cache=True, nogil=True)(_malvar) if njit is not None else None
+except RuntimeError:
+    malvar_demosaic = njit(nogil=True)(_malvar) if njit is not None else None
 
-def render_chunk(source, crop, start, end, pattern, black, white, gains):
+
+def render_chunk(source, crop, start, end, pattern, black, white, gains, *, method="bilinear"):
     """Interpolate a validated fullres.py request, or return None for fallback."""
-    global demosaic, last_error, cache_disabled_reason
-    if demosaic is None:
+    global demosaic, malvar_demosaic, last_error, cache_disabled_reason
+    if method not in ("bilinear", "malvar") or (method == "malvar" and tuple(pattern) not in STANDARD_BAYER):
+        raise ValueError("MHC requires a standard Bayer layout and a known interpolation method")
+    kernel = malvar_demosaic if method == "malvar" else demosaic
+    implementation = _malvar if method == "malvar" else _demosaic
+    if kernel is None:
         return None
     source = np.ascontiguousarray(source, dtype=np.uint16).view()
     left, top, width, height = crop
@@ -89,15 +151,21 @@ def render_chunk(source, crop, start, end, pattern, black, white, gains):
     )
     try:
         try:
-            output = demosaic(*arguments)
+            output = kernel(*arguments)
         except OSError as cache_error:
-            uncached = njit(nogil=True)(_demosaic)
+            uncached = njit(nogil=True)(implementation)
             output = uncached(*arguments)
-            demosaic = uncached
+            if method == "malvar":
+                malvar_demosaic = uncached
+            else:
+                demosaic = uncached
             cache_disabled_reason = f"{type(cache_error).__name__}: {cache_error}"
     except (NumbaError, OSError, RuntimeError) as error:
         last_error = f"{type(error).__name__}: {error}"
-        demosaic = None
+        if method == "malvar":
+            malvar_demosaic = None
+        else:
+            demosaic = None
         return None
     last_error = None
     return output

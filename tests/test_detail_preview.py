@@ -66,7 +66,8 @@ class DetailPreviewTests(unittest.TestCase):
             with patch("openraw_studio.raw.native.nikon.render_bayer_full_resolution_rgb8", wraps=render_bayer_full_resolution_rgb8) as render:
                 result = photo.render_region({}, (5, 7, 3, 4))
             self.assertEqual(result.size, (3, 4))
-            self.assertEqual(render.call_args.kwargs["crop"], (6, 8, 5, 6))
+            self.assertEqual(render.call_args.kwargs["crop"], (5, 7, 7, 8))
+            self.assertEqual(render.call_args.kwargs["demosaic"], "malvar")
 
     def test_generic_dng_detail_matches_existing_full_resolution_pipeline(self):
         with tempfile.TemporaryDirectory() as folder:

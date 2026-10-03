@@ -27,10 +27,10 @@ def sensor_region(region, size, orientation):
     }.get(orientation, region)
 
 
-def region_with_halo(crop, region):
-    """Expand by one active pixel for export-equivalent bilinear neighbors."""
+def region_with_halo(crop, region, *, radius=1):
+    """Include active neighbors required by the reconstruction filter."""
     left, top, width, height = crop
     x, y, rw, rh = region
-    x0, y0 = max(0, x - 1), max(0, y - 1)
-    x1, y1 = min(width, x + rw + 1), min(height, y + rh + 1)
+    x0, y0 = max(0, x - radius), max(0, y - radius)
+    x1, y1 = min(width, x + rw + radius), min(height, y + rh + radius)
     return (left + x0, top + y0, x1 - x0, y1 - y0), (x - x0, y - y0, x - x0 + rw, y - y0 + rh)

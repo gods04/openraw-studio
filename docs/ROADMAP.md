@@ -16,7 +16,25 @@ and denoise. Further first-use initialization and broader verified HE profiles
 also remain open.
 Semantic portrait/scene AI and mobile remain later phases.
 
-Latest verified increment: highlight-limited Auto tries a bounded shadow lift
+Latest verified increment: supported compressed Nikon full-size export and
+100%/200% inspection use MHC gradient-corrected demosaic on GPU, compiled CPU,
+and the NumPy fallback. Full-size renders for 26 D500/Z f/1 J5 captures match
+the reference within one 8-bit level; native inspection matches export pixels.
+Auto adds bounded native-sample checks, addressing small highlights and high-ISO
+shadow loss hidden by proxy averaging. All 23 selected D500/Z f files pass the
+existing clipping/shadow budgets at four strengths and three resolutions (276
+checks). Seven suggestions change, 16 retain their settings, and originals are
+unchanged. All 397 tests pass on GPU and CPU (three GPU-only skips), alongside
+editing, JPEG/TIFF export, native inspection, and batch workflows. This is linear
+detail reconstruction and sampled tonal protection, not denoise, semantic AI,
+exhaustive quality validation, or broader RAW support. Fit previews stay fast.
+The refreshed local EXE also verifies Auto, export, native inspection, and the
+two corrected outliers with unchanged originals. Warm D500 CPU export is 2.37 s;
+Z f GPU export is 1.49 s on this machine. First-use compilation still adds delay.
+
+### Earlier Verification
+
+Highlight-limited Auto tries a bounded shadow lift
 and requires measurable benefit at both proxy resolutions before accepting it.
 Low-key and predominantly dark scenes are excluded. Six of the 23 selected
 D500/Z f suggestions gain shadow detail; the other 17 retain their settings.
@@ -29,8 +47,6 @@ not object recognition, ISO-aware denoise, or general image-quality completion.
 The refreshed EXE verifies matching Auto settings, full-size export, and native
 inspection on D500 CPU and Z f GPU without modifying originals. Further quality
 work and broader verified Nikon support remain open.
-
-### Earlier Verification
 
 HE horizontal synthesis reuses bounded work buffers,
 reducing first-call compilation from 2.17 to 0.53 s in a controlled empty-cache

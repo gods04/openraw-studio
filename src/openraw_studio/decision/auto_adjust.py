@@ -168,7 +168,7 @@ class _RenderGuard:
 
 
 def suggest_auto_adjustments_for_photo(photo: InteractivePhoto) -> AutoAdjustSuggestion:
-    """Analyze a small linear proxy and validate against the prepared display photo."""
+    """Analyze a small linear proxy; validate display and available native samples."""
     analysis = photo.resized(256)
     original, _ = analysis.render({})
     detail = {}
@@ -177,6 +177,12 @@ def suggest_auto_adjustments_for_photo(photo: InteractivePhoto) -> AutoAdjustSug
             "detail_preview": photo.render({})[0],
             "render_detail": lambda values: photo.render(values)[0],
         }
+    native = getattr(photo, "native_samples", None)
+    if native is not None:
+        detail.update(
+            native_preview=native.render({}),
+            render_native=native.render,
+        )
     return suggest_auto_adjustments_from_preview(
         original, render=lambda values: analysis.render(values)[0],
         validation_strengths=(.7, .5, .25), **detail
@@ -194,6 +200,8 @@ def suggest_auto_adjustments_from_preview(
     render: Callable | None = None,
     detail_preview=None,
     render_detail: Callable | None = None,
+    native_preview=None,
+    render_native: Callable | None = None,
     validation_strengths: tuple[float, ...] = (),
 ) -> AutoAdjustSuggestion:
     """Analyze an unedited preview, optionally validating against the same renderer.
@@ -202,6 +210,8 @@ def suggest_auto_adjustments_from_preview(
     It must render from the original linear proxy, never from the edited preview.
     An optional finer-detail baseline/callback pair validates promising candidates
     without rendering every rejected candidate at the larger resolution.
+    Native samples can additionally catch detail/noise hidden by proxy averaging;
+    their biased brightness distribution never sets the scene's midtone target.
     Additional strength samples check the nonlinear exposure/highlight interaction
     when a candidate relies on highlight compression. Full strength is always checked.
     A highlight-limited result can receive bounded shadow refinement, measured on
@@ -210,6 +220,8 @@ def suggest_auto_adjustments_from_preview(
     """
     if (detail_preview is None) != (render_detail is None) or (render_detail is not None and render is None):
         raise ValueError("Detail validation requires a baseline, a detail renderer, and the analysis renderer")
+    if (native_preview is None) != (render_native is None) or (render_native is not None and render is None):
+        raise ValueError("Native validation requires a baseline, a native renderer, and the analysis renderer")
     if any(not np.isfinite(value) or not 0 < value <= 1 for value in validation_strengths):
         raise ValueError("Validation strengths must be finite and within (0, 1]")
     validation_strengths = tuple(dict.fromkeys(value for value in validation_strengths if value != 1))
@@ -342,10 +354,15 @@ def suggest_auto_adjustments_from_preview(
 
     primary = _RenderGuard(preview, render, preserve_midtones=exposure >= 0 and not low_key)
     guards = [primary]
+    prefixes = [""]
+    if render_native is not None:
+        guards.append(_RenderGuard(native_preview, render_native, preserve_midtones=False))
+        prefixes.append("native_")
     if render_detail is not None:
         guards.append(_RenderGuard(
             detail_preview, render_detail, preserve_midtones=exposure >= 0 and not low_key
         ))
+        prefixes.append("detail_")
 
     def tones_preserved(values, *, tolerance=0.01):
         return all(
@@ -385,7 +402,11 @@ def suggest_auto_adjustments_from_preview(
                 continue
             if (
                 highlights_preserved(candidate) and tones_preserved(candidate)
-                and all(guard.shadow_lift_useful(values, candidate) for guard in guards[1:])
+                and all(
+                    guard.shadow_lift_useful(values, candidate)
+                    for guard, prefix in zip(guards[1:], prefixes[1:])
+                    if prefix != "native_"
+                )
             ):
                 return candidate
         return values
@@ -460,8 +481,8 @@ def suggest_auto_adjustments_from_preview(
                 ("Lifted usable shadows after limiting global exposure.",) if shadows_refined else ()
             )
             metrics = primary.metrics(values)
-            if len(guards) > 1:
-                metrics.update({f"detail_{key}": value for key, value in guards[1].metrics(values).items()})
+            for guard, prefix in zip(guards[1:], prefixes[1:]):
+                metrics.update({f"{prefix}{key}": value for key, value in guard.metrics(values).items()})
             return replace(
                 suggestion,
                 **values,

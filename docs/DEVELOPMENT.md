@@ -811,3 +811,73 @@ unchanged originals, full-size export, and native inspection. Packaged Auto
 takes 0.55/0.61 s and export 2.61/1.40 s respectively. No public ZIP was generated
 or released. Further noise handling, demosaic, camera/gamut calibration, and
 support for unverified Nikon profiles remain unfinished.
+
+### Native MHC Detail and Auto Sampling
+
+Supported compressed Nikon full-size rendering now uses the 5x5 linear
+gradient-corrected filters from Malvar, He and Cutler (ICASSP 2004), implemented
+independently in NumPy, cached Numba CPU chunks, and OpenCL. The published method
+is linked in `raw/native/malvar.py`; no external RAW runtime or new dependency
+was added. Calibration applies position black levels and white balance/exposure
+before interpolation. The active-crop border reflects with Bayer phase intact.
+Native viewport rendering uses a two-pixel halo, preserving exact equality with
+the full render. CPU allocations remain row-chunk bounded. OpenCL validates the
+new kernel against the independent NumPy reference before first use; failures
+fall back without silently changing the interpolation method.
+
+Fit's fast linear proxy, generic DNG rendering, original sensor bytes, decoder
+support guards, and manual control ranges are unchanged. Existing Nikon recipes
+now produce different full-size pixels. MHC is not edge-adaptive interpolation,
+denoise, sensor highlight recovery, or a camera/gamut calibration improvement.
+Visual crops show less blocky false color in hair/fabric/building detail, while
+high-ISO noise and defocus remain. Do not describe these as restored lost detail.
+
+An initial 26-photo D500/Z f/1 J5 audit covered neutral, Auto70, and stress
+adjustments on full frames. CPU/GPU differ from the independent reference by at
+most one 8-bit level, with unchanged originals. It also exposed two Auto issues:
+the sea sample already lost too many small highlights with the preceding bilinear
+renderer (406/12,427 eligible channels); MHC lost 432/13,557. The high-ISO portrait
+newly crushed 1.282% of pixels compared with 0.313% using bilinear. Passing small
+proxy checks was insufficient, so these findings were not waived.
+
+`raw/native/auto_samples.py` packs at most 128 native patches with two-pixel halos
+into an independent, small Bayer atlas. It samples an 8x8 grid and each CFA
+plane's brightest site in up to 4x4 sectors, deduplicating aligned locations.
+Core patches are at most 32x32, retaining at most 331,776 raw bytes. Reflecting at
+the original crop and discarding atlas halos makes every sampled pixel match
+full-size export, including white-balance changes. The prepared display photo
+retains these samples, not a second full sensor buffer. No RAW is decoded again
+for candidate validation, and slider renders do not run the extra check.
+
+Auto checks these samples after the small analysis proxy and before the larger
+display proxy. Existing clipping/shadow budgets and intermediate strengths still
+apply. Bright patches are intentionally overrepresented, so native samples do
+not classify the scene, demand a median brightness, or decide whether shadow lift
+is useful. They only reject damaging tone candidates. This is sampled validation,
+not exhaustive coverage or a guarantee for arbitrary images/strengths.
+
+All 397 tests pass on GPU and CPU-only (three GPU-only skips). Added coverage
+includes published filter coefficients, all Bayer phases and tiny edges,
+calibration, fixed-buffer chunk seams, CPU/GPU/reference parity, cache/compiler
+fallback, native sample/export equality, bounded sample storage, hidden shadow
+loss, intermediate-strength clipping, and non-destructive preparation. All 23
+selected D500/Z f photos now pass full-size and 256/960-pixel checks at 25/50/70/100%
+Auto strength: 276 checks with unchanged originals. Seven suggestions change;
+16 retain prior settings. Both identified outliers now pass, without changing
+the thresholds. Private audit data/images remain ignored local output.
+
+Actual Tk D500 CPU and Z f GPU checks pass editing/history, JPEG/TIFF, and native
+inspection at compact window sizes; batch cancellation also passes. Auto measures
+0.76/0.94 s respectively. Separate live-preview runs measure 74/46 ms median
+slider latency and 2.44/1.44 s full-size export. These are different sample/backend
+measurements, not a direct hardware comparison or universal speed guarantee.
+
+The refreshed local EXE passes D500 CPU and Z f GPU Auto/export/native-detail
+checks with the same settings as source runs and unchanged originals. CPU Auto
+takes 2.12 s on the first new-kernel run, 0.70 s after restarting with its cache;
+warm export takes 2.37 s. Z f GPU Auto/export measure 0.80/1.49 s. Separate frozen
+checks reproduce the corrected high-ISO portrait and sea suggestions (Auto
+0.46 s CPU and 0.53 s GPU respectively). First-use RAW preparation/compilation
+remains visible latency, not an instant-open guarantee. The existing optional
+TBB packaging warning remains; these sequential kernels and frozen smokes pass
+without that library. No public ZIP or installer was generated or released.

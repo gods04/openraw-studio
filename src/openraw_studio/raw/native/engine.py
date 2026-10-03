@@ -60,7 +60,7 @@ class NativeRawProcessor:
                 "shadow_curve": "black-anchored-v0.2",
                 "nikon_highlights": "neutral-white-balance-ceiling-v0.1",
                 "packed_bayer_strips": "12-14-bit-row-aligned-v0.1",
-                "nikon_full_resolution_export": "chunked-bilinear-v0.1",
+                "nikon_full_resolution_export": "chunked-malvar-v0.2",
                 "nikon_fast_preview": "numpy-block-vectorized-v0.2",
                 "nikon_in_memory_decode_cache": "single-source-stat-validated-v0.1",
                 "nikon_decode_acceleration": "optional-numba-native-v0.1",

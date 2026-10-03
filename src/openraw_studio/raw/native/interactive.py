@@ -4,12 +4,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 from PIL import Image
 
 from openraw_studio.raw.native.acceleration import color_parameters, render_tone
 from openraw_studio.raw.native.nikon import _apply_exif_orientation, _render_crop
+
+if TYPE_CHECKING:
+    from openraw_studio.raw.native.auto_samples import NativeAutoSamples
 
 
 @dataclass
@@ -19,6 +23,7 @@ class InteractivePhoto:
     gains: tuple[float, float, float]
     orientation: int = 1
     linear_saturation: bool = False
+    native_samples: NativeAutoSamples | None = None
 
     def resized(self, max_dimension):
         """Derive an unedited scene-linear proxy, retaining color and orientation."""
@@ -100,8 +105,11 @@ def prepare_interactive_photo(processor, source: Path, *, max_dimension=960):
             else np.eye(3)
         )
         gains = decoded.white_balance.gains if decoded.white_balance else (1, 1, 1)
+        from openraw_studio.raw.native.auto_samples import prepare_native_auto_samples
+
         return InteractivePhoto(
-            pixels, np.asarray(matrix, dtype=np.float32), gains, decoded.orientation
+            pixels, np.asarray(matrix, dtype=np.float32), gains, decoded.orientation,
+            native_samples=prepare_native_auto_samples(decoded),
         )
 
     from openraw_studio.raw.native.color import (

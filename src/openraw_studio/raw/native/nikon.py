@@ -435,7 +435,7 @@ def render_decoded_nikon_34713_image(
         if quality != "full" or max_dimension is not None:
             raise ValueError("Detail regions require unscaled full-resolution rendering")
         region = sensor_region(region, crop[2:], decoded.orientation)
-        crop, region_box = region_with_halo(crop, region)
+        crop, region_box = region_with_halo(crop, region, radius=2)
     camera_matrix = (
         decoded.camera_profile.camera_to_linear_srgb
         if decoded.camera_profile is not None
@@ -463,6 +463,7 @@ def render_decoded_nikon_34713_image(
             highlights=highlights,
             shadows=shadows,
             saturation=saturation,
+            demosaic="malvar",
         )
         width, height, rgb = full.width, full.height, full.rgb_bytes
     elif quality == "fast":

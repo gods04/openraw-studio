@@ -31,10 +31,12 @@ float3 finish_color(float3 c, __global const float *p) {
     }
     return c;
 }
-float3 color(float3 c, __global const float *p) {
-    c *= (float3)(p[9],p[10],p[11]);
+float3 calibrated_color(float3 c, __global const float *p) {
     if (p[17] >= 0) c = fmin(c, (float3)(p[17]));
     return finish_color((float3)(dot(c,vload3(0,p)),dot(c,vload3(1,p)),dot(c,vload3(2,p))),p);
+}
+float3 color(float3 c, __global const float *p) {
+    return calibrated_color(c * (float3)(p[9],p[10],p[11]), p);
 }
 __kernel void tone(__global const float *src, __global uchar *dst, __global const float *p) {
     int i = get_global_id(0);
@@ -64,6 +66,37 @@ __kernel void bayer(__global const ushort *src, __global uchar *dst,
     }
     vstore3(convert_uchar3_sat_rte(color(rgb,p)*255.0f),i,dst);
 }
+float mhc_sample(__global const ushort *src, __global const float *p,
+    __global const int *cfa, __global const float *black,
+    int sw, int left, int top, int w, int h, float white, int y, int x) {
+    y=abs(y); x=abs(x);
+    if(y>=h) y=abs(2*h-2-y);
+    if(x>=w) x=abs(2*w-2-x);
+    int pos=((y+top)&1)*2+((x+left)&1);
+    return clamp(((float)src[(y+top)*sw+x+left]-black[pos])/(white-black[pos]),0.0f,1.0f)*p[9+cfa[pos]];
+}
+#define MHC(dy,dx) mhc_sample(src,p,cfa,black,sw,left,top,w,h,white,y+(dy),x+(dx))
+__kernel void malvar(__global const ushort *src, __global uchar *dst,
+    __global const float *p, __global const int *cfa, __global const float *black,
+    int sw, int left, int top, int w, int h, float white) {
+    int i=get_global_id(0), y=i/w, x=i%w;
+    float c=MHC(0,0), horizontal=MHC(0,-1)+MHC(0,1), vertical=MHC(-1,0)+MHC(1,0);
+    float far_x=MHC(0,-2)+MHC(0,2), far_y=MHC(-2,0)+MHC(2,0);
+    float diagonal=((MHC(-1,-1)+MHC(-1,1))+MHC(1,-1))+MHC(1,1);
+    int pos=((y+top)&1)*2+((x+left)&1), ch=cfa[pos];
+    float3 rgb;
+    if(ch==1) {
+        float along_x=(5.0f*c+4.0f*horizontal-diagonal-far_x+0.5f*far_y)/8.0f;
+        float along_y=(5.0f*c+4.0f*vertical-diagonal-far_y+0.5f*far_x)/8.0f;
+        rgb=cfa[pos^1]==0 ? (float3)(along_x,c,along_y) : (float3)(along_y,c,along_x);
+    } else {
+        float g=(4.0f*c+2.0f*(horizontal+vertical)-(far_x+far_y))/8.0f;
+        float opposite=(6.0f*c+2.0f*diagonal-1.5f*(far_x+far_y))/8.0f;
+        rgb=ch==0 ? (float3)(c,g,opposite) : (float3)(opposite,g,c);
+    }
+    vstore3(convert_uchar3_sat_rte(calibrated_color(rgb,p)*255.0f),i,dst);
+}
+#undef MHC
 """
 
 
@@ -123,6 +156,8 @@ class OpenClRenderer:
         self.program = cl.Program(self.context, _KERNELS).build()
         self.tone_kernel = cl.Kernel(self.program, "tone")
         self.bayer_kernel = cl.Kernel(self.program, "bayer")
+        self.malvar_kernel = cl.Kernel(self.program, "malvar")
+        self._malvar_validated = False
         self._cached_pixels = None
         self._pixel_buffer = None
 
@@ -152,13 +187,21 @@ class OpenClRenderer:
         self.cl.enqueue_copy(self.queue, output, destination).wait()
         return output
 
-    def bayer(self, raw_bytes, source_width, crop, pattern, black, white, params):
+    def bayer(self, raw_bytes, source_width, crop, pattern, black, white, params, *, method="bilinear"):
+        if method == "malvar" and not self._malvar_validated:
+            if not _validate_malvar_renderer(self):
+                raise RuntimeError("GPU MHC validation failed")
+            self._malvar_validated = True
+        return self._bayer(raw_bytes, source_width, crop, pattern, black, white, params, method=method)
+
+    def _bayer(self, raw_bytes, source_width, crop, pattern, black, white, params, *, method="bilinear"):
         left, top, width, height = crop
         output = np.empty((height, width, 3), dtype=np.uint8)
         destination = self.cl.Buffer(
             self.context, self.cl.mem_flags.WRITE_ONLY, output.nbytes
         )
-        self.bayer_kernel(
+        kernel = self.malvar_kernel if method == "malvar" else self.bayer_kernel
+        kernel(
             self.queue,
             (width * height,),
             None,
@@ -179,6 +222,22 @@ class OpenClRenderer:
 
 
 _local = threading.local()
+
+
+def _validate_malvar_renderer(renderer):
+    from openraw_studio.raw.native.malvar import demosaic_chunk
+
+    sample = np.random.default_rng(74).integers(0, 17000, (8, 10), dtype=np.uint16)
+    pattern, black, gains = (1, 2, 0, 1), (16, 32, 48, 64), (1.8, 1, 1.4)
+    crop = (1, 1, 8, 6)
+    params = color_parameters(((1.3,-.2,-.1),(-.1,1.2,-.1),(.1,-.2,1.1)), gains,
+                              highlights=-.3, shadows=.4, highlight_ceiling=1)
+    expected_camera = np.stack(demosaic_chunk(sample, crop, 0, 6, pattern, black, 16383, gains), axis=2)
+    calibrated = params.copy()
+    calibrated[9:12] = 1
+    expected = tone_cpu(expected_camera, calibrated)
+    actual = renderer._bayer(sample.tobytes(), 10, crop, pattern, black, 16383, params, method="malvar")
+    return actual.shape == expected.shape and np.max(np.abs(actual.astype(int) - expected.astype(int))) <= 1
 
 
 def _validate_tone_renderer(renderer):

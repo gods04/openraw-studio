@@ -69,7 +69,7 @@ def smoke_test(source: Path, output: Path) -> int:
             PipelineRequest(source, output, overrides=suggestion.as_overrides())
         )
         report["export_seconds"] = perf_counter() - started
-        report["compiled_cpu_bayer"] = bool(getattr(compiled_bayer.demosaic, "signatures", []))
+        report["compiled_cpu_bayer"] = bool(getattr(compiled_bayer.malvar_demosaic, "signatures", []))
         report["cpu_bayer_fallback_reason"] = compiled_bayer.last_error
         report["cpu_bayer_cache_disabled_reason"] = compiled_bayer.cache_disabled_reason
         report["export_size"] = [result.exports[0].width, result.exports[0].height]

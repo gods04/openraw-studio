@@ -76,7 +76,7 @@ Then import `sample-data\openraw-synthetic.DNG` or
   0x0096 compression-table and 0x008c curve/table detection
 - Native Nikon 34713 lossless Huffman sensor decoding with optional Numba
   compilation of OpenRAW's own decoder, MakerNote black levels with inactive-border
-  fallback, and full-resolution bilinear RGB export for supported files
+  fallback, and full-resolution RGB export for supported files
 - Native Nikon 1 J5 12-bit D20 non-split compressed NEF decoding, linearization,
   corrected black levels, exact camera profile, and full-size JPEG/TIFF export
 - Native Nikon Z f HE* 14-bit decoding for the verified profile, with real RAW
@@ -91,6 +91,8 @@ Then import `sample-data\openraw-synthetic.DNG` or
   the NumPy renderer remains available if compilation fails
 - Chunked CPU compilation of full-resolution Bayer interpolation and color for
   supported compressed Nikon exports and native-pixel inspection
+- MHC gradient-corrected interpolation for full-size Nikon export and native
+  detail, with matching GPU, compiled CPU, and NumPy paths; the Fit proxy stays fast
 - Vectorized Nikon preview lookup construction and bounded-memory RGB histogram/QC,
   retaining the scalar fallback and existing preview/clipping behavior
 - Camera-aware Nikon D500, 1 J5, and Z f rendering with standard as-shot white balance, an
@@ -129,6 +131,9 @@ Then import `sample-data\openraw-synthetic.DNG` or
   joint exposure/contrast/highlight recovery retains useful corrections on difficult dim scenes
 - Highlight-limited Auto can add a bounded shadow lift, checking visible benefit
   and clipping at both preview sizes; low-key and predominantly dark scenes are excluded
+- Supported compressed Nikon Auto also checks bounded original-size samples with
+  the export renderer, catching some small highlights/noisy shadows hidden by
+  preview averaging. Sampling is not an exhaustive full-image quality guarantee.
 - Smooth negative-highlight roll-off preserves distinctions above display white;
   Auto also checks intermediate strengths when it relies on highlight compression
 - Folder export using current adjustments, per-photo saved edits, or Auto per
@@ -146,7 +151,7 @@ Then import `sample-data\openraw-synthetic.DNG` or
   conversion to linear sRGB; dual-illuminant interpolation, `ForwardMatrix`, and
   gamut mapping are not implemented yet
 - OpenRAW Native has a first optimized Nikon 34713 lossless decode/render path,
-  with a half-resolution preview and full-resolution bilinear final export.
+  with a half-resolution preview and full-resolution MHC final export.
   Camera profiles are provided for the D500, 1 J5, and Z f, with generic color for other models;
   first-use compiler/GPU initialization still adds latency, while edge-aware
   demosaic quality, further speed work, and more profiles remain
@@ -164,6 +169,9 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - No AI model weights included
 - Auto is a deterministic luminance/color heuristic, not semantic AI or
   sensor highlight recovery. It cannot reconstruct clipped detail.
+- MHC is linear gradient-corrected interpolation, not edge-adaptive demosaic or
+  denoise. Existing Nikon recipes now render differently at full/native resolution;
+  fast Fit previews and original RAW files are unchanged.
 - Negative Highlights now compress over-range display values smoothly. Existing
   edits using that control may render differently; sensor saturation and the
   current Nikon neutral highlight ceiling cannot be undone by this tone curve.
@@ -362,9 +370,8 @@ is still an early V0.1 render. It applies available DNG `AsShotNeutral`, inverts
 `ColorMatrix1` from camera space through XYZ, performs Bradford white-point
 adaptation, and converts to linear sRGB before tone mapping. Dual-illuminant
 DNG profiles are still future work. Supported Nikon 34713 files use a fast
-half-resolution preview and a full-resolution bilinear final JPEG. The D500 has
-an exact native color profile while other Nikon models still use generic
-camera RGB.
+half-resolution preview and full-resolution MHC final JPEG/TIFF. The D500,
+1 J5, and Z f have native camera profiles; other models use generic camera RGB.
 Final JPEG/TIFF files retain safe photographic metadata such as camera, ISO,
 shutter, aperture, focal length, and capture date. Exported pixels are already
 oriented, so Orientation is written as `1`; location/GPS metadata is not copied.

@@ -38,6 +38,7 @@ def render_bayer_full_resolution_rgb8(
     use_gpu: bool = True,
     use_compiled: bool = True,
     highlight_ceiling: float | None = None,
+    demosaic: str = "bilinear",
 ) -> FullResolutionRgbImage:
     """Render Bayer using GPU, compiled CPU chunks, or the NumPy fallback.
 
@@ -69,6 +70,10 @@ def render_bayer_full_resolution_rgb8(
         raise ValueError("full-resolution Bayer crop exceeds the source image")
 
     pattern = _validated_cfa(cfa_pattern)
+    from openraw_studio.raw.native.malvar import STANDARD_BAYER
+
+    if demosaic not in ("bilinear", "malvar") or (demosaic == "malvar" and pattern not in STANDARD_BAYER):
+        raise ValueError("MHC requires a standard Bayer layout and a known interpolation method")
     matrix = camera_to_linear_srgb or (
         (1.0, 0.0, 0.0),
         (0.0, 1.0, 0.0),
@@ -96,7 +101,8 @@ def render_bayer_full_resolution_rgb8(
                     saturation=saturation,
                     highlight_ceiling=highlight_ceiling,
                 )
-                rendered = gpu.bayer(raw_bytes, source_width, crop, pattern, black_levels, white_level, params)
+                args = (raw_bytes, source_width, crop, pattern, black_levels, white_level, params)
+                rendered = gpu.bayer(*args, method=demosaic) if demosaic != "bilinear" else gpu.bayer(*args)
                 return FullResolutionRgbImage(width, height, rendered.tobytes())
             except Exception:
                 disable_gpu()
@@ -116,9 +122,8 @@ def render_bayer_full_resolution_rgb8(
         core_end = min(height, core_start + chunk_rows)
         camera = None
         if use_compiled:
-            camera = compiled_bayer.render_chunk(
-                source, crop, core_start, core_end, pattern, black_levels, white_level, channel_gains,
-            )
+            args = (source, crop, core_start, core_end, pattern, black_levels, white_level, channel_gains)
+            camera = compiled_bayer.render_chunk(*args, method=demosaic) if demosaic != "bilinear" else compiled_bayer.render_chunk(*args)
         if camera is not None:
             rendered = compiled_tone.render(camera, params)
             if rendered is not None:
@@ -126,9 +131,14 @@ def render_bayer_full_resolution_rgb8(
                 continue
             camera_planes = [camera[:, :, channel] for channel in range(3)]
         else:
-            camera_planes = _demosaic_numpy(
-                np, source, crop, core_start, core_end, pattern, black_levels, white_level, channel_gains,
-            )
+            if demosaic == "malvar":
+                from openraw_studio.raw.native.malvar import demosaic_chunk
+
+                camera_planes = demosaic_chunk(source, crop, core_start, core_end, pattern, black_levels, white_level, channel_gains)
+            else:
+                camera_planes = _demosaic_numpy(
+                    np, source, crop, core_start, core_end, pattern, black_levels, white_level, channel_gains,
+                )
 
         if highlight_ceiling is not None:
             for plane in camera_planes:
