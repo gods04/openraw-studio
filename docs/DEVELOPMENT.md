@@ -764,3 +764,50 @@ fallback; source hashes remain unchanged. Z f GPU export stays at 1.39-1.41 s,
 and CPU export measures 3.11 s including first Bayer compilation, 2.84 s warm.
 No public ZIP was generated or released. Next emphasis is image quality and
 Auto on difficult lighting; remaining startup costs are still open work.
+
+### Highlight-Limited Shadow Refinement
+
+After the existing joint tone guards succeed, Auto can try two bounded shadow
+increments when the requested exposure was limited by more than 0.15 EV and the
+result remains dim. It measures a fixed mask of original display-luma midtones
+from 0.08 to 0.35, requiring at least 10% coverage. Low-key scenes and images with
+at least 55% dark pixels are excluded. Shadow settings increase by at most 0.40,
+capped at 0.65; the second candidate halves the increment. At both proxy sizes,
+the mean gain over the already-guarded result must exceed 1/255 but stay within
+0.04, 25%, and a final mean of 0.30. Accepted candidates must still pass the
+existing clipping, shadow-crushing, median, and intermediate-strength checks.
+
+This changes newly generated desktop/batch Auto suggestions, not the renderer,
+manual controls, saved recipes, decoder, or format support. Added diagnostics
+record shadow-midtone means and whether refinement was used. The legacy
+preview-only suggestion API without a render callback cannot do this refinement.
+It is not semantic subject detection, ISO-aware denoise, a local spatial mask,
+or sensor highlight reconstruction. The mask evaluates the existing global
+Shadows control; it does not selectively render individual objects.
+
+The nine new tests cover useful/absent gain, small subject area, dark-scene
+exclusions, excessive lift and clipping at either proxy size, intermediate
+strength clipping, and real-render black/highlight preservation. All 376 tests
+pass in the GPU build environment and CPU-only (two GPU-only skips). All 23 selected D500/Z f files
+pass Auto and full-size JPEG export with unchanged source hashes. Six suggestions
+gain additional shadows; the other 17 and all non-shadow parameters are unchanged.
+All 4,600 integer-strength checks at 256/960 pixels pass. The six changed samples
+also pass the same clipping/shadow budgets on full-resolution renders at 70% and
+100%, compared against both the original and preceding Auto. This is sample
+evidence, not a full-resolution guarantee for every file or artistic preference.
+
+Old/new full-size comparisons show more visible dark subjects and structures in
+the backlit portrait, aquarium, temple, and courtyard without neutralizing their
+scene colors. Actual Tk Auto takes 0.64 s on the D500 portrait with CPU and 0.80 s
+on the Z f portrait with GPU. Both 16-step editing/JPEG/TIFF/history workflows pass,
+as do 22 native-detail checks and seven batch checks. Continuous preview remains
+46 ms median on GPU and 68 ms on CPU in separate local benchmarks; full-size
+exports there take 1.43 s (Z f GPU) and 2.16 s (D500 CPU). These are different
+sample/backend measurements, not a direct speed comparison or universal promise.
+
+The refreshed local Windows EXE passes D500 CPU and Z f GPU smoke tests with
+the same new Auto settings as the source runs, active native compilation,
+unchanged originals, full-size export, and native inspection. Packaged Auto
+takes 0.55/0.61 s and export 2.61/1.40 s respectively. No public ZIP was generated
+or released. Further noise handling, demosaic, camera/gamut calibration, and
+support for unverified Nikon profiles remain unfinished.

@@ -16,6 +16,134 @@ from openraw_studio.raw.native.tone import PreviewRgbImage
 
 
 class AutoAdjustTests(unittest.TestCase):
+    @staticmethod
+    def shadow_recovery_scene(*, lift=12, clip_shadows=False, intermediate_clip=False):
+        pixels = np.full((100, 100, 3), 60, dtype=np.uint8)
+        pixels[45:50, 48:52] = 210
+
+        def render(values):
+            candidate = pixels.copy()
+            candidate[:40] = 60 + round(lift * values["shadows"])
+            candidate[50:] = 60 + round(lift * values["shadows"])
+            if (
+                values["exposure"] > .4
+                or (clip_shadows and values["shadows"] > .2)
+                or (intermediate_clip and .15 < values["shadows"] < .3)
+            ):
+                candidate[45:50, 48:52] = 255
+            return candidate
+
+        return pixels, render
+
+    def test_shadow_refinement_lifts_subject_after_highlights_limit_exposure(self):
+        pixels, render = self.shadow_recovery_scene()
+        original = pixels.copy()
+        result = suggest_auto_adjustments_from_preview(pixels, render=render)
+        self.assertEqual(result.metrics["shadows_refined"], 1)
+        self.assertLessEqual(result.exposure, .4)
+        self.assertGreater(result.shadows, .4)
+        self.assertLessEqual(result.shadows, .65)
+        self.assertEqual(result.metrics["highlight_detail_loss_fraction"], 0)
+        self.assertGreater(result.metrics["shadow_midtone_mean_after"], result.metrics["shadow_midtone_mean_before"])
+        self.assertTrue(np.array_equal(original, pixels))
+        self.assertIn("Lifted usable shadows", " ".join(result.rationale))
+
+    def test_shadow_refinement_rechecks_clipping_at_both_resolutions(self):
+        pixels, render = self.shadow_recovery_scene()
+        _, unsafe = self.shadow_recovery_scene(clip_shadows=True)
+        for primary, detail in ((unsafe, render), (render, unsafe)):
+            with self.subTest(primary=primary):
+                result = suggest_auto_adjustments_from_preview(
+                    pixels, render=primary, detail_preview=pixels, render_detail=detail
+                )
+                self.assertEqual(result.metrics["shadows_refined"], 0)
+                self.assertLessEqual(result.shadows, .2)
+
+    def test_shadow_refinement_rechecks_intermediate_strength(self):
+        pixels, base_render = self.shadow_recovery_scene(intermediate_clip=True)
+
+        def render(values):
+            candidate = base_render(values)
+            if values["exposure"] > .25 and values["highlights"] > -.2:
+                candidate[45:50, 48:52] = 255
+            return candidate
+
+        endpoint = suggest_auto_adjustments_from_preview(pixels, render=render)
+        self.assertEqual(endpoint.metrics["shadows_refined"], 1)
+        self.assertGreater(endpoint.shadows, .3)
+        self.assertEqual(render({k: v*.5 for k, v in endpoint.as_overrides().items()})[45, 48, 0], 255)
+        result = suggest_auto_adjustments_from_preview(
+            pixels, render=render, validation_strengths=(.7, .5, .25),
+            detail_preview=pixels, render_detail=render,
+        )
+        self.assertEqual(result.metrics["shadows_refined"], 0)
+        for strength in (.25, .5, .7, 1):
+            self.assertLess(render({k: v*strength for k, v in result.as_overrides().items()})[45, 48, 0], 254)
+
+    def test_shadow_refinement_backs_off_excessive_lift_at_either_resolution(self):
+        pixels, ordinary = self.shadow_recovery_scene()
+        _, aggressive = self.shadow_recovery_scene(lift=40)
+        baseline = suggest_auto_adjustments_from_preview(pixels, render=ordinary)
+        for primary, detail in ((aggressive, ordinary), (ordinary, aggressive)):
+            result = suggest_auto_adjustments_from_preview(
+                pixels, render=primary, detail_preview=pixels, render_detail=detail
+            )
+            self.assertEqual(result.metrics["shadows_refined"], 1)
+            self.assertLess(result.shadows, baseline.shadows)
+            for prefix in ("", "detail_"):
+                self.assertLessEqual(result.metrics[f"{prefix}shadow_midtone_mean_after"], .30)
+
+    def test_shadow_refinement_keeps_unconstrained_exposure_and_night_scenes(self):
+        for scene in ("dim", "night", "near-black", "bright"):
+            with self.subTest(scene=scene):
+                pixels = np.full((100, 100, 3), 60 if scene == "dim" else 150, dtype=np.uint8)
+                if scene == "night":
+                    pixels[:90] = 8
+                elif scene == "near-black":
+                    pixels[:60] = 20
+                def render(values, pixels=pixels, scene=scene):
+                    candidate = np.clip(pixels.astype(np.int32) + round(12 * values["shadows"]), 0, 255).astype(np.uint8)
+                    if scene in ("night", "near-black") and values["exposure"] > .1:
+                        candidate[95:97] = 255
+                    return candidate
+
+                result = suggest_auto_adjustments_from_preview(pixels, render=render)
+                self.assertEqual(result.metrics["shadows_refined"], 0)
+
+    def test_shadow_refinement_requires_a_measurable_gain(self):
+        pixels, render = self.shadow_recovery_scene(lift=0)
+        result = suggest_auto_adjustments_from_preview(pixels, render=render)
+        self.assertEqual(result.metrics["shadows_refined"], 0)
+
+    def test_shadow_refinement_requires_gain_at_detail_resolution_too(self):
+        pixels, render = self.shadow_recovery_scene()
+        _, unchanged = self.shadow_recovery_scene(lift=0)
+        result = suggest_auto_adjustments_from_preview(
+            pixels, render=render, detail_preview=pixels, render_detail=unchanged
+        )
+        self.assertEqual(result.metrics["shadows_refined"], 0)
+        self.assertLess(result.shadows, .2)
+
+    def test_shadow_refinement_requires_sufficient_subject_area(self):
+        pixels, render = self.shadow_recovery_scene()
+        pixels[:] = 120
+        pixels[:53] = 15
+        pixels[53:58] = 60
+        result = suggest_auto_adjustments_from_preview(pixels, render=render)
+        self.assertEqual(result.metrics["shadows_refined"], 0)
+
+    def test_real_shadow_refinement_retains_black_and_highlight_detail(self):
+        pixels = np.full((100, 100, 3), .025, dtype=np.float32)
+        pixels[:10] = 0
+        pixels[45:50, 48:52] = .75
+        photo = InteractivePhoto(pixels, np.eye(3, dtype=np.float32), (1, 1, 1))
+        result = suggest_auto_adjustments_for_photo(photo)
+        self.assertEqual(result.metrics["shadows_refined"], 1)
+        final = np.asarray(photo.render(result.as_overrides())[0])
+        self.assertTrue(np.all(final[:10] == 0))
+        self.assertTrue(np.all(final[45:50, 48:52] < 254))
+        self.assertGreater(result.metrics["shadow_midtone_mean_after"], result.metrics["shadow_midtone_mean_before"])
+
     def test_intermediate_strength_cannot_escape_highlight_validation(self):
         pixels = np.full((100, 100, 3), 60, dtype=np.uint8)
         pixels[40:60, 45:55] = 220

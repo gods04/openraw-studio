@@ -65,6 +65,7 @@ class _RenderedMetrics:
     crushed_shadows: float
     new_clipping: float
     lost_highlight_channels: int
+    shadow_midtone_mean: float
 
 
 def _pixels(preview):
@@ -98,6 +99,9 @@ class _RenderGuard:
         self.clipping = _clipping(self.pixels)
         self.preserve_midtones = preserve_midtones and self.median < 0.5
         self.usable_shadows = (luma > 8 / 255) & (luma < 0.25)
+        self.shadow_midtones = (luma >= 0.08) & (luma < 0.35)
+        self.shadow_midtone_fraction = float(np.mean(self.shadow_midtones))
+        self.shadow_midtone_mean = self._shadow_mean(luma)
         self.headroom = self.pixels <= 250 / 255
         # Channel-level headroom protects small bright subjects even if a
         # different channel at that pixel was already clipped before editing.
@@ -105,6 +109,9 @@ class _RenderGuard:
         self.highlight_channels = int(np.count_nonzero(self.highlight_detail))
         self.detail_allowance = max(2, self.highlight_channels * 0.02)
         self.cache = {}
+
+    def _shadow_mean(self, luma):
+        return float(np.mean(luma[self.shadow_midtones])) if self.shadow_midtone_fraction else 0.0
 
     def measure(self, values):
         key = tuple(sorted(values.items()))
@@ -119,6 +126,7 @@ class _RenderGuard:
                 float(np.mean(self.usable_shadows & (candidate_luma <= 2 / 255))),
                 float(np.mean(np.any(self.headroom & clipped_channels, axis=1))),
                 int(np.count_nonzero(self.highlight_detail & clipped_channels)),
+                self._shadow_mean(candidate_luma),
             )
         return self.cache[key]
 
@@ -136,6 +144,12 @@ class _RenderGuard:
             and checked.lost_highlight_channels <= self.detail_allowance
         )
 
+    def shadow_lift_useful(self, before, after):
+        previous = self.measure(before).shadow_midtone_mean
+        improved = self.measure(after).shadow_midtone_mean
+        ceiling = min(0.30, previous + 0.04, previous * 1.25)
+        return self.shadow_midtone_fraction >= 0.10 and previous + 1 / 255 < improved <= ceiling
+
     def metrics(self, values):
         checked = self.measure(values)
         return {
@@ -148,6 +162,8 @@ class _RenderGuard:
             "highlight_detail_loss_fraction": checked.lost_highlight_channels / max(1, self.highlight_channels),
             "validation_renders": float(len(self.cache)),
             "validation_pixels": float(len(self.pixels)),
+            "shadow_midtone_mean_before": self.shadow_midtone_mean,
+            "shadow_midtone_mean_after": checked.shadow_midtone_mean,
         }
 
 
@@ -188,6 +204,8 @@ def suggest_auto_adjustments_from_preview(
     without rendering every rejected candidate at the larger resolution.
     Additional strength samples check the nonlinear exposure/highlight interaction
     when a candidate relies on highlight compression. Full strength is always checked.
+    A highlight-limited result can receive bounded shadow refinement, measured on
+    the same original shadow midtones and revalidated at both proxy resolutions.
     This is a local heuristic, not a trained AI model or semantic scene classifier.
     """
     if (detail_preview is None) != (render_detail is None) or (render_detail is not None and render is None):
@@ -225,6 +243,7 @@ def suggest_auto_adjustments_from_preview(
     exposure = float(np.clip(2.2 * np.log2(target / max(midtone, 0.025)), -0.8, 1.2))
     if abs(midtone - target) < 0.035:
         exposure = 0.0
+    requested_exposure = exposure
     if low_key or backlit:
         exposure = min(exposure, 0.35)
     # A bright upper tail limits global exposure even when average luma is low.
@@ -348,6 +367,29 @@ def suggest_auto_adjustments_from_preview(
                     return False
         return True
 
+    def refine_shadows(values):
+        # Once highlights limit exposure, recover a little usable shadow detail
+        # without moving exposure or lifting a predominantly dark scene.
+        before = primary.measure(values)
+        if (
+            low_key or dark_fraction >= 0.55 or requested_exposure <= values["exposure"] + 0.15
+            or before.median >= 0.35 or primary.shadow_midtone_fraction < 0.10
+            or before.shadow_midtone_mean >= 0.30
+        ):
+            return values
+        for increment in (0.40, 0.20):
+            candidate = {**values, "shadows": round(min(0.65, values["shadows"] + increment), 4)}
+            if candidate["shadows"] <= values["shadows"]:
+                continue
+            if not primary.shadow_lift_useful(values, candidate):
+                continue
+            if (
+                highlights_preserved(candidate) and tones_preserved(candidate)
+                and all(guard.shadow_lift_useful(values, candidate) for guard in guards[1:])
+            ):
+                return candidate
+        return values
+
     # Positive contrast can undo an exposure lift and clip dim subjects. Test
     # that component first, retaining the other corrections where possible.
     initial_values = suggestion.as_overrides()
@@ -403,6 +445,9 @@ def suggest_auto_adjustments_from_preview(
             for key, value in suggestion.as_overrides().items()
         }
         if (highlights_preserved(values) and tones_preserved(values)) or amount == 0:
+            refined = refine_shadows(values) if amount else values
+            shadows_refined = refined["shadows"] > values["shadows"]
+            values = refined
             notes = suggestion.rationale + (
                 ("Reduced contrast to preserve dark subjects.",) if contrast_guarded else ()
             ) + (
@@ -411,6 +456,8 @@ def suggest_auto_adjustments_from_preview(
                 ("Compressed highlights to retain a useful tonal correction.",) if highlights_guarded else ()
             ) + (
                 ("Reduced correction to protect highlights and shadows.",) if amount < 1 else ()
+            ) + (
+                ("Lifted usable shadows after limiting global exposure.",) if shadows_refined else ()
             )
             metrics = primary.metrics(values)
             if len(guards) > 1:
@@ -425,6 +472,7 @@ def suggest_auto_adjustments_from_preview(
                     "contrast_guarded": float(contrast_guarded),
                     "exposure_guarded": float(exposure_guarded),
                     "highlights_guarded": float(highlights_guarded),
+                    "shadows_refined": float(shadows_refined),
                     "guard_strength": amount,
                     "validated_strength_samples": float(1 + len(validation_strengths) if values["highlights"] < 0 else 1),
                 },

@@ -127,6 +127,8 @@ Then import `sample-data\openraw-synthetic.DNG` or
   black-preserving shadows, and rendered-highlight checks that also guard small
   bright subjects and individual color channels at two preview resolutions;
   joint exposure/contrast/highlight recovery retains useful corrections on difficult dim scenes
+- Highlight-limited Auto can add a bounded shadow lift, checking visible benefit
+  and clipping at both preview sizes; low-key and predominantly dark scenes are excluded
 - Smooth negative-highlight roll-off preserves distinctions above display white;
   Auto also checks intermediate strengths when it relies on highlight compression
 - Folder export using current adjustments, per-photo saved edits, or Auto per

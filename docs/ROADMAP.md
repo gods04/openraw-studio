@@ -16,7 +16,23 @@ and denoise. Further first-use initialization and broader verified HE profiles
 also remain open.
 Semantic portrait/scene AI and mobile remain later phases.
 
-Latest verified increment: HE horizontal synthesis reuses bounded work buffers,
+Latest verified increment: highlight-limited Auto tries a bounded shadow lift
+and requires measurable benefit at both proxy resolutions before accepting it.
+Low-key and predominantly dark scenes are excluded. Six of the 23 selected
+D500/Z f suggestions gain shadow detail; the other 17 retain their settings.
+All 23 Auto/full-size exports and 4,600 strength/proxy checks pass with unchanged
+originals. The six changed samples also pass full-resolution clipping/shadow
+checks at 70% and 100%. All 376 tests pass on GPU and CPU (two GPU-only skips),
+plus actual editing/JPEG/TIFF, native-detail, and batch workflows. Real desktop
+Auto measures 0.64 s D500 CPU and 0.80 s Z f GPU. This is global tonal refinement,
+not object recognition, ISO-aware denoise, or general image-quality completion.
+The refreshed EXE verifies matching Auto settings, full-size export, and native
+inspection on D500 CPU and Z f GPU without modifying originals. Further quality
+work and broader verified Nikon support remain open.
+
+### Earlier Verification
+
+HE horizontal synthesis reuses bounded work buffers,
 reducing first-call compilation from 2.17 to 0.53 s in a controlled empty-cache
 profile. CPU RAW preparation falls from 5.41 to 3.82 s there; warm throughput is
 essentially unchanged. All 367 tests pass with GPU and CPU-only (two GPU-only
@@ -30,8 +46,6 @@ other initialization costs and image-quality work remain.
 The refreshed EXE verifies cold/warm preparation at 4.38/1.98 s on GPU and
 4.31/1.82 s on CPU, excluding executable startup, with no compiler/cache fallback.
 Z f Auto, full-size export, and native inspection pass; GPU export stays near 1.4 s.
-
-### Earlier Verification
 
 TIFF binary fields stay compact instead of repeatedly
 expanding and converting integer tuples; numeric fields use checked bulk parsing.
