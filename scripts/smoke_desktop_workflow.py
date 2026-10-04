@@ -25,11 +25,15 @@ def main():
     parser.add_argument("--luminance-noise", type=float, default=0)
     parser.add_argument("--auto-color-noise", action="store_true")
     parser.add_argument("--tiff-bit-depth", type=int, choices=(8, 16), default=8)
+    parser.add_argument("--subject-exposure", type=float, default=0)
+    parser.add_argument("--select-subject", action="store_true")
     args = parser.parse_args()
     if not 0 <= args.color_noise <= 1:
         parser.error("--color-noise must be within [0, 1]")
     if not 0 <= args.luminance_noise <= 1:
         parser.error("--luminance-noise must be within [0, 1]")
+    if not -1 <= args.subject_exposure <= 1:
+        parser.error("--subject-exposure must be within [-1, 1]")
     args.output.mkdir(parents=True, exist_ok=True)
     source = args.source or write_synthetic_dng(
         args.output / "sample.DNG", width=80, height=60
@@ -97,6 +101,13 @@ def main():
             app._reset_adjustments()
             state["phase"] = "reset"
         elif phase == "reset" and frame_current():
+            if args.select_subject and not state.get("selection_tested"):
+                state["before_selection"] = app._current_overrides()
+                app.subject_select_button.invoke()
+                require(app.is_busy, "Independent person selection starts asynchronously")
+                state["phase"] = "select_subject"
+                app.root.after(15, tick)
+                return
             require(app.reference_image is not None, "Unedited RAW reference available")
             state["original_pixels"] = ImageTk.getimage(app.after_photo).tobytes()
             scale = next(
@@ -108,6 +119,15 @@ def main():
             require(app.exposure_var.get() > 0.5, "Pointer dragging changes exposure")
             state["manual"] = app._current_overrides()
             state["phase"] = "manual"
+        elif phase == "select_subject" and not app.is_busy and frame_current():
+            from openraw_studio.core.subject import global_adjustments
+            require(app.subject is not None, "Independent selection creates a portable layer")
+            require(global_adjustments(app._current_overrides()) == state["before_selection"],
+                    "Independent selection preserves every global control")
+            require(app._current_overrides()["subject"]["exposure"] == 0, "New subject layer starts with zero effect")
+            app.person_mask_button.invoke()
+            state["selection_tested"] = True
+            state["phase"] = "reset"
         elif phase == "manual" and frame_current():
             require(
                 ImageTk.getimage(app.after_photo).tobytes() != state["original_pixels"],
@@ -230,13 +250,14 @@ def main():
             app._zoom_changed(anchor=(float(xs.mean() / 100), float(ys.mean() / 100)))
             state["phase"] = "mask_detail"
         elif phase == "mask_detail" and app.detail_frame is not None and app.detail_frame.detail_view == app._detail_view() and frame_current():
-            from openraw_studio.ui.mask_overlay import person_overlay
+            from openraw_studio.ui.mask_overlay import person_overlay, subject_overlay
             frame = app.detail_frame
             x, y, width, height = frame.region
             sw, sh = frame.native_size
             box = (x / sw, y / sh, (x + width) / sw, (y + height) / sh)
             def inspected(image):
-                shown = person_overlay(image, app.last_person_analysis, box=box)
+                shown = (subject_overlay(image, app.subject, full_size=frame.native_size, region=frame.region)
+                         if app.subject else person_overlay(image, app.last_person_analysis, box=box))
                 scale = frame.detail_view.scale
                 if scale != 1:
                     shown = shown.resize((shown.width * scale, shown.height * scale), Image.Resampling.NEAREST)
@@ -270,7 +291,7 @@ def main():
             app.auto_strength_var.set(0)
             app._change_auto_strength()
             require(
-                all(v == 0 for k,v in app._current_overrides().items() if k not in ('color_noise', 'luminance_noise')),
+                all(v == 0 for k,v in app._current_overrides().items() if k not in ('color_noise', 'luminance_noise', 'subject')),
                 "Zero Auto strength restores original tone settings",
             )
             for key in ('color_noise', 'luminance_noise'):
@@ -332,6 +353,26 @@ def main():
             app._commit_edit()
             state["phase"] = "compare"
         elif phase == "compare" and frame_current():
+            if args.subject_exposure and not state.get("subject_tested"):
+                require(app.subject is not None, "Auto prepared a portable person selection")
+                state["subject_before"] = app._current_overrides()
+                state["subject_pixels"] = app.live_image.tobytes()
+                scale = app.subject_exposure_scale
+                app.root.update_idletasks()
+                canvas = app.controls_canvas
+                y = canvas.canvasy(scale.winfo_rooty() - canvas.winfo_rooty())
+                canvas.yview_moveto(max(0, (y - canvas.winfo_height() / 2) / canvas.bbox("all")[3]))
+                app.root.update_idletasks()
+                require(canvas.winfo_rooty() <= scale.winfo_rooty()
+                        and scale.winfo_rooty() + scale.winfo_height() <= canvas.winfo_rooty() + canvas.winfo_height(),
+                        "Subject exposure is accessible in compact window")
+                drag_scale(scale, args.subject_exposure)
+                state["subject_after"] = app._current_overrides()
+                require(abs(state["subject_after"]["subject"]["exposure"] - args.subject_exposure) < .02,
+                        "Pointer dragging changes local exposure")
+                state["phase"] = "subject_edit"
+                app.root.after(15, tick)
+                return
             app.compare_button.invoke()
             require(
                 not app.showing_after and app.view_var.get() == "Original",
@@ -385,13 +426,36 @@ def main():
                 "Session persisted without exporting a new recipe",
             )
             app._select_source(source, ready_status="Reopened")
-            require(app.last_person_analysis is None and not app.person_mask_var.get() and app.person_mask_button.instate(["disabled"]),
-                    "Reopening clears transient masks rather than carrying them to a different import")
+            require(app.last_person_analysis is None and not app.person_mask_var.get(),
+                    "Reopening clears transient model analysis and inspection state")
+            require(app.person_mask_button.instate(["!disabled"]) == (app.subject is not None),
+                    "Stored subject selection remains inspectable without rerunning a model")
             require(app._selected_export_bit_depth() == args.tiff_bit_depth, "Reopening restores TIFF bit depth")
             require(
                 app._current_overrides() == state["saved"], "Reopening restores edits"
             )
             state["phase"] = "capture"
+        elif phase == "subject_edit" and frame_current():
+            require(app.live_image.tobytes() != state["subject_pixels"], "Local exposure changes real rendered pixels")
+            app.undo_button.invoke()
+            require(app._current_overrides() == state["subject_before"], "Undo restores local exposure")
+            app.redo_button.invoke()
+            require(app._current_overrides() == state["subject_after"], "Redo restores local exposure")
+            app.auto_strength_var.set(80)
+            app._change_auto_strength()
+            require(app._current_overrides()["subject"] == state["subject_after"]["subject"],
+                    "Global Auto strength preserves local exposure and mask")
+            app.auto_strength_var.set(100)
+            app._change_auto_strength()
+            app.subject_enabled_button.invoke()
+            require(app.subject_exposure_scale.instate(["disabled"]), "Disabled subject freezes its exposure control")
+            state["phase"] = "subject_disabled"
+        elif phase == "subject_disabled" and frame_current():
+            require(app.live_image.tobytes() == state["subject_pixels"], "Disabling subject restores baseline pixels exactly")
+            app.subject_enabled_button.invoke()
+            app._commit_edit()
+            state["subject_tested"] = True
+            state["phase"] = "compare"
         elif phase == "capture" and frame_current():
             app.inspector_tabs.select(0)
             app.root.after(400, capture)

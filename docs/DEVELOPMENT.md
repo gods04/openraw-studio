@@ -2085,3 +2085,69 @@ are byte-identical to the preceding person-aware EXE, and two older saved recipe
 remain exact. Three model-off/missing EXE fallbacks retain earlier Auto and TIFF
 bytes. Static, dependency, and whitespace checks pass. No model weights or
 private images are bundled or committed; no public installer/ZIP is released.
+
+### Portable Subject Exposure
+
+The next increment adds a real, independently enabled subject-exposure layer.
+Desktop Auto prepares a zero-effect candidate when person evidence is accepted;
+Subject > Select can create one without replacing global tone/color edits.
+The selection uses smoothstep weights from the conservative refined .8-1 range,
+quantized to uint8 at up to 960 pixels per axis. It remains a coarse person
+selection, not a skin/face matte or manual brush. Automatic local exposure
+and local color decisions are intentionally not enabled yet.
+
+`adjustments.raw.subject` uses the `subject.v1` contract: original SHA256,
+width/height, bounded base64/zlib mask, exposure in [-1, 1], and enabled flag.
+Decode bounds reject malformed, oversized, truncated, or trailing data.
+Session load/save, the live worker, and file-render/pipeline boundaries reject
+another source's layer. A bounded file-identity hash cache avoids rehashing on
+every slider update. Undo/redo deep-copies layer settings. Global Auto strength
+preserves local edits; Reset removes them reversibly. Current-adjustment batch
+copy omits image-bound layers; Saved edits uses each photo's own layer.
+
+Local exposure follows global rendering/noise reduction in oriented RGB, before
+output resizing. The peak-channel gamma-2.2 inverse provides a common RGB gain
+with a white-anchored shoulder. It cannot recover already-clipped sensor data.
+Integer full-frame pixel centers define mask sampling, keeping native ROI and
+full-frame output consistent across orientation, pan, and 8/16-bit output.
+The persisted selection needs no model at render time. Magenta inspection is
+display-only and uses that stored soft mask after reopening.
+
+An optional sequential no-fastmath Numba kernel fuses bilinear mask projection
+and RGB gain. Explicit float32 arithmetic matches the bounded NumPy strip
+fallback exactly in tested 8/16-bit cases. Cache write failures retry in memory;
+compilation failures fall back. Selection workers prime the RGB8 kernel before
+the first local slider move. Warm measurements on one 20MP D500 sample with
+local +0.6 and noise reduction off: initial NumPy version 75 ms median display
+latency / 2.84 s JPEG, fused GPU-backed global pipeline 59 ms / 1.79 s, CPU
+pipeline 87 ms / 2.06 s. These are local measurements, not first-use promises;
+the first RGB16 signature can still compile on its first export.
+
+Focused tests cover payload/source validation, immutable originals, background
+identity, monotonic gain, channel ratios, exact NumPy/compiled agreement, cache
+and compiler fallback, strip/ROI equivalence, all eight Nikon orientations,
+DNG/NEF TIFF8/16 pipeline output, and reversible UI state. Two real desktop
+workflows each pass 52 checks: aquarium GPU at 1280x820 and rotated portrait
+CPU at 800x560, including pointer-driven local edits, disable/baseline equality,
+JPEG/TIFF16, and reopen. Screenshots were inspected. The existing Auto solver
+and recognition thresholds are unchanged; this does not claim improved
+segmentation or automatic aesthetic accuracy.
+
+The fused kernel is included in the content-checked frozen cache allowlist.
+The existing cross-process cache test now covers subject RGB8/16 signatures,
+including repacking, moving, source changes, and compilation-flag changes.
+Source/build suites pass 676 tests; the extended cache tests pass in both
+environments. A further 800x560 desktop workflow passes 56 checks, including
+independent Select and preservation of all global controls. Changed-file static
+checks pass; the broader F401 scan still reports the pre-existing compatibility
+import in `raw/native/color.py`, which this increment does not alter.
+
+The rebuilt local EXE passes four saved-layer replays (positive/negative,
+GPU/CPU, JPEG/TIFF16, and both models disabled). All match source rendering and
+native detail; three TIFF16 arrays also retain every zero-mask background pixel.
+The frozen cache reports misses only on the first new signatures, then hits;
+the warm local-layer JPEG case takes 1.91 s. Eight existing frozen Auto cases
+retain all previous parameters, metrics, and exported file bytes, including
+five exact source TIFF16 arrays; two older recipes also remain exact. Original
+SHA256 values stay unchanged. No weights, private photos, or public ZIP release
+are included. Local metering and content-dependent local color remain open.

@@ -6,9 +6,11 @@ import hashlib
 import json
 import math
 import os
+from copy import deepcopy
 from pathlib import Path
 
 from openraw_studio.core.files import atomic_output_path
+from openraw_studio.core.subject import clean_subject, validate_subject_source
 
 ADJUSTMENT_KEYS = (
     "exposure",
@@ -32,6 +34,8 @@ def clean_adjustments(values):
         limit = 2 if key == "exposure" else 1
         minimum = 0 if key in ("color_noise", "luminance_noise") else -limit
         result[key] = round(max(minimum, min(limit, value)), 4)
+    if values.get("subject") is not None:
+        result["subject"] = clean_subject(values["subject"])
     return result
 
 
@@ -46,7 +50,7 @@ class EditHistory:
 
     @property
     def current(self):
-        return dict(self._states[self._index])
+        return deepcopy(self._states[self._index])
 
     @property
     def can_undo(self):
@@ -94,6 +98,7 @@ class SessionStore:
         }
 
     def save(self, source, adjustments):
+        validate_subject_source(adjustments.get("subject"), source)
         data = {
             "version": 1,
             "source": self._identity(source),
@@ -107,6 +112,8 @@ class SessionStore:
             data = json.loads(self._path(source).read_text(encoding="utf-8"))
             if data.get("version") != 1 or data.get("source") != self._identity(source):
                 return None
-            return clean_adjustments(data["adjustments"])
+            result = clean_adjustments(data["adjustments"])
+            validate_subject_source(result.get("subject"), source)
+            return result
         except (OSError, ValueError, KeyError, TypeError, AttributeError):
             return None

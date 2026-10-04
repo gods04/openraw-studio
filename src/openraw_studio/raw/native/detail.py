@@ -15,6 +15,7 @@ from openraw_studio.raw.native.nikon import (
 )
 from openraw_studio.raw.native.regions import oriented_size, region_with_halo, sensor_region
 from openraw_studio.raw.native.noise import noise_radius
+from openraw_studio.core.subject import global_adjustments
 
 
 @dataclass
@@ -49,7 +50,12 @@ class LinearDetailPhoto:
         tile = replace(self.photo, pixels=self.photo.pixels[y:y + height, x:x + width].copy(), orientation=1, native_size=(width, height))
         from openraw_studio.raw.native.nikon import _apply_exif_orientation
 
-        return _apply_exif_orientation(tile.render(adjustments)[0].crop(core), self.photo.orientation)
+        image = _apply_exif_orientation(tile.render(global_adjustments(adjustments))[0].crop(core), self.photo.orientation)
+        if adjustments.get("subject") is not None:
+            import numpy as np
+            from openraw_studio.raw.native.subject import apply_subject
+            image = Image.fromarray(apply_subject(np.asarray(image), adjustments["subject"], full_size=self.size, region=region))
+        return image
 
 
 def prepare_detail_photo(processor, source):

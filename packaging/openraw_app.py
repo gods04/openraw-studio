@@ -10,7 +10,7 @@ from time import perf_counter
 
 
 def smoke_test(source: Path, output: Path, *, color_noise=0.0, luminance_noise=0.0, auto_color_noise=False,
-               export_format="jpeg", bit_depth=8) -> int:
+               export_format="jpeg", bit_depth=8, subject_recipe=None) -> int:
     """Exercise frozen runtime imports, GPU/JIT, adjustment and full export."""
     from openraw_studio.core.files import sha256_file
     from openraw_studio.decision.auto_adjust import (
@@ -26,6 +26,7 @@ def smoke_test(source: Path, output: Path, *, color_noise=0.0, luminance_noise=0
         compiled_he,
         compiled_he_transform,
         compiled_luminance,
+        compiled_subject,
         compiled_tone,
         he_cpu,
     )
@@ -76,6 +77,19 @@ def smoke_test(source: Path, output: Path, *, color_noise=0.0, luminance_noise=0
             from dataclasses import asdict
             report["person_analysis"] = asdict(suggestion.person_evidence)
         edits = {**suggestion.as_overrides(), "color_noise": color_noise, "luminance_noise": luminance_noise}
+        if subject_recipe is not None:
+            from openraw_studio.core.recipe import validate_recipe_shape
+            from openraw_studio.core.subject import clean_subject, validate_subject_source
+
+            saved = json.loads(subject_recipe.read_text(encoding="utf-8"))
+            validate_recipe_shape(saved)
+            subject = clean_subject(saved["adjustments"]["raw"].get("subject"))
+            if subject is None:
+                raise ValueError("Saved recipe has no subject selection")
+            validate_subject_source(subject, source)
+            edits["subject"] = subject
+            report["subject_exposure"] = subject["exposure"]
+            report["subject_enabled"] = subject["enabled"]
         if auto_color_noise:
             started = perf_counter()
             noise = suggest_color_noise_for_photo(photo, edits)
@@ -128,12 +142,16 @@ def smoke_test(source: Path, output: Path, *, color_noise=0.0, luminance_noise=0
         report["compiled_cpu_luminance"] = bool(getattr(compiled_luminance.luminance, "signatures", []))
         report["cpu_luminance_fallback_reason"] = compiled_luminance.last_error
         report["cpu_luminance_cache_disabled_reason"] = compiled_luminance.cache_disabled_reason
+        report["compiled_cpu_subject"] = bool(getattr(compiled_subject.expose, "signatures", []))
+        report["cpu_subject_fallback_reason"] = compiled_subject.last_error
+        report["cpu_subject_cache_disabled_reason"] = compiled_subject.cache_disabled_reason
         report["kernel_cache"] = {}
         kernels = {
             "decode": compiled_decode.decode, "he_decode": compiled_he.decode,
             "tone": compiled_tone.tone, "tone16": compiled_tone.tone16,
             "bayer": compiled_bayer.malvar_demosaic,
             "chroma": compiled_chroma.chroma, "luminance": compiled_luminance.luminance,
+            "subject": compiled_subject.expose,
             **compiled_he_transform.kernels,
         }
         for name, kernel in kernels.items():
@@ -168,6 +186,7 @@ def main() -> int:
     parser.add_argument("--color-noise", type=float, default=0.0)
     parser.add_argument("--luminance-noise", type=float, default=0.0)
     parser.add_argument("--auto-color-noise", action="store_true", help="Select color-noise strength during --smoke-test.")
+    parser.add_argument("--subject-recipe", type=Path, help="Replay a saved subject layer during --smoke-test.")
     parser.add_argument("--format", dest="export_format", choices=("jpeg", "tiff"), default="jpeg")
     parser.add_argument("--bit-depth", type=int, choices=(8, 16), default=8)
     args = parser.parse_args()
@@ -181,7 +200,8 @@ def main() -> int:
         if args.bit_depth == 16 and args.export_format != "tiff":
             parser.error("16-bit export requires --format tiff")
         return smoke_test(args.source, args.output, color_noise=args.color_noise, luminance_noise=args.luminance_noise,
-                          auto_color_noise=args.auto_color_noise, export_format=args.export_format, bit_depth=args.bit_depth)
+                          auto_color_noise=args.auto_color_noise, export_format=args.export_format,
+                          bit_depth=args.bit_depth, subject_recipe=args.subject_recipe)
     app = launch_desktop_app(run_mainloop=False)
     if args.source is not None:
         app.root.after(

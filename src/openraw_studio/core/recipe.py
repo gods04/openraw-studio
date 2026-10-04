@@ -9,6 +9,7 @@ from typing import Any, Mapping
 from uuid import uuid4
 
 from openraw_studio.core.files import atomic_output_path
+from openraw_studio.core.subject import clean_subject
 
 RECIPE_SCHEMA_VERSION = "recipe.v1"
 PROCESSING_PRESET_SCHEMA_VERSION = "processing-preset.v1"
@@ -99,3 +100,6 @@ def validate_recipe_shape(recipe: Mapping[str, Any]) -> None:
     for key in ("analysis", "decisions", "adjustments", "engines", "exports"):
         if key not in recipe:
             raise ValueError(f"recipe missing required key: {key}")
+    adjustments = recipe["adjustments"]
+    if isinstance(adjustments, Mapping) and isinstance(adjustments.get("raw"), Mapping):
+        clean_subject(adjustments["raw"].get("subject"))

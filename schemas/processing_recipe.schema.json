@@ -86,7 +86,10 @@
       "properties": {
         "raw": {
           "type": "object",
-          "additionalProperties": true
+          "additionalProperties": true,
+          "properties": {
+            "subject": { "$ref": "#/$defs/subject" }
+          }
         },
         "portrait": {
           "type": "object",
@@ -159,6 +162,20 @@
     }
   },
   "$defs": {
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "source_sha256", "width", "height", "mask_zlib", "exposure", "enabled"],
+      "properties": {
+        "version": { "const": "subject.v1" },
+        "source_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "width": { "type": "integer", "minimum": 1, "maximum": 960 },
+        "height": { "type": "integer", "minimum": 1, "maximum": 960 },
+        "mask_zlib": { "type": "string", "maxLength": 2000000 },
+        "exposure": { "type": "number", "minimum": -1, "maximum": 1 },
+        "enabled": { "type": "boolean" }
+      }
+    },
     "classification": {
       "type": "object",
       "additionalProperties": true,

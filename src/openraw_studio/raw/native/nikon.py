@@ -13,7 +13,7 @@ from openraw_studio.core.files import atomic_output_path
 from openraw_studio.raw.native.dng import DngMetadata, DngMetadataError, DngMetadataReader, TiffIfd
 from openraw_studio.raw.native.fullres import render_bayer_full_resolution_rgb8
 from openraw_studio.raw.native.profiles import CameraColorProfile, Matrix3, find_camera_color_profile
-from openraw_studio.raw.native.regions import region_with_halo, sensor_region
+from openraw_studio.raw.native.regions import oriented_size, region_with_halo, sensor_region
 from openraw_studio.raw.native.tonal import apply_tonal_regions as _apply_tonal_regions
 from openraw_studio.raw.native.tonal import apply_tonal_regions_array
 
@@ -337,6 +337,7 @@ def render_nikon_34713_to_file(
     saturation: float = 0.0,
     color_noise: float = 0.0,
     luminance_noise: float = 0.0,
+    subject: dict | None = None,
     jpeg_quality: int = 92,
     jpeg_exif: Any | None = None,
     tiffinfo: Any | None = None,
@@ -346,6 +347,8 @@ def render_nikon_34713_to_file(
     """Render a supported Nikon 34713 RAW file directly to PNG, JPEG, or TIFF."""
 
     decoded = decode_nikon_34713_lossless(path, metadata)
+    from openraw_studio.core.subject import validate_subject_source
+    validate_subject_source(subject, path)
     return render_decoded_nikon_34713_to_file(
         decoded,
         output_path,
@@ -359,6 +362,7 @@ def render_nikon_34713_to_file(
         saturation=saturation,
         color_noise=color_noise,
         luminance_noise=luminance_noise,
+        subject=subject,
         jpeg_quality=jpeg_quality,
         jpeg_exif=jpeg_exif,
         tiffinfo=tiffinfo,
@@ -381,6 +385,7 @@ def render_decoded_nikon_34713_to_file(
     saturation: float = 0.0,
     color_noise: float = 0.0,
     luminance_noise: float = 0.0,
+    subject: dict | None = None,
     jpeg_quality: int = 92,
     jpeg_exif: Any | None = None,
     tiffinfo: Any | None = None,
@@ -407,6 +412,7 @@ def render_decoded_nikon_34713_to_file(
         saturation=saturation,
         color_noise=color_noise,
         luminance_noise=luminance_noise,
+        subject=subject,
         quality=quality,
         bit_depth=bit_depth,
     )
@@ -460,6 +466,7 @@ def render_decoded_nikon_34713_image(
     saturation: float = 0.0,
     color_noise: float = 0.0,
     luminance_noise: float = 0.0,
+    subject: dict | None = None,
     quality: str = "fast",
     region: tuple[int, int, int, int] | None = None,
     bit_depth: int = 8,
@@ -473,6 +480,8 @@ def render_decoded_nikon_34713_image(
     if bit_depth == 16 and quality != "full":
         raise NikonCompressionError("16-bit Nikon rendering requires quality='full'")
     crop = _render_crop(decoded)
+    subject_region = region
+    subject_size = oriented_size(crop[2:], decoded.orientation)
     region_box = None
     if region is not None:
         if quality != "full" or max_dimension is not None:
@@ -542,7 +551,12 @@ def render_decoded_nikon_34713_image(
         pixels = np.frombuffer(rgb, dtype="<u2").reshape(height, width, 3)
         if color_noise != 0 or luminance_noise != 0:
             pixels = reduce_noise(pixels, color_noise=color_noise, luminance_noise=luminance_noise)
-        pixels = _transform_rgb16(pixels, decoded.orientation, region_box=region_box, max_dimension=max_dimension)
+        pixels = _transform_rgb16(pixels, decoded.orientation, region_box=region_box, max_dimension=None if subject else max_dimension)
+        if subject is not None:
+            from openraw_studio.raw.native.subject import apply_subject
+            pixels = apply_subject(pixels, subject, full_size=subject_size, region=subject_region)
+            if max_dimension is not None:
+                pixels = _transform_rgb16(pixels, 1, region_box=None, max_dimension=max_dimension)
         return NikonRenderedRgbImage(
             width=pixels.shape[1], height=pixels.shape[0],
             rgb_bytes=pixels.astype("<u2", copy=False).tobytes(), bit_depth=bit_depth,
@@ -561,6 +575,11 @@ def render_decoded_nikon_34713_image(
     if region_box is not None:
         image = image.crop(region_box)
     image = _apply_exif_orientation(image, decoded.orientation)
+    if subject is not None:
+        import numpy as np
+        from openraw_studio.raw.native.subject import apply_subject
+        image = Image.fromarray(apply_subject(np.asarray(image), subject,
+                                full_size=subject_size if subject_region else image.size, region=subject_region))
     if max_dimension is not None:
         image = _resize_pillow_image(image, max_dimension=max_dimension)
     return NikonRenderedRgbImage(width=image.size[0], height=image.size[1], rgb_bytes=image.tobytes())

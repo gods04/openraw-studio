@@ -350,11 +350,21 @@ crop classification agree. This is person-aware **global** Auto, not a local
 brush, face/skin editing, or identification. `OPENRAW_PERSON=off` keeps scene
 Auto without person analysis. Missing/uncertain masks leave scene Auto unchanged.
 
-After a corroborated detection, **Person mask** shows the protection area on the
-photo, including zoomed/native detail and original comparison. RGB-guided
-boundary refinement is conservative and cannot recover missed people or fix
-incorrect labels. Inspection never changes edits, the histogram, or exports;
-the transient mask is cleared on the next import. This is not an editable mask.
+**Adjust > Subject > Select** creates a person selection without changing the
+global adjustments. Auto also prepares a selection when person evidence is
+corroborated. **Subject > Exposure** applies a separate, bounded local correction;
+**Enabled** bypasses it. It starts at zero: automatic local metering is not yet
+enabled. **Person mask** inspects the saved soft selection at Fit, zoom, and
+native detail. Check it before editing: refinement cannot recover missed people
+or correct wrongly included objects. There is no manual mask brush yet.
+
+The layer follows undo/redo, local edit retention, and JPEG/8/16-bit TIFF export.
+Its compressed mask is saved in the recipe and bound to the original RAW's
+SHA256, so reopening/export needs no model inference. Original files remain
+untouched. Batch **Current adjustments** copies only global controls; **Saved
+edits** retains each photo's own subject layer. The magenta inspection overlay
+never enters exports. This is rendered-image exposure with a white-preserving
+shoulder, not RAW highlight recovery or calibrated face/skin retouching.
 
 The compact histogram follows the displayed Before, Camera Preview, or After
 image and reports near-black and near-white clipping percentages. It analyzes

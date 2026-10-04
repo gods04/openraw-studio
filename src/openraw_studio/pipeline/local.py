@@ -10,6 +10,7 @@ from openraw_studio.core.artifacts import ArtifactPlan
 from openraw_studio.core.domain import ImageAsset, ImageRef
 from openraw_studio.core.files import is_supported_raw_path, sha256_file
 from openraw_studio.core.recipe import new_recipe, write_recipe
+from openraw_studio.core.subject import validate_subject_source
 from openraw_studio.decision.interfaces import DecisionRequest
 from openraw_studio.decision.rules import RuleBasedDecisionEngine
 from openraw_studio.export.errors import ExportError
@@ -64,6 +65,7 @@ class LocalPhotoPipeline:
             export_format = normalize_export_format(request.export_format)
             export_quality = validate_export_quality(request.export_quality)
             export_bit_depth = validate_export_bit_depth(request.export_bit_depth, export_format=export_format)
+            validate_subject_source((request.overrides or {}).get("subject"), source)
         except ValueError as exc:
             raise PipelineError(str(exc)) from exc
 
@@ -424,4 +426,7 @@ def _raw_adjustments_with_overrides(
     for key in ("exposure", "contrast", "highlights", "shadows", "warmth", "tint", "saturation", "color_noise", "luminance_noise"):
         if key in overrides:
             updated[key] = overrides[key]
+    if overrides.get("subject") is not None:
+        from openraw_studio.core.subject import clean_subject
+        updated["subject"] = clean_subject(overrides["subject"])
     return updated

@@ -10,6 +10,7 @@ from typing import Any, Mapping
 from openraw_studio.core.domain import EngineInfo, ImageAsset, ImageMetadata, ImageRef, RawInspection
 from openraw_studio.core.files import atomic_output_path, sha256_file, source_file_metadata
 from openraw_studio.core.image_info import read_image_size
+from openraw_studio.core.subject import clean_subject, validate_subject_source
 from openraw_studio.export.metadata import build_jpeg_exif, build_tiff_info
 from openraw_studio.raw.errors import RawProcessingError
 from openraw_studio.raw.interfaces import RawRenderRequest
@@ -141,6 +142,7 @@ class NativeRawProcessor:
             raise RawProcessingError("OpenRAW Native preview currently writes PNG files; output path must end in .png")
         try:
             adjustments = _recipe_render_adjustments(recipe)
+            validate_subject_source(adjustments.subject, source.path)
             if metadata := self._read_supported_nikon_34713(source.path):
                 decoded = self._decode_supported_nikon_34713(source.path, metadata)
                 width, height = render_decoded_nikon_34713_to_file(
@@ -155,6 +157,7 @@ class NativeRawProcessor:
                     saturation=adjustments.saturation,
                     color_noise=adjustments.color_noise,
                     luminance_noise=adjustments.luminance_noise,
+                    subject=adjustments.subject,
                     max_dimension=max_dimension,
                 )
                 return ImageRef(
@@ -176,6 +179,7 @@ class NativeRawProcessor:
                 saturation=adjustments.saturation,
                 color_noise=adjustments.color_noise,
                 luminance_noise=adjustments.luminance_noise,
+                subject=adjustments.subject,
                 max_dimension=max_dimension,
             )
         except (DngMetadataError, NotImplementedError, ValueError) as exc:
@@ -205,6 +209,7 @@ class NativeRawProcessor:
             raise RawProcessingError("16-bit OpenRAW Native export requires TIFF (.tif or .tiff)")
         try:
             adjustments = _recipe_render_adjustments(request.recipe)
+            validate_subject_source(adjustments.subject, request.source.path)
             jpeg_exif = build_jpeg_exif(request.recipe) if output_suffix in {".jpg", ".jpeg"} else None
             tiff_info = build_tiff_info(request.recipe) if output_suffix in {".tif", ".tiff"} else None
             if metadata := self._read_supported_nikon_34713(request.source.path):
@@ -221,6 +226,7 @@ class NativeRawProcessor:
                     saturation=adjustments.saturation,
                     color_noise=adjustments.color_noise,
                     luminance_noise=adjustments.luminance_noise,
+                    subject=adjustments.subject,
                     max_dimension=request.max_dimension,
                     jpeg_quality=request.quality,
                     jpeg_exif=jpeg_exif,
@@ -246,6 +252,7 @@ class NativeRawProcessor:
                 saturation=adjustments.saturation,
                 color_noise=adjustments.color_noise,
                 luminance_noise=adjustments.luminance_noise,
+                subject=adjustments.subject,
                 max_dimension=request.max_dimension,
                 bit_depth=request.bit_depth,
             )
@@ -358,6 +365,7 @@ class RenderAdjustments:
     saturation: float = 0.0
     color_noise: float = 0.0
     luminance_noise: float = 0.0
+    subject: dict | None = None
 
 
 def _recipe_render_adjustments(recipe: Mapping[str, Any] | None) -> RenderAdjustments:
@@ -375,6 +383,7 @@ def _recipe_render_adjustments(recipe: Mapping[str, Any] | None) -> RenderAdjust
         saturation=_bounded_float(raw.get("saturation", 0.0), minimum=-1.0, maximum=1.0),
         color_noise=_bounded_float(raw.get("color_noise", 0.0), minimum=0.0, maximum=1.0),
         luminance_noise=_bounded_float(raw.get("luminance_noise", 0.0), minimum=0.0, maximum=1.0),
+        subject=clean_subject(raw.get("subject")),
     )
 
 

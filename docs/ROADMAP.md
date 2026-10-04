@@ -16,15 +16,17 @@ Next quality work: Auto under difficult lighting, broader camera calibration
 and gamut handling, edge-aware demosaic, actual sensor highlight reconstruction,
 and sensor-domain denoise with calibrated luminance-noise advice. Further first-use initialization and broader verified HE profiles
 also remain open.
-Face detection, editable local masks/subject edits, and mobile remain later
+Face detection, manual mask refinement, local color, and mobile remain later
 phases. Coarse scene/lighting analysis and corroborated person masks are now
 optional local experiments.
 
-Person selections now have conservative RGB-guided boundary refinement and a
-desktop inspection checkbox. The same oriented selection supplies Auto color
-measurements and follows Fit, zoom, pan, and native-detail views. It never
-becomes export pixels or recipe content. This makes the current selection
-inspectable, not precise, editable, or a shipped local exposure/color tool.
+Person selections now support a separate manual local-exposure layer. Auto or
+Subject > Select prepares a conservative soft selection; its initial exposure
+is zero. The layer has an enable toggle, undo/redo, source-bound persistence,
+native-detail projection, and 8/16-bit derivative output without model replay.
+Inspection uses the saved selection. A fused optional CPU kernel reduces the
+added export cost, with a pixel-identical NumPy fallback. Automatic local
+metering and local color remain next; masks still miss people or include objects.
 
 The latest person-color increment excludes confirmed subject pixels from
 scenery color targets and adds spatial subject-color constraints to the global
@@ -32,8 +34,8 @@ solver. A small separately installed PPHumanSeg model proposes a mask; area,
 score, and CLIP crop checks limit which candidates can influence Auto. Ambiguous
 groups can retry up to three distinct substantial components. A 4x4 subject
 grid limits small-region hue/saturation changes. These are evaluated heuristics,
-not calibrated confidence or accurate skin segmentation. All edit parameters
-remain global; selective subject exposure/color and editable masks remain open.
+not calibrated confidence or accurate skin segmentation. Auto's proposed
+parameters remain global; the separate subject-exposure layer is manual for now.
 
 In the current 33-photo local regression, nine photos gain corroborated person
 regions; one aquarium color proposal changes and 32 retain prior parameters.

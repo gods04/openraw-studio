@@ -391,7 +391,7 @@ def build_workspace(app, filedialog, messagebox):
         command=app._fit_live_image, state="disabled",
     )
     app.person_mask_button.pack(anchor="w", pady=(0, 8))
-    Tooltip(app.person_mask_button, "Inspect the person area used by Auto; not a skin or face mask")
+    Tooltip(app.person_mask_button, "Inspect the saved subject selection, or Auto's person area; not a skin or face mask")
 
     def section(name, expanded=True):
         ttk.Separator(controls).pack(fill="x", pady=(4, 10))
@@ -410,6 +410,31 @@ def build_workspace(app, filedialog, messagebox):
         return content
 
     light = section("Light")
+    subject = section("Subject")
+    subject_row = ttk.Frame(subject)
+    subject_row.pack(fill="x", pady=(0, 7))
+    app.subject_enabled_button = ttk.Checkbutton(
+        subject_row, text="Enabled", variable=app.subject_enabled_var,
+        command=app._subject_changed, state="disabled",
+    )
+    app.subject_enabled_button.pack(side="left")
+    app.subject_select_button = button(
+        subject_row, "wand-sparkles", "Select person", app._select_subject,
+        text="  Select", style="TButton", disabled=True,
+    )
+    app.subject_select_button.pack(side="right")
+    row = ttk.Frame(subject)
+    row.pack(fill="x")
+    ttk.Label(row, text="Exposure", style="Panel.TLabel").pack(side="left")
+    ttk.Label(row, textvariable=app.subject_exposure_label_var, style="Muted.TLabel").pack(side="right")
+    app.subject_exposure_scale = ttk.Scale(
+        subject, from_=-1, to=1, variable=app.subject_exposure_var,
+        command=app._subject_changed, state="disabled",
+    )
+    app.subject_exposure_scale.pack(fill="x", pady=(4, 11))
+    app.subject_exposure_scale.bind("<ButtonRelease-1>", lambda _e: app._commit_edit())
+    app.subject_exposure_scale.bind("<Double-Button-1>", lambda _e: app._reset_one("subject_exposure"))
+    Tooltip(app.subject_exposure_scale, "Local rendered-image exposure; preserves white, cannot recover clipped RAW detail")
     color = section("Color", expanded=False)
     detail = section("Detail", expanded=False)
     for parent, key, title, minimum, maximum in (
@@ -537,6 +562,7 @@ def build_workspace(app, filedialog, messagebox):
         state="readonly",
     )
     app.batch_mode_combo.pack(fill="x")
+    Tooltip(app.batch_mode_combo, "Current adjustments copies global controls only; Saved edits retains each photo's own subject layer")
     app.batch_button = ttk.Button(
         export, text="Export folder", command=app._export_folder, state="disabled"
     )

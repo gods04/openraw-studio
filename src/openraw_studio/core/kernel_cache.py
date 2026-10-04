@@ -17,7 +17,7 @@ import numpy as np
 _PACKAGE = "openraw_studio.raw.native"
 _KERNELS = frozenset({
     "compiled_bayer", "compiled_chroma", "compiled_decode", "compiled_he",
-    "compiled_he_transform", "compiled_luminance", "compiled_tone",
+    "compiled_he_transform", "compiled_luminance", "compiled_tone", "compiled_subject",
 })
 _REQUIRED = {name + ".py" for name in _KERNELS} | {"__init__.py", "malvar.py", "he_cpu.py"}
 _CACHE_POLICY = "openraw-native-v1"

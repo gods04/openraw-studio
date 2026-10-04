@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
@@ -10,6 +11,7 @@ from time import perf_counter
 from openraw_studio.raw.native.detail import prepare_detail_photo
 from openraw_studio.raw.native.interactive import prepare_interactive_photo
 from openraw_studio.ui.viewport import DetailView
+from openraw_studio.core.subject import validate_subject_source
 
 
 @dataclass(frozen=True)
@@ -62,7 +64,7 @@ class LivePreviewWorker:
             self._pending = (
                 self._revision,
                 source,
-                dict(adjustments),
+                deepcopy(adjustments),
                 perf_counter(),
                 self._generation,
                 detail_view,
@@ -115,6 +117,7 @@ class LivePreviewWorker:
                 revision, source, adjustments, requested_at, generation, detail_view = self._pending
                 self._pending = None
             try:
+                validate_subject_source(adjustments.get("subject"), source)
                 stat = source.stat()
                 current_key = (source.resolve(), stat.st_size, stat.st_mtime_ns)
                 if current_key != key:

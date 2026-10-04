@@ -16,6 +16,7 @@ from typing import Any, Mapping, Sequence
 from openraw_studio.core.artifacts import ArtifactPlan
 from openraw_studio.core.files import is_supported_raw_path
 from openraw_studio.core.recipe import validate_recipe_shape
+from openraw_studio.core.subject import clean_subject, global_adjustments, subject_for_person, validate_subject_source
 from openraw_studio.decision.auto_adjust import (
     AutoAdjustSuggestion,
     suggest_auto_adjustments_for_photo,
@@ -385,11 +386,11 @@ def _clamped_recipe_float(value: Any, *, default: float, minimum: float, maximum
     return max(minimum, min(maximum, number))
 
 
-def _recipe_adjustment_overrides(recipe: Mapping[str, Any]) -> dict[str, float]:
+def _recipe_adjustment_overrides(recipe: Mapping[str, Any]) -> dict[str, Any]:
     adjustments = recipe.get("adjustments")
     raw = adjustments.get("raw", {}) if isinstance(adjustments, Mapping) else {}
     raw = raw if isinstance(raw, Mapping) else {}
-    return {
+    result = {
         "exposure": _clamped_recipe_float(raw.get("exposure"), default=0.0, minimum=-2.0, maximum=2.0),
         "contrast": _clamped_recipe_float(raw.get("contrast"), default=0.0, minimum=-1.0, maximum=1.0),
         "highlights": _clamped_recipe_float(raw.get("highlights"), default=0.0, minimum=-1.0, maximum=1.0),
@@ -400,6 +401,9 @@ def _recipe_adjustment_overrides(recipe: Mapping[str, Any]) -> dict[str, float]:
         "color_noise": _clamped_recipe_float(raw.get("color_noise"), default=0.0, minimum=0.0, maximum=1.0),
         "luminance_noise": _clamped_recipe_float(raw.get("luminance_noise"), default=0.0, minimum=0.0, maximum=1.0),
     }
+    if raw.get("subject") is not None:
+        result["subject"] = clean_subject(raw["subject"])
+    return result
 
 
 def _load_recipe_adjustments(recipe_path: Path, source: Path) -> dict[str, float]:
@@ -409,7 +413,9 @@ def _load_recipe_adjustments(recipe_path: Path, source: Path) -> dict[str, float
     validate_recipe_shape(recipe)
     if not _recipe_source_matches(recipe, source):
         raise ValueError("recipe does not match the selected photo")
-    return _recipe_adjustment_overrides(recipe)
+    overrides = _recipe_adjustment_overrides(recipe)
+    validate_subject_source(overrides.get("subject"), source)
+    return overrides
 
 
 def _recipe_export_options(
@@ -601,7 +607,7 @@ def _adjustments_match(
     for key in ("exposure", "contrast", "highlights", "shadows", "warmth", "tint", "saturation", "color_noise", "luminance_noise"):
         if abs(float(rendered.get(key, 0.0)) - float(current.get(key, 0.0))) > tolerance:
             return False
-    return True
+    return rendered.get("subject") == current.get("subject")
 
 
 def _preview_state_text(rendered: Mapping[str, float] | None, current: Mapping[str, float]) -> str:
@@ -710,6 +716,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.edit_after_id = None
             self.last_auto_suggestion = None
             self.last_person_analysis = None
+            self.subject = None
             self.last_noise_suggestion = None
             self.pan_origin = None
             self.pan_offset = [0.0, 0.0]
@@ -742,6 +749,9 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.auto_strength_label_var = tk.StringVar(value="70%")
             self.auto_summary_var = tk.StringVar(value="")
             self.person_mask_var = tk.BooleanVar(value=False)
+            self.subject_enabled_var = tk.BooleanVar(value=True)
+            self.subject_exposure_var = tk.DoubleVar(value=0)
+            self.subject_exposure_label_var = tk.StringVar(value="0.0 EV")
             self.support_notice_var = tk.StringVar(value="")
             self.batch_mode_var = tk.StringVar(value="Current adjustments")
             self.status_var = tk.StringVar(value="Choose a RAW photo to begin")
@@ -1093,6 +1103,10 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.saturation_var.set(float(overrides.get("saturation", 0.0)))
             self.color_noise_var.set(float(overrides.get("color_noise", 0.0)))
             self.luminance_noise_var.set(float(overrides.get("luminance_noise", 0.0)))
+            self.subject = clean_subject(overrides.get("subject"))
+            self.subject_enabled_var.set(self.subject["enabled"] if self.subject else True)
+            self.subject_exposure_var.set(self.subject["exposure"] if self.subject else 0)
+            self._refresh_subject_controls()
             self._sync_adjustment_labels(update_status=False)
 
         def _restore_recipe_if_available(self) -> str | None:
@@ -1187,6 +1201,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             )
             self.color_noise_label_var.set(f"{self.color_noise_var.get() * 100:.0f}")
             self.luminance_noise_label_var.set(f"{self.luminance_noise_var.get() * 100:.0f}")
+            self.subject_exposure_label_var.set(_format_exposure_label(self.subject_exposure_var.get()))
             if update_status and self.source_path is not None and not self.is_busy:
                 preview_state = self._refresh_preview_state()
                 self.status_var.set(
@@ -1266,6 +1281,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                         **{key: value * amount / 100 for key, value in self.last_auto_suggestion.as_overrides().items()},
                         "color_noise": self.color_noise_var.get(),
                         "luminance_noise": self.luminance_noise_var.get(),
+                        "subject": self._current_overrides().get("subject"),
                     }
                 )
                 self._sync_adjustment_labels()
@@ -1391,6 +1407,10 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.saturation_var.set(0.0)
             self.color_noise_var.set(0.0)
             self.luminance_noise_var.set(0.0)
+            self.subject = None
+            self.subject_exposure_var.set(0)
+            self.subject_enabled_var.set(True)
+            self._refresh_subject_controls()
             self._sync_adjustment_labels()
             self._commit_edit()
 
@@ -1464,6 +1484,9 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                     photo = prepare_interactive_photo(self.pipeline.raw_processor, source)
                 person = analyze_person(photo.render({})[0])
                 suggestion = suggest_auto_adjustments_for_photo(photo, person_analysis=person)
+                subject = subject_for_person(person, source)
+                from openraw_studio.raw.native.subject import prepare_subject_renderer
+                prepare_subject_renderer(subject)
             except (
                 PipelineError,
                 OSError,
@@ -1474,15 +1497,19 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                 message = _friendly_error_message(exc)
                 self._post(lambda: self._show_error(message, run_id=run_id))
                 return
-            self._post(lambda: self._apply_auto_adjustment(suggestion, run_id=run_id, person=person))
+            self._post(lambda: self._apply_auto_adjustment(suggestion, run_id=run_id, person=person, subject=subject))
 
         def _apply_auto_adjustment(
-            self, suggestion: AutoAdjustSuggestion, *, run_id: int, person=None
+            self, suggestion: AutoAdjustSuggestion, *, run_id: int, person=None, subject=None
         ) -> None:
             if run_id != self.run_counter:
                 return
             self.last_auto_suggestion = suggestion
             self.last_person_analysis = person
+            if self.subject is None and subject is not None:
+                self.subject = clean_subject(subject)
+                self.subject_exposure_var.set(0)
+                self.subject_enabled_var.set(True)
             self.person_mask_var.set(False)
             evidence = suggestion.scene_evidence
             if evidence is not None and evidence.status == "ready":
@@ -1506,6 +1533,67 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                 else "Auto Adjust applied"
             )
             self._schedule_live_preview()
+
+        def _refresh_subject_controls(self) -> None:
+            editable = not self.is_busy and self.current_can_render is True
+            selected = self.subject is not None
+            self.subject_select_button.configure(state="normal" if editable else "disabled")
+            self.subject_enabled_button.configure(state="normal" if editable and selected else "disabled")
+            self.subject_exposure_scale.configure(state=(
+                "normal" if editable and selected and self.subject_enabled_var.get() else "disabled"
+            ))
+            has_mask = selected or (self.last_person_analysis is not None
+                                    and self.last_person_analysis.evidence.status == "ready")
+            self.person_mask_button.configure(state="normal" if has_mask and not self.is_busy else "disabled")
+
+        def _subject_changed(self, *_args) -> None:
+            self._refresh_subject_controls()
+            self._sync_adjustment_labels()
+
+        def _select_subject(self) -> None:
+            if self.is_busy or not self.current_can_render or self.source_path is None:
+                return
+            self._commit_edit()
+            self.run_counter += 1
+            self._set_busy(True)
+            self.status_var.set("Selecting person...")
+            threading.Thread(target=self._subject_worker,
+                             args=(self.run_counter, self.source_path), daemon=True).start()
+
+        def _subject_worker(self, run_id, source) -> None:
+            try:
+                from openraw_studio.vision.person import analyze_person
+
+                photo = self.live_worker.get_prepared_photo(source)
+                if photo is None:
+                    photo = prepare_interactive_photo(self.pipeline.raw_processor, source)
+                person = analyze_person(photo.render({})[0])
+                subject = subject_for_person(person, source)
+                from openraw_studio.raw.native.subject import prepare_subject_renderer
+                prepare_subject_renderer(subject)
+            except (PipelineError, OSError, ValueError, RuntimeError, NotImplementedError) as exc:
+                message = _friendly_error_message(exc)
+                self._post(lambda: self._show_error(message, run_id=run_id))
+                return
+            self._post(lambda: self._apply_subject(subject, person, run_id=run_id))
+
+        def _apply_subject(self, subject, person, *, run_id) -> None:
+            if run_id != self.run_counter:
+                return
+            self.last_person_analysis = person
+            if subject is not None:
+                self.subject = clean_subject(subject)
+                self.subject_exposure_var.set(0)
+                self.subject_enabled_var.set(True)
+                self.person_mask_var.set(True)
+            self._set_busy(False)
+            if subject is None:
+                self.status_var.set("No reliable person selection; edits unchanged")
+                return
+            self._sync_adjustment_labels()
+            self._commit_edit()
+            self._fit_live_image()
+            self.status_var.set("Person selected")
 
         def _clear_result(self) -> None:
             self.detail_frame = None
@@ -1623,11 +1711,14 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
 
         def _fit_live_image(self) -> None:
             from PIL import Image, ImageTk
-            from openraw_studio.ui.mask_overlay import person_overlay
+            from openraw_studio.ui.mask_overlay import person_overlay, subject_overlay
 
-            def inspected(image, box=(0, 0, 1, 1)):
+            def inspected(image, box=(0, 0, 1, 1), *, full_size=None, region=None):
                 if self.person_mask_var.get():
-                    image = person_overlay(image, self.last_person_analysis, box=box)
+                    if self.subject is not None:
+                        image = subject_overlay(image, self.subject, box=box, full_size=full_size, region=region)
+                    else:
+                        image = person_overlay(image, self.last_person_analysis, box=box)
                 return image
 
             self.resize_after_id = None
@@ -1644,7 +1735,8 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                 def native_image(image):
                     x, y, width, height = frame.region
                     sw, sh = frame.native_size
-                    image = inspected(image, (x / sw, y / sh, (x + width) / sw, (y + height) / sh))
+                    image = inspected(image, (x / sw, y / sh, (x + width) / sw, (y + height) / sh),
+                                      full_size=frame.native_size, region=frame.region)
                     enlarged = image if detail.scale == 1 else image.resize(
                         (image.width * detail.scale, image.height * detail.scale), Image.Resampling.NEAREST
                     )
@@ -1837,7 +1929,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                         "color_noise": overrides.get("color_noise", 0),
                         "luminance_noise": overrides.get("luminance_noise", 0),
                     }
-                return overrides
+                return global_adjustments(overrides)
 
             def on_progress(done: int, total: int, item: BatchItemResult) -> None:
                 text = _batch_progress_text(done, total, item)
@@ -2026,10 +2118,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                 else "disabled"
             )
             self.auto_adjust_button.configure(state=render_state)
-            self.person_mask_button.configure(state=(
-                "normal" if not busy and self.last_person_analysis is not None
-                and self.last_person_analysis.evidence.status == "ready" else "disabled"
-            ))
+            self._refresh_subject_controls()
             self.auto_color_noise_button.configure(state=render_state)
             self.zoom_combo.configure(values=("Fit", "2x", "4x", "100%", "200%") if can_render else ("Fit", "2x", "4x"))
             self.preview_button.configure(state=preview_state)
@@ -2059,8 +2148,8 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                 value=min(max(0, done), max(1, total)),
             )
 
-        def _current_overrides(self) -> dict[str, float]:
-            return clean_adjustments(
+        def _current_overrides(self) -> dict[str, Any]:
+            result = clean_adjustments(
                 _manual_overrides(
                     float(self.exposure_var.get()),
                     float(self.contrast_var.get()),
@@ -2073,6 +2162,12 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                     float(self.luminance_noise_var.get()),
                 )
             )
+            if self.subject is not None:
+                result["subject"] = clean_subject({
+                    **self.subject, "exposure": self.subject_exposure_var.get(),
+                    "enabled": self.subject_enabled_var.get(),
+                })
+            return result
 
         def _refresh_preview_state(self) -> str:
             if self.current_can_preview and self.current_can_render is False:

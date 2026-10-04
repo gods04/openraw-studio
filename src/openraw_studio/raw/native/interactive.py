@@ -60,6 +60,9 @@ class InteractivePhoto:
             scale = min(1, max(self.pixels.shape[1] / native[0], self.pixels.shape[0] / native[1]))
             rgb = reduce_noise(rgb, color_noise=adjustments.get("color_noise", 0), luminance_noise=adjustments.get("luminance_noise", 0) * scale)
         image = _apply_exif_orientation(Image.fromarray(rgb), self.orientation)
+        if adjustments.get("subject") is not None:
+            from openraw_studio.raw.native.subject import apply_subject
+            image = Image.fromarray(apply_subject(np.asarray(image), adjustments["subject"]))
         return image, backend
 
 

@@ -38,6 +38,7 @@ def render_png_preview(
     saturation: float = 0.0,
     color_noise: float = 0.0,
     luminance_noise: float = 0.0,
+    subject: dict | None = None,
     max_dimension: int | None = None,
 ) -> PreviewRgbImage:
     """Render the current simple native DNG pipeline to a PNG preview."""
@@ -54,6 +55,7 @@ def render_png_preview(
         saturation=saturation,
         color_noise=color_noise,
         luminance_noise=luminance_noise,
+        subject=subject,
         max_dimension=max_dimension,
     )
     write_png(preview, output_path)
@@ -81,6 +83,7 @@ def render_preview_image(
     saturation: float = 0.0,
     color_noise: float = 0.0,
     luminance_noise: float = 0.0,
+    subject: dict | None = None,
     max_dimension: int | None = None,
     bit_depth: int = 8,
 ) -> PreviewRgbImage:
@@ -88,6 +91,8 @@ def render_preview_image(
 
     if bit_depth not in (8, 16):
         raise ValueError("RGB output bit depth must be 8 or 16")
+    from openraw_studio.core.subject import validate_subject_source
+    validate_subject_source(subject, source_path)
 
     if preview := _render_nikon_34713_preview_image(
         source_path,
@@ -100,6 +105,7 @@ def render_preview_image(
         saturation=saturation,
         color_noise=color_noise,
         luminance_noise=luminance_noise,
+        subject=subject,
         max_dimension=max_dimension,
         bit_depth=bit_depth,
     ):
@@ -126,6 +132,13 @@ def render_preview_image(
         luminance_noise=luminance_noise,
         bit_depth=bit_depth,
     )
+    if subject is not None:
+        from dataclasses import replace
+        import numpy as np
+        from openraw_studio.raw.native.subject import apply_subject
+        pixels = np.asarray(preview.pixels, dtype=np.uint16 if bit_depth == 16 else np.uint8).reshape(preview.height, preview.width, 3)
+        pixels = apply_subject(pixels, subject)
+        preview = replace(preview, pixels=tuple(map(tuple, pixels.reshape(-1, 3).tolist())))
     return resize_preview(preview, max_dimension=max_dimension)
 
 
@@ -143,6 +156,7 @@ def _render_nikon_34713_preview_image(
     luminance_noise: float,
     max_dimension: int | None,
     bit_depth: int = 8,
+    subject: dict | None = None,
 ) -> PreviewRgbImage | None:
     if source_path.suffix.lower() not in NIKON_RAW_EXTENSIONS:
         return None
@@ -169,6 +183,7 @@ def _render_nikon_34713_preview_image(
         saturation=saturation,
         color_noise=color_noise,
         luminance_noise=luminance_noise,
+        subject=subject,
         quality="full" if bit_depth == 16 else "fast",
         bit_depth=bit_depth,
     )
