@@ -1,4 +1,4 @@
-"""Conservative rendered neutral-cast refinement, not illuminant recognition."""
+"""Conservative neutral-cast refinement with an optional ambient reference."""
 
 import numpy as np
 
@@ -58,19 +58,26 @@ def _neutral_evidence(image):
 
 
 class NeutralCast:
-    """Fixed original-pixel selection shared with the cached render guard."""
+    """Fixed original pixels and ambient target shared by every render probe."""
 
-    def __init__(self, preview):
+    def __init__(self, preview, *, ambient=None):
         self.mask, self.metrics = _neutral_evidence(preview)
+        self.retained_bias = None
         if self.mask is not None:
             indices = np.flatnonzero(self.mask)
             self.indices = indices[::max(1, (len(indices) + 4095) // 4096)]
+            if ambient is not None:
+                self.retained_bias = ambient.retain(self.measure(_rgb(preview).reshape(-1, 3) / 255))
+                self.metrics.update(ambient_retention=ambient.weight,
+                                    retained_red_ratio=float(self.retained_bias[0]),
+                                    retained_blue_ratio=float(self.retained_bias[1]))
 
     def measure(self, pixels):
         if self.mask is None:
             return None
         selected = pixels[self.indices]
-        return np.median(np.log(np.maximum(selected[:, (0, 2)], 1 / 255) / np.maximum(selected[:, 1:2], 1 / 255)), axis=0)
+        bias = np.median(np.log(np.maximum(selected[:, (0, 2)], 1 / 255) / np.maximum(selected[:, 1:2], 1 / 255)), axis=0)
+        return bias if self.retained_bias is None else bias - self.retained_bias
 
 
 def refine_white_balance(evidence, measure, values, validate, *, detail_evidence=None, measure_detail=None, validation_strengths=()):
@@ -79,6 +86,8 @@ def refine_white_balance(evidence, measure, values, validate, *, detail_evidence
     The caller owns clipping/shadow validation across its preview/native domains
     and strength samples. The two probe renders measure this renderer's response,
     including its actual camera matrix; no generic RGB-to-slider gain is assumed.
+    An optional corroborated ambient component is retained in the original
+    reference; the solver fits only the residual, including at weaker strengths.
     Near-neutral materials and colored illumination remain inherently ambiguous.
     """
     metrics = {"white_balance_refined": 0.0, "white_balance_response_probes": 0.0, **{f"white_balance_{key}": value for key, value in evidence.metrics.items()}}

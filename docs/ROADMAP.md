@@ -20,13 +20,28 @@ Manual mask refinement, richer local masks, and mobile remain later
 phases. Coarse scene/lighting analysis and corroborated person masks are now
 optional local experiments.
 
+Lighting context now participates before white-balance fitting, avoiding an
+ordering conflict where a recognized sunset was cooled before scene refinement.
+Semantic evidence must agree with spatial background color outside corroborated
+person regions. A reference component is retained along the warm/cool axis for
+sunset, or the measured color direction for other ambient lighting; the solver
+can still correct the residual cast. This is content-conditioned reference
+selection, not per-scene slider presets or learned aesthetic ranking. Missing
+or conflicting evidence leaves the earlier white-balance path unchanged.
+Across 30 additional D500 photos and 33 existing regression photos, seven global
+color suggestions change. Full-native checks pass the tone budgets in 54/56
+cases. The two exceptions are the same indoor photo at full strength on CPU/GPU:
+shadow crushing is about 0.517%, already present before this increment, versus
+the 0.5% budget. This remains open alongside dark-scene intent and clipped-light
+appearance; a safe sampled preview is not exhaustive full-image validation.
+
 Local subject Temperature/Tint now accompany exposure, with source-bound v2
 recipes and unchanged v1 replay. Optional clothing-color corroboration shares
 the existing scene encoder. Auto fits a bounded correction to spatial neutral
 references, checks each region and face, and abstains without reliable evidence.
-In the 33-photo CPU/GPU regression, one mixed-light white-clothing photo receives
-a small local correction and 32 retain their local colors. All prior global
-Auto settings remain exact. Eight full-native checks preserve zero-mask pixels,
+In that increment's 33-photo CPU/GPU regression, one mixed-light white-clothing
+photo receives a small local correction and 32 retain their local colors. All prior global
+Auto settings remained exact. Eight full-native checks preserve zero-mask pixels,
 add no fully clipped channels, and keep luma changes below .51 sample codes.
 These limited checks do not establish general clothing recognition or aesthetic
 accuracy. Pale intrinsic material colors, mixed wardrobes, segmentation errors,

@@ -2304,3 +2304,72 @@ Current adjustments, cancellation, and compact-panel scrolling. Static checks
 and dependency checks pass. The optional material head is installed locally;
 its predecessor is retained privately for regression. No model weights, private
 photos, public ZIP, or installer are published.
+
+### Ambient-Aware White-Balance Reference
+
+A subsequent 30-photo D500 cohort exposed an ordering conflict: optional scene
+evidence recognized golden-hour lighting, but neutral-cast refinement had
+already removed part of its warm color before semantic color refinement ran.
+Camera JPEGs were used only for sample selection and visual reference, not as
+RAW-rendering ground truth. After inspection this cohort is development data,
+not an untouched quality holdout.
+
+`decision/ambient_color.py` now combines optional scene/lighting evidence with
+usable background colors, excluding corroborated person cores. A minimum image
+fraction, at least four spatial tiles, two quadrants, and directional agreement
+are required. Confidence controls retention continuously. Sunset retains only
+the warm/cool projection; night, colored lighting, and aquarium contexts derive
+their direction from actual background log-channel ratios. A scene label alone,
+a small colored patch, or a person's clothing cannot supply this reference.
+Intrinsic material color and illumination remain ambiguous, so this is a
+conservative heuristic, not calibrated illuminant estimation.
+
+Initial white balance and `NeutralCast` both use this reference. The latter
+fixes the retained component to the original near-neutral pixels and never
+re-estimates it from candidate renders. Measured renderer-response fitting then
+corrects the residual cast, including orthogonal green/magenta deviations,
+subject to the existing preview/native/detail and intermediate-strength guards.
+No decoder, renderer, recipe schema, or model artifact changes are required.
+Missing/uncertain scene evidence retains the previous path. Saved recipes render
+unchanged; rerunning Auto can generate different settings.
+
+The additional 30 D500 photos and previous 33-photo regression were processed
+on CPU/GPU at 70%/100%, with original hashes checked. Four new-cohort and three
+older-cohort global suggestions change. New-cohort global/local adjustment
+values agree exactly between backends. In the combined 63, one pre-existing
+global warmth rounding difference and one local tint difference are 0.0001;
+soft masks and RGB8 previews differ by at most two sample codes. These are not
+claimed as pixel-identical GPU/CPU results.
+
+For the golden-hour portrait, original near-neutral warm-axis projection is
+.0673; at Auto 70% the earlier result retained .0333 versus .0478 now, and at
+100% .0237 versus .0413. This is a fixed original-pixel log-channel metric,
+not a human aesthetic score. Additional/older cohorts refine 4/3 images,
+respectively, without making every scene warmer.
+
+Seven changed images receive 56 full-native RGB8 checks across both backends
+and strengths 25/50/70/100%. All native regions match full renders. 54 checks
+pass the existing clipping/shadow budgets. The same indoor photo at 100% on
+both backends exceeds the 0.5% crushed-shadow threshold: .51695% now versus
+.51810% previously. The strict full-native audit therefore remains failing;
+this is a recorded pre-existing issue, not a waived passing check. Highlight
+metrics remain inside budget. All source checksums remain unchanged. Next
+quality work should address this sampling gap, dark-scene intent, and the
+appearance of already-clipped bright lights; no highlight reconstruction is
+claimed here. Private evidence is under `output/ambient-native` and the
+`output/*-auto-ambient*` cohorts, never included in Git.
+
+Source and packaging environments each pass 742 tests, including 13 focused
+ambient-reference tests. Tk workflows pass 42 checks at 800x560 on GPU and 69
+at 1440x900 on CPU, covering global/local Auto, live edits, reversible strength,
+native inspection, JPEG/TIFF16, and reopening. Screenshots have no overlapping
+controls. Static and dependency checks pass. The Windows build is local only;
+there is no public ZIP or model distribution.
+
+The refreshed EXE passes 11 source-equivalence cases: every changed photo,
+CPU/GPU golden-hour checks, JPEG/TIFF8/TIFF16, model-disabled fallback, and the
+existing local-color workflow. Auto settings match exactly, metrics agree to
+1e-6, and exports/native-detail crops are pixel-identical to source execution.
+The earlier local-color portrait keeps identical Auto/local advice and identical
+TIFF file bytes. The sampled warm EXE golden-hour JPEG export takes 1.57 s;
+this is not a universal or cold-start benchmark. All inputs remain unchanged.

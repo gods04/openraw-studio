@@ -202,8 +202,11 @@ Then import `sample-data\openraw-synthetic.DNG` or
   segmentation adds corroborated color protection, not face detection or
   precise skin masks. It can miss people and mask boundaries can be wrong.
   No skin whitening, identity inference, or automatic model training is performed.
-- Auto white-balance refinement is not gray-card calibration or illuminant
-  recognition. Pale colored materials can resemble neutrals; manual Temperature
+- Auto white balance can retain measured environmental color when optional
+  lighting evidence agrees with several background regions. Sunset warmth is
+  separated from green/magenta correction; night and colored-light directions
+  come from the image. This is not gray-card calibration or reliable illuminant
+  recovery: pale materials and mixed light remain ambiguous. Manual Temperature
   and Tint remain available. Existing saved settings do not change until Auto is run.
 - MHC is linear gradient-corrected interpolation, not edge-adaptive demosaic or
   denoise. Existing Nikon recipes now render differently at full/native resolution;

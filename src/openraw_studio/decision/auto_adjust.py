@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from openraw_studio.decision.white_balance import NeutralCast, refine_white_balance
+from openraw_studio.decision.ambient_color import analyze_ambient_color
 from openraw_studio.decision.scene_color import refine_scene_color
 from openraw_studio.vision.scene import SceneEvidence, analyze_scene
 from openraw_studio.vision.person import PersonAnalysis, PersonEvidence, analyze_person
@@ -102,10 +103,10 @@ def _clipping(pixels):
 class _RenderGuard:
     """Cached measurements in one unedited proxy's own sampling domain."""
 
-    def __init__(self, preview, render, *, preserve_midtones, balance=False):
+    def __init__(self, preview, render, *, preserve_midtones, balance=False, ambient=None):
         self.pixels = _pixels(preview)
         self.render = render
-        self.neutral = NeutralCast(preview) if balance else None
+        self.neutral = NeutralCast(preview, ambient=ambient) if balance else None
         self.weights = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
         luma = self.pixels @ self.weights
         self.median = float(np.median(luma))
@@ -330,9 +331,14 @@ def suggest_auto_adjustments_from_preview(
         np.bincount(np.argmax(pixels, axis=1), minlength=3).max() / len(pixels)
     )
     color_dominated = dominant_channel_fraction > 0.85 and neutral_fraction < 0.50
+    ambient = analyze_ambient_color(preview, scene_evidence, person)
     warmth = tint = 0.0
     if not color_dominated and neutral_fraction >= 0.08 and np.count_nonzero(neutral) >= min(8, len(pixels)):
         red, green, blue = np.median(pixels[neutral], axis=0)
+        if ambient is not None:
+            bias = np.log(np.maximum([red, blue], .01) / max(green, .01))
+            retained = ambient.retain(bias)
+            red, blue = np.array([red, blue]) / np.exp(retained)
         warmth = float(
             np.clip(np.log(max(blue, 0.01) / max(red, 0.01)) * 0.65, -0.12, 0.12)
         )
@@ -369,6 +375,8 @@ def suggest_auto_adjustments_from_preview(
         if warmth or tint
         else "Preserved scene color without reliable cast evidence.",
     ]
+    if ambient is not None:
+        notes.append("Spatial color evidence and lighting context limited neutralization of ambient color.")
     suggestion = AutoAdjustSuggestion(
         *[
             round(float(v), 4)
@@ -384,12 +392,15 @@ def suggest_auto_adjustments_from_preview(
             "highlight_fraction_before": clipped,
             "neutral_fraction": neutral_fraction,
             "dominant_channel_fraction": dominant_channel_fraction,
+            **({'ambient_color_retention': ambient.weight, 'ambient_color_tiles': float(ambient.tiles),
+                'ambient_color_fraction': ambient.fraction} if ambient is not None else {}),
         },
     )
     if render is None:
         return suggestion
 
-    primary = _RenderGuard(preview, render, preserve_midtones=exposure >= 0 and not low_key, balance=not low_key)
+    primary = _RenderGuard(preview, render, preserve_midtones=exposure >= 0 and not low_key,
+                           balance=not low_key, ambient=ambient)
     guards = [primary]
     prefixes = [""]
     if render_native is not None:
@@ -399,6 +410,7 @@ def suggest_auto_adjustments_from_preview(
         guards.append(_RenderGuard(
             detail_preview, render_detail, preserve_midtones=exposure >= 0 and not low_key,
             balance=primary.neutral is not None and primary.neutral.mask is not None,
+            ambient=ambient,
         ))
         prefixes.append("detail_")
 
