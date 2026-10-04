@@ -197,6 +197,9 @@ Then import `sample-data\openraw-synthetic.DNG` or
   scene model now conditions a measured color refinement on scene and lighting
   evidence. This is an experimental hybrid, not a trained aesthetic editor or
   sensor highlight recovery. It cannot reconstruct clipped detail.
+- Positive contrast is fitted against each image's rendered shadow limits,
+  including near-black detail. These remain sampled guards, not a guarantee
+  that every original-resolution pixel is protected at every Auto strength.
 - Scene analysis can mistake content or miss small people in mixed scenes.
   Low-confidence/model-unavailable cases retain tonal Auto. Optional person
   segmentation adds corroborated color protection, not face detection or

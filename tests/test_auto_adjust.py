@@ -469,7 +469,8 @@ class AutoAdjustTests(unittest.TestCase):
         def render(values):
             return np.full((10, 10, 3), 65 if values["contrast"] > .01 else 105, dtype=np.uint8)
         suggestion = suggest_auto_adjustments_from_preview(preview, render=render)
-        self.assertEqual(suggestion.contrast, 0)
+        self.assertGreater(suggestion.contrast, 0)
+        self.assertLessEqual(suggestion.contrast, .01)
         self.assertGreater(suggestion.exposure, 0)
         self.assertEqual(suggestion.metrics["contrast_guarded"], 1)
         self.assertGreater(suggestion.metrics["median_luma_after"], 90 / 255)
@@ -483,7 +484,8 @@ class AutoAdjustTests(unittest.TestCase):
                 candidate[:20] = 0
             return candidate
         suggestion = suggest_auto_adjustments_from_preview(preview, render=render)
-        self.assertEqual(suggestion.contrast, 0)
+        self.assertGreater(suggestion.contrast, 0)
+        self.assertLessEqual(suggestion.contrast, .01)
         self.assertEqual(suggestion.metrics["new_shadow_clipping_fraction"], 0)
 
     def test_render_guard_rejects_mismatched_sampling(self):

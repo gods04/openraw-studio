@@ -20,6 +20,17 @@ Manual mask refinement, richer local masks, and mobile remain later
 phases. Coarse scene/lighting analysis and corroborated person masks are now
 optional local experiments.
 
+Auto now fits positive contrast through bounded rendered trials instead of
+only halving or removing it. A soft two-code near-black margin catches detail
+that can disappear between Fit and full-resolution rendering; intermediate
+strengths also check sparse shadows. The previously recorded indoor shadow
+case now fits the 0.5% full-native budget at about 0.461% rather than 0.517%.
+In 152 full-native checks on 19 changed photos, 150 pass and all native crops
+match full renders. The two exceptions reproduce an existing five-channel
+highlight loss in one photo at 25% strength on CPU/GPU. Sampling is still not
+exhaustive image QC. Dark-scene intent and already-clipped light appearance
+remain next quality work.
+
 Lighting context now participates before white-balance fitting, avoiding an
 ordering conflict where a recognized sunset was cooled before scene refinement.
 Semantic evidence must agree with spatial background color outside corroborated
@@ -29,11 +40,11 @@ can still correct the residual cast. This is content-conditioned reference
 selection, not per-scene slider presets or learned aesthetic ranking. Missing
 or conflicting evidence leaves the earlier white-balance path unchanged.
 Across 30 additional D500 photos and 33 existing regression photos, seven global
-color suggestions change. Full-native checks pass the tone budgets in 54/56
+color suggestions changed in that increment. Full-native checks passed the tone budgets in 54/56
 cases. The two exceptions are the same indoor photo at full strength on CPU/GPU:
 shadow crushing is about 0.517%, already present before this increment, versus
-the 0.5% budget. This remains open alongside dark-scene intent and clipped-light
-appearance; a safe sampled preview is not exhaustive full-image validation.
+the 0.5% budget. The later contrast-fitting increment above addresses that
+shadow case; these earlier audit records remain available for comparison.
 
 Local subject Temperature/Tint now accompany exposure, with source-bound v2
 recipes and unchanged v1 replay. Optional clothing-color corroboration shares

@@ -2373,3 +2373,83 @@ existing local-color workflow. Auto settings match exactly, metrics agree to
 The earlier local-color portrait keeps identical Auto/local advice and identical
 TIFF file bytes. The sampled warm EXE golden-hour JPEG export takes 1.57 s;
 this is not a universal or cold-start benchmark. All inputs remain unchanged.
+
+### Measured Contrast and Near-Black Headroom
+
+The indoor counterexample crossed the full-native shadow threshold even though
+the small/display proxies narrowly passed. At full Auto, the display proxy
+reported .487% crushed shadows while the full render had .517%. Neither was
+an exhaustive prediction of the other; simply reusing the binary cutoff missed
+the pending loss. Tonal Auto now adds a soft risk band from 2 to 4 RGB8 luma
+codes on originally usable shadow pixels, alongside the unchanged hard metric.
+Existing black pixels do not count. This is conservative quantization/proxy
+headroom, not a calibrated perceptual model or statistical confidence bound.
+The extra margin is opt-in on `_RenderGuard`; the color-noise estimator retains
+its earlier guard behavior.
+
+When positive contrast fails tone checks, `_limit_contrast` verifies zero and
+uses five bounded bracket trials. It returns an actually checked candidate,
+never an unrendered interpolation. If zero cannot preserve the tones, the
+existing whole-correction backoff still applies. Every camera uses its real
+render response; there is no per-file or per-scene contrast table. Sparse usable
+shadows now also trigger intermediate-strength checks. Existing tests that
+required exactly half/zero contrast now check the original rendered tone
+budgets and the measured safe range instead. Nine additional tests cover the
+soft band, bounded probes, nonmonotonic responses, native/detail validation,
+and intermediate-strength loss hidden by an acceptable endpoint.
+
+The indoor example now selects contrast .0938 rather than .1, with the other
+global values unchanged. Full-native RGB8 shadow loss falls to .46067%, below
+the .5% budget. The two 30/33-photo development cohorts change 10/9 global
+suggestions; contrast can increase or decrease relative to the earlier coarse
+backoff. Later white-balance/color fits can consequently differ too. These are
+development cohorts, not independent aesthetic-quality benchmarks.
+
+Across 19 changed images, 152 full-native RGB8 checks cover CPU/GPU and strengths
+25/50/70/100%. All native regions match full renders, and original hashes are
+unchanged. 150 checks satisfy the existing budgets. The two failing checks are
+the same photograph at 25% on both backends: five out of 231 original usable
+highlight channels reach the clipping threshold, just above the 2% relative
+budget. The earlier Auto also loses those same five channels; it is not a new
+regression, but the strict audit remains failing rather than being relabeled
+as passed. The original shadow counterexample passes on both backends. Local
+evidence is in `output/shadow-native` and `output/*-auto-shadow*`.
+
+Eight further full-native RGB16 checks cover the indoor example and the local
+color portrait at 70/100%, on CPU/GPU. All meet the existing tone budgets,
+including the portrait's combined local edits; native crops are exact and input
+hashes unchanged. Across the 63-photo CPU/GPU regression, 62 global suggestions
+match exactly; the remaining warmth difference is the earlier .0001 rounding
+case. The local-color portrait differs by at most .0001 in advice, masks by two
+codes, and rendered RGB8 previews by two codes. These are bounded numeric
+differences, not pixel-identical backend results.
+
+The source environment passes 751 tests. Actual Tk workflows pass 28 checks at
+800x560 (GPU) and 69 at 1440x900 (CPU), plus 14 batch checks. Screenshots show no
+overlapping controls. Two initialized-process benchmarks at 1080x720 measure
+58 ms median GPU exposure-slider latency on the indoor photo and 90 ms CPU
+local-temperature latency on the portrait. The respective JPEG exports take
+1.25/2.33 s; Auto itself takes 2.04/3.40 s, including model setup in each
+process. Initial RAW previews take 1.59/1.03 s, with camera previews visible
+in about .20/.18 s. These are different photos and operations, not a controlled
+GPU-versus-CPU speed comparison or cold-machine guarantee. Evidence remains
+local in `output/shadow-gui-*`, `output/shadow-batch`, and
+`output/shadow-benchmark-*`.
+
+The packaging environment also passes all 751 tests. The refreshed local EXE
+passes 14 source-equivalence cases spanning CPU/GPU, JPEG/TIFF8/TIFF16,
+combined subject edits, and disabled optional models. Global Auto parameters
+are exact, metrics agree to 1e-6, and exports/native crops are pixel-identical
+to source execution. Every source hash is unchanged. Dependency and static
+checks pass; no public ZIP, private photo, or model was published. The optional
+Numba TBB-pool DLL warning remains in packaging; the tested CPU paths work
+without that optional pool. Local evidence: `output/shadow-frozen-*` and
+`output/shadow-frozen-verification.json`.
+
+Next: distinguish dark-scene intent from missing image information before
+choosing a tonal target. One almost-black development frame still receives a
+Sky/Night label (scene reliability .319) and +1.2 EV, without useful visible
+recovery. A starry sky with foreground detail and an illuminated street are
+different cases. Semantic evidence alone is not sufficient to decide how much
+to lift these images; both information content and rendered appearance need
+to participate. The tiny highlight-loss exception above also remains open.

@@ -28,17 +28,19 @@ class AutoShadowMidtoneTests(unittest.TestCase):
         pixels, render = self.scene()
         original = pixels.copy()
         result = suggest_auto_adjustments_from_preview(pixels, render=render)
-        self.assertEqual(result.contrast, 0)
+        self.assertGreaterEqual(result.contrast, .02)
+        self.assertLess(result.contrast, .025)
         self.assertEqual(result.metrics["contrast_guarded"], 1)
         self.assertEqual(result.metrics["new_shadow_clipping_fraction"], 0)
         self.assertGreater(result.metrics["median_luma_after"], result.metrics["median_luma"])
-        self.assertGreaterEqual(result.metrics["shadow_midtone_mean_after"], result.metrics["shadow_midtone_mean_before"])
+        self.assertGreaterEqual(result.metrics["shadow_midtone_mean_after"], result.metrics["shadow_midtone_mean_before"] - .01)
         np.testing.assert_array_equal(original, pixels)
 
     def test_mild_safe_contrast_is_retained_instead_of_disabling_it(self):
         pixels, render = self.scene(darkening=24)
         result = suggest_auto_adjustments_from_preview(pixels, render=render)
-        self.assertEqual(result.contrast, .09)
+        self.assertGreater(result.contrast, .09)
+        self.assertLess(result.contrast, .105)
         self.assertEqual(result.metrics["contrast_guarded"], 1)
         self.assertGreaterEqual(result.metrics["shadow_midtone_mean_after"], 48 / 255 - 1e-6)
 
@@ -48,9 +50,12 @@ class AutoShadowMidtoneTests(unittest.TestCase):
         result = suggest_auto_adjustments_from_preview(
             primary, render=lambda _: primary, detail_preview=detail, render_detail=render_detail,
         )
-        self.assertEqual(result.contrast, 0)
+        self.assertGreaterEqual(result.contrast, .02)
+        self.assertLess(result.contrast, .025)
         self.assertEqual(result.metrics["contrast_guarded"], 1)
         self.assertAlmostEqual(result.metrics["detail_shadow_midtone_fraction"], .3)
+        self.assertGreaterEqual(result.metrics["detail_shadow_midtone_mean_after"],
+                                result.metrics["detail_shadow_midtone_mean_before"] - .01)
 
     def test_brightness_biased_native_samples_do_not_set_shadow_target(self):
         primary = np.full((4, 4, 3), 110, np.uint8)

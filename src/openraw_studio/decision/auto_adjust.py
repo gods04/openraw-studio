@@ -73,6 +73,7 @@ class _RenderedMetrics:
     clipping: float
     median: float
     crushed_shadows: float
+    shadow_risk: float
     new_clipping: float
     lost_highlight_channels: int
     shadow_midtone_mean: float
@@ -100,10 +101,29 @@ def _clipping(pixels):
     return float(np.mean(_any_rgb(pixels >= 254 / 255)))
 
 
+def _limit_contrast(values, preserved):
+    """Fit a checked contrast; the caller still validates the whole correction."""
+    high = values["contrast"]
+    if high <= 0 or preserved(values):
+        return values
+    safe = {**values, "contrast": 0.0}
+    if not preserved(safe):
+        return safe
+    low = 0.0
+    for _ in range(5):
+        middle = round((low + high) / 2, 4)
+        candidate = {**values, "contrast": middle}
+        if preserved(candidate):
+            low, safe = middle, candidate
+        else:
+            high = middle
+    return safe
+
+
 class _RenderGuard:
     """Cached measurements in one unedited proxy's own sampling domain."""
 
-    def __init__(self, preview, render, *, preserve_midtones, balance=False, ambient=None):
+    def __init__(self, preview, render, *, preserve_midtones, balance=False, ambient=None, shadow_margin=False):
         self.pixels = _pixels(preview)
         self.render = render
         self.neutral = NeutralCast(preview, ambient=ambient) if balance else None
@@ -113,6 +133,8 @@ class _RenderGuard:
         self.clipping = _clipping(self.pixels)
         self.preserve_midtones = preserve_midtones and self.median < 0.5
         self.usable_shadows = (luma > 8 / 255) & (luma < 0.25)
+        self.shadow_margin = shadow_margin
+        self.usable_shadow_fraction = float(np.mean(self.usable_shadows))
         self.shadow_midtones = (luma >= 0.08) & (luma < 0.35)
         self.shadow_midtone_fraction = float(np.mean(self.shadow_midtones))
         self.shadow_midtone_mean = self._shadow_mean(luma)
@@ -136,9 +158,16 @@ class _RenderGuard:
                 raise ValueError("Auto validation render must match the baseline preview dimensions")
             candidate_luma = candidate @ self.weights
             clipped_channels = candidate >= 254 / 255
+            crushed = float(np.mean(self.usable_shadows & (candidate_luma <= 2 / 255)))
+            risk = crushed
+            if self.shadow_margin and self.usable_shadow_fraction:
+                # RGB8 quantization and proxy smoothing can hide an incipient
+                # black threshold crossing. Count the next two codes softly.
+                near_black = np.clip((4 / 255 - candidate_luma[self.usable_shadows]) * (255 / 2), 0, 1)
+                risk = max(crushed, float(near_black.sum(dtype=np.float64) / len(candidate_luma)))
             self.cache[key] = _RenderedMetrics(
                 float(np.mean(_any_rgb(clipped_channels))), float(np.median(candidate_luma)),
-                float(np.mean(self.usable_shadows & (candidate_luma <= 2 / 255))),
+                crushed, risk,
                 float(np.mean(_any_rgb(self.headroom & clipped_channels))),
                 int(np.count_nonzero(self.highlight_detail & clipped_channels)),
                 self._shadow_mean(candidate_luma),
@@ -150,7 +179,7 @@ class _RenderGuard:
         checked = self.measure(values)
         # Bright clothing/background can raise the median while contrast still
         # darkens a substantial dim subject. Follow the original shadow pixels.
-        return checked.crushed_shadows <= 0.005 and (
+        return checked.shadow_risk <= 0.005 and (
             not self.preserve_midtones or checked.median >= self.median - tolerance
         ) and (
             not self.preserve_shadow_midtones
@@ -179,6 +208,7 @@ class _RenderGuard:
             "highlight_fraction_after": checked.clipping,
             "median_luma_after": checked.median,
             "new_shadow_clipping_fraction": checked.crushed_shadows,
+            **({"shadow_clipping_risk": checked.shadow_risk} if self.shadow_margin else {}),
             "new_highlight_clipping_fraction": checked.new_clipping,
             "highlight_detail_loss_fraction": checked.lost_highlight_channels / max(1, self.highlight_channels),
             "validation_renders": float(len(self.cache)),
@@ -400,17 +430,18 @@ def suggest_auto_adjustments_from_preview(
         return suggestion
 
     primary = _RenderGuard(preview, render, preserve_midtones=exposure >= 0 and not low_key,
-                           balance=not low_key, ambient=ambient)
+                           balance=not low_key, ambient=ambient, shadow_margin=True)
     guards = [primary]
     prefixes = [""]
     if render_native is not None:
-        guards.append(_RenderGuard(native_preview, render_native, preserve_midtones=False))
+        guards.append(_RenderGuard(native_preview, render_native, preserve_midtones=False, shadow_margin=True))
         prefixes.append("native_")
     if render_detail is not None:
         guards.append(_RenderGuard(
             detail_preview, render_detail, preserve_midtones=exposure >= 0 and not low_key,
             balance=primary.neutral is not None and primary.neutral.mask is not None,
             ambient=ambient,
+            shadow_margin=True,
         ))
         prefixes.append("detail_")
 
@@ -421,7 +452,9 @@ def suggest_auto_adjustments_from_preview(
 
     def needs_strength_checks(values):
         return values["highlights"] < 0 or (
-            values["contrast"] > 0 and any(guard.preserve_shadow_midtones for guard in guards)
+            values["contrast"] > 0 and any(
+                guard.preserve_shadow_midtones or guard.usable_shadow_fraction > .005 for guard in guards
+            )
         )
 
     # More exposure/compression can have a clipping peak below the usual 25%
@@ -510,15 +543,11 @@ def suggest_auto_adjustments_from_preview(
     # Positive contrast can undo an exposure lift and clip dim subjects. Test
     # that component first, retaining the other corrections where possible.
     initial_values = suggestion.as_overrides()
-    contrast_guarded = False
-    if suggestion.contrast > 0 and not tones_preserved(initial_values):
-        for fraction in (0.5, 0.0):
-            values = {**initial_values, "contrast": round(suggestion.contrast * fraction, 4)}
-            if tones_preserved(values) or fraction == 0:
-                suggestion = replace(suggestion, contrast=values["contrast"])
-                initial_values = values
-                contrast_guarded = True
-                break
+    limited = _limit_contrast(initial_values, tones_preserved)
+    contrast_guarded = limited["contrast"] != suggestion.contrast
+    if contrast_guarded:
+        suggestion = replace(suggestion, contrast=limited["contrast"])
+        initial_values = limited
 
     exposure_guarded = False
     highlights_guarded = False
