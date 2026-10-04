@@ -11,7 +11,7 @@ import numpy as np
 from openraw_studio.decision.white_balance import NeutralCast, refine_white_balance
 from openraw_studio.decision.scene_color import refine_scene_color
 from openraw_studio.vision.scene import SceneEvidence, analyze_scene
-from openraw_studio.vision.person import PersonEvidence, analyze_person
+from openraw_studio.vision.person import PersonAnalysis, PersonEvidence, analyze_person
 from openraw_studio.raw.native.interactive import InteractivePhoto
 from openraw_studio.raw.native.preview import render_preview_image
 from openraw_studio.raw.native.tone import PreviewRgbImage
@@ -188,8 +188,14 @@ class _RenderGuard:
         }
 
 
-def suggest_auto_adjustments_for_photo(photo: InteractivePhoto) -> AutoAdjustSuggestion:
-    """Analyze a small linear proxy; validate display and available native samples."""
+def suggest_auto_adjustments_for_photo(
+    photo: InteractivePhoto, *, person_analysis: PersonAnalysis | None = None,
+) -> AutoAdjustSuggestion:
+    """Analyze a small linear proxy; validate display and available native samples.
+
+    A caller may retain person analysis from this same photo's unedited render
+    for inspection, supplying it here to avoid running inference a second time.
+    """
     analysis = photo.resized(256)
     original, _ = analysis.render({})
     detail = {}
@@ -208,7 +214,8 @@ def suggest_auto_adjustments_for_photo(photo: InteractivePhoto) -> AutoAdjustSug
     return suggest_auto_adjustments_from_preview(
         original, render=lambda values: analysis.render(values)[0],
         validation_strengths=(.7, .5, .25, *_SHOULDER_STRENGTHS),
-        scene_evidence=analyze_scene(scene_image), person=analyze_person(scene_image), **detail
+        scene_evidence=analyze_scene(scene_image),
+        person=person_analysis if person_analysis is not None else analyze_person(scene_image), **detail
     )
 
 

@@ -2029,3 +2029,59 @@ All 649 tests pass in the Windows build environment and source GPU-off run
 (six expected GPU skips in the latter). Focused static checks, dependency checks,
 and whitespace validation pass. The local EXE is refreshed; model weights and
 private images remain outside Git and the app bundle. No public release is made.
+
+### Person Selection Boundaries And Inspection
+
+Accepted person regions now receive conservative RGB-guided refinement before
+Auto measures subject colors. `vision/mask.py` independently implements the RGB
+equations from [He, Sun, Tang (2010)](https://people.csail.mit.edu/kaiming/publications/eccv10guidedfilter.pdf)
+and the coefficient-subsampling approach of [He and Sun (2015)](https://arxiv.org/abs/1505.00996).
+Coefficients use at most 384 pixels on the long edge; reconstruction uses the
+unedited, oriented preview at up to 960. Float64 cumulative box sums feed
+regularized float32 3x3 solves. The result is clipped below the original
+resampled selection, so refinement cannot add newly classified foreground.
+These weights are not calibrated model probabilities. Model evidence still
+reports its original coarse coverage/score; the refined >=0.9 core supplies
+Auto's measurements. No dependency, checkpoint, or recognition threshold changed.
+
+The desktop retains this transient analysis and passes it into Auto to avoid
+duplicate inference. `Person mask` inspects that same core, projected through
+normalized full-frame coordinates for Fit, zoom, pan, and 100%/200% detail.
+The display-only magenta overlay never enters render buffers, histograms,
+history, sessions, recipes, or exports. Reimport clears the selection, stale
+Auto callbacks cannot replace it, and absent/unconfirmed evidence disables
+inspection. Original comparison uses identical selection coordinates.
+
+Both GPU and CPU 33-photo RAW audits retain all preceding Auto parameter sets
+and their respective person-evidence records. Nine accepted regions receive
+refinement; no new person detections are claimed. The initial full-proxy
+implementation took about 0.68-0.87 s per accepted sample. Subsampled final
+refinement takes 0.13-0.21 s in the GPU audit (154 ms mean), runs on CPU once
+during Auto, and never runs on slider changes or export. Original hashes are
+unchanged. Visual inspection still finds incomplete groups, missing hands,
+and incorrectly included objects; refinement cannot repair semantic mistakes.
+This increment does not claim improved aesthetics, accurate skin/face masks,
+editable selections, or shipped local exposure/color compositing.
+
+The actual Tk workflow now checks mask enable/disable, exact image restoration,
+unchanged buffers/settings/histogram, stale-result rejection, native-detail
+alignment before and after pan, 200% inspection, and reimport clearing. Final D500 GPU and
+rotated portrait CPU workflows each pass 64 checks at 1280x820 and 800x560;
+the synthetic DNG/no-mask path passes 27 checks. Screenshots were inspected.
+
+`benchmark_live_preview.py --auto-before --person-mask` measures the inspector
+while editing, and requires a corroborated mask. On the checked D500 aquarium
+at 900x640, GPU slider medians are 46 ms without inspection and 61 ms with it;
+CPU with inspection is 77 ms. Drag tests show 49/49/48 updates, respectively.
+JPEG exports take 1.44/1.36/1.71 s with noise reduction off; inspected and plain
+GPU exports have identical SHA256. These are local warm-render measurements,
+not startup or full-Auto latency promises. Initial Auto in those processes is
+2.11/2.22/2.96 s including model loading.
+
+All 659 tests pass in source and build environments. The rebuilt local EXE
+passes eight Auto/export/native-detail cases; all parameters, metrics, model
+evidence, and five TIFF16 arrays match current source. All eight exported files
+are byte-identical to the preceding person-aware EXE, and two older saved recipes
+remain exact. Three model-off/missing EXE fallbacks retain earlier Auto and TIFF
+bytes. Static, dependency, and whitespace checks pass. No model weights or
+private images are bundled or committed; no public installer/ZIP is released.

@@ -386,6 +386,12 @@ def build_workspace(app, filedialog, messagebox):
         wraplength=238,
     )
     app.auto_summary_label.pack(anchor="w", pady=(0, 8))
+    app.person_mask_button = ttk.Checkbutton(
+        controls, text="Person mask", variable=app.person_mask_var,
+        command=app._fit_live_image, state="disabled",
+    )
+    app.person_mask_button.pack(anchor="w", pady=(0, 8))
+    Tooltip(app.person_mask_button, "Inspect the person area used by Auto; not a skin or face mask")
 
     def section(name, expanded=True):
         ttk.Separator(controls).pack(fill="x", pady=(4, 10))

@@ -20,6 +20,12 @@ Face detection, editable local masks/subject edits, and mobile remain later
 phases. Coarse scene/lighting analysis and corroborated person masks are now
 optional local experiments.
 
+Person selections now have conservative RGB-guided boundary refinement and a
+desktop inspection checkbox. The same oriented selection supplies Auto color
+measurements and follows Fit, zoom, pan, and native-detail views. It never
+becomes export pixels or recipe content. This makes the current selection
+inspectable, not precise, editable, or a shipped local exposure/color tool.
+
 The latest person-color increment excludes confirmed subject pixels from
 scenery color targets and adds spatial subject-color constraints to the global
 solver. A small separately installed PPHumanSeg model proposes a mask; area,

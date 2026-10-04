@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from collections import deque
 import hashlib
 import os
@@ -13,6 +13,7 @@ import numpy as np
 from PIL import Image
 
 from openraw_studio.vision.scene import analyze_scene
+from openraw_studio.vision.mask import guided_selection, project_selection
 
 
 MODEL_ID = "pphumanseg-2023mar"
@@ -41,13 +42,13 @@ class PersonEvidence:
 class PersonAnalysis:
     evidence: PersonEvidence
     probabilities: np.ndarray | None = None
+    selection: np.ndarray | None = field(default=None, repr=False, compare=False)
 
-    def core_mask(self, shape):
+    def core_mask(self, shape, *, box=(0, 0, 1, 1)):
         if self.evidence.status != "ready" or self.probabilities is None:
             return None
-        height, width = shape
-        resized = Image.fromarray(self.probabilities).resize((width, height), Image.Resampling.BILINEAR)
-        return np.asarray(resized) >= .9
+        weights = self.selection if self.selection is not None else self.probabilities
+        return project_selection(weights, shape, box=box) >= .9
 
 
 def prepare_person_input(image):
@@ -199,6 +200,9 @@ def analyze_person(image):
                 _segmenter = LocalPersonSegmenter(folder)
             probabilities = _segmenter.segment(image)
         # Do not hold two model locks while corroborating a candidate region.
-        return confirm_person(image, probabilities)
+        analysis = confirm_person(image, probabilities)
+        if analysis.evidence.status == "ready":
+            analysis = replace(analysis, selection=guided_selection(image, analysis.probabilities))
+        return analysis
     except Exception:  # An optional model must never disable ordinary Auto.
         return PersonAnalysis(PersonEvidence("unavailable"))

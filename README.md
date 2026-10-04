@@ -350,6 +350,12 @@ crop classification agree. This is person-aware **global** Auto, not a local
 brush, face/skin editing, or identification. `OPENRAW_PERSON=off` keeps scene
 Auto without person analysis. Missing/uncertain masks leave scene Auto unchanged.
 
+After a corroborated detection, **Person mask** shows the protection area on the
+photo, including zoomed/native detail and original comparison. RGB-guided
+boundary refinement is conservative and cannot recover missed people or fix
+incorrect labels. Inspection never changes edits, the histogram, or exports;
+the transient mask is cleared on the next import. This is not an editable mask.
+
 The compact histogram follows the displayed Before, Camera Preview, or After
 image and reports near-black and near-white clipping percentages. It analyzes
 the displayed rendered 8-bit image, not untouched sensor values.

@@ -20,12 +20,15 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--cpu", action="store_true")
     parser.add_argument("--auto-before", action="store_true", help="Run Auto before timing slider changes and export")
+    parser.add_argument("--person-mask", action="store_true", help="Keep the inspected person mask visible after Auto")
     parser.add_argument("--geometry", default="1080x720")
     parser.add_argument("--screenshot", action="store_true")
     parser.add_argument("--highlights", type=float, help="Exercise a fixed highlight correction while dragging exposure")
     parser.add_argument("--color-noise", type=float, default=0.0)
     parser.add_argument("--luminance-noise", type=float, default=0.0)
     args = parser.parse_args()
+    if args.person_mask and not args.auto_before:
+        parser.error("--person-mask requires --auto-before")
     if args.highlights is not None and not -1 <= args.highlights <= 1:
         parser.error("--highlights must be within [-1, 1]")
     if not 0 <= args.color_noise <= 1:
@@ -52,6 +55,7 @@ def main():
         "luminance_noise": args.luminance_noise,
         "mode": "CPU" if args.cpu else "auto",
         "auto_before": args.auto_before,
+        "person_mask": args.person_mask,
         "first_display_ms": None,
         "camera_preview_ms": None,
         "slider_to_display_ms": [],
@@ -148,6 +152,12 @@ def main():
                 report["auto_seconds"] = perf_counter() - changed_at
                 report["scene_analysis"] = asdict(app.last_auto_suggestion.scene_evidence)
                 report["person_analysis"] = asdict(app.last_auto_suggestion.person_evidence)
+                if args.person_mask:
+                    if app.person_mask_button.instate(["disabled"]):
+                        report["errors"].append("No corroborated person mask available")
+                        finish()
+                        return
+                    app.person_mask_button.invoke()
                 phase = "prepare-adjust"
         if phase == "prepare-adjust":
             if args.highlights is not None:

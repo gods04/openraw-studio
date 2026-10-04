@@ -709,6 +709,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.session_store = SessionStore(session_dir)
             self.edit_after_id = None
             self.last_auto_suggestion = None
+            self.last_person_analysis = None
             self.last_noise_suggestion = None
             self.pan_origin = None
             self.pan_offset = [0.0, 0.0]
@@ -740,6 +741,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.auto_strength_var = tk.DoubleVar(value=70)
             self.auto_strength_label_var = tk.StringVar(value="70%")
             self.auto_summary_var = tk.StringVar(value="")
+            self.person_mask_var = tk.BooleanVar(value=False)
             self.support_notice_var = tk.StringVar(value="")
             self.batch_mode_var = tk.StringVar(value="Current adjustments")
             self.status_var = tk.StringVar(value="Choose a RAW photo to begin")
@@ -1009,6 +1011,8 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.zoom_var.set("Fit")
             self.pan_offset = [0.0, 0.0]
             self.last_auto_suggestion = None
+            self.last_person_analysis = None
+            self.person_mask_var.set(False)
             self.auto_summary_var.set("")
             self.last_noise_suggestion = None
             self.current_can_preview = None
@@ -1453,10 +1457,13 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
 
         def _auto_adjust_worker(self, run_id: int, source: Path) -> None:
             try:
+                from openraw_studio.vision.person import analyze_person
+
                 photo = self.live_worker.get_prepared_photo(source)
                 if photo is None:
                     photo = prepare_interactive_photo(self.pipeline.raw_processor, source)
-                suggestion = suggest_auto_adjustments_for_photo(photo)
+                person = analyze_person(photo.render({})[0])
+                suggestion = suggest_auto_adjustments_for_photo(photo, person_analysis=person)
             except (
                 PipelineError,
                 OSError,
@@ -1467,14 +1474,16 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                 message = _friendly_error_message(exc)
                 self._post(lambda: self._show_error(message, run_id=run_id))
                 return
-            self._post(lambda: self._apply_auto_adjustment(suggestion, run_id=run_id))
+            self._post(lambda: self._apply_auto_adjustment(suggestion, run_id=run_id, person=person))
 
         def _apply_auto_adjustment(
-            self, suggestion: AutoAdjustSuggestion, *, run_id: int
+            self, suggestion: AutoAdjustSuggestion, *, run_id: int, person=None
         ) -> None:
             if run_id != self.run_counter:
                 return
             self.last_auto_suggestion = suggestion
+            self.last_person_analysis = person
+            self.person_mask_var.set(False)
             evidence = suggestion.scene_evidence
             if evidence is not None and evidence.status == "ready":
                 summary = evidence.scene + " | " + evidence.lighting
@@ -1614,6 +1623,12 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
 
         def _fit_live_image(self) -> None:
             from PIL import Image, ImageTk
+            from openraw_studio.ui.mask_overlay import person_overlay
+
+            def inspected(image, box=(0, 0, 1, 1)):
+                if self.person_mask_var.get():
+                    image = person_overlay(image, self.last_person_analysis, box=box)
+                return image
 
             self.resize_after_id = None
             size = (
@@ -1627,6 +1642,9 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                 draw_size = detail.display_size(frame.region)
 
                 def native_image(image):
+                    x, y, width, height = frame.region
+                    sw, sh = frame.native_size
+                    image = inspected(image, (x / sw, y / sh, (x + width) / sw, (y + height) / sh))
                     enlarged = image if detail.scale == 1 else image.resize(
                         (image.width * detail.scale, image.height * detail.scale), Image.Resampling.NEAREST
                     )
@@ -1645,10 +1663,11 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                 if detail is not None and self.detail_full_size is not None:
                     x, y, rw, rh = detail.region(self.detail_full_size)
                     sx, sy = width / self.detail_full_size[0], height / self.detail_full_size[1]
-                    return ImageTk.PhotoImage(image.resize(
+                    return ImageTk.PhotoImage(inspected(image.resize(
                         detail.display_size((x, y, rw, rh)), Image.Resampling.BILINEAR,
                         box=(x * sx, y * sy, (x + rw) * sx, (y + rh) * sy),
-                    ))
+                    ), (x / self.detail_full_size[0], y / self.detail_full_size[1],
+                        (x + rw) / self.detail_full_size[0], (y + rh) / self.detail_full_size[1])))
                 scale = min(size[0] / width, size[1] / height) * zoom
                 draw_width = min(size[0], max(1, round(width * scale)))
                 draw_height = min(size[1], max(1, round(height * scale)))
@@ -1671,11 +1690,11 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                     ),
                 )
                 return ImageTk.PhotoImage(
-                    image.resize(
+                    inspected(image.resize(
                         (draw_width, draw_height),
                         Image.Resampling.BILINEAR,
                         box=(left, top, left + crop_width, top + crop_height),
-                    )
+                    ), (left / width, top / height, (left + crop_width) / width, (top + crop_height) / height))
                 )
 
             if self.live_image is not None:
@@ -2007,6 +2026,10 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                 else "disabled"
             )
             self.auto_adjust_button.configure(state=render_state)
+            self.person_mask_button.configure(state=(
+                "normal" if not busy and self.last_person_analysis is not None
+                and self.last_person_analysis.evidence.status == "ready" else "disabled"
+            ))
             self.auto_color_noise_button.configure(state=render_state)
             self.zoom_combo.configure(values=("Fit", "2x", "4x", "100%", "200%") if can_render else ("Fit", "2x", "4x"))
             self.preview_button.configure(state=preview_state)

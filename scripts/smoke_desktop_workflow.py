@@ -199,6 +199,73 @@ def main():
             state["phase"] = "auto_summary"
         elif phase == "auto_summary" and frame_current() and perf_counter() - state["scene_ready"] > .4:
             capture_window(app.root, args.output / "auto-scene.png")
+            ready = app.last_person_analysis is not None and app.last_person_analysis.evidence.status == "ready"
+            require(app.person_mask_button.instate(["!disabled"]) == ready, "Mask inspection requires corroborated person evidence")
+            if ready:
+                state["mask_native"] = app.live_image.tobytes()
+                state["mask_reference"] = app.reference_image.tobytes()
+                state["mask_clean"] = ImageTk.getimage(app.after_photo).tobytes()
+                state["mask_edits"] = app._current_overrides()
+                state["mask_revision"] = app.live_revision
+                state["mask_histogram"] = app.current_histogram
+                app.person_mask_button.invoke()
+                require(app.person_mask_var.get(), "Person-mask checkbox turns inspection on")
+                require(ImageTk.getimage(app.after_photo).tobytes() != state["mask_clean"], "Person selection changes displayed pixels")
+                require(app.live_revision == state["mask_revision"], "Mask inspection never schedules a RAW render")
+                require(app._current_overrides() == state["mask_edits"] and app.current_histogram == state["mask_histogram"],
+                        "Inspection preserves edits and image histogram")
+                person = app.last_person_analysis
+                app._apply_auto_adjustment(app.last_auto_suggestion, run_id=app.run_counter - 1)
+                require(app.last_person_analysis is person and app.person_mask_var.get(), "Stale Auto results cannot replace the current mask")
+                state["mask_shown_at"] = perf_counter()
+                state["phase"] = "mask_capture"
+            else:
+                state["phase"] = "auto_strength"
+        elif phase == "mask_capture" and perf_counter() - state["mask_shown_at"] > .4:
+            capture_window(app.root, args.output / "person-mask.png")
+            import numpy as np
+            core = app.last_person_analysis.core_mask((100, 100))
+            ys, xs = np.nonzero(core)
+            app.zoom_var.set("100%")
+            app._zoom_changed(anchor=(float(xs.mean() / 100), float(ys.mean() / 100)))
+            state["phase"] = "mask_detail"
+        elif phase == "mask_detail" and app.detail_frame is not None and app.detail_frame.detail_view == app._detail_view() and frame_current():
+            from openraw_studio.ui.mask_overlay import person_overlay
+            frame = app.detail_frame
+            x, y, width, height = frame.region
+            sw, sh = frame.native_size
+            box = (x / sw, y / sh, (x + width) / sw, (y + height) / sh)
+            def inspected(image):
+                shown = person_overlay(image, app.last_person_analysis, box=box)
+                scale = frame.detail_view.scale
+                if scale != 1:
+                    shown = shown.resize((shown.width * scale, shown.height * scale), Image.Resampling.NEAREST)
+                return shown.crop((0, 0, *frame.detail_view.display_size(frame.region))).convert("RGBA")
+            expected = inspected(frame.image)
+            require(ImageTk.getimage(app.after_photo).tobytes() == expected.tobytes(), "Native detail mask uses full-frame coordinates")
+            app.compare_button.invoke()
+            expected = inspected(frame.original_image)
+            require(ImageTk.getimage(app.preview_photo).tobytes() == expected.tobytes(), "Original comparison retains the same selection coordinates")
+            app.compare_button.invoke()
+            if not state.get("mask_panned"):
+                app.pan_offset = [80.0, -55.0]
+                app._schedule_live_preview()
+                state["mask_panned"] = True
+            elif app.zoom_var.get() == "100%":
+                app.zoom_var.set("200%")
+                app._zoom_changed()
+            else:
+                app.zoom_var.set("Fit")
+                app._zoom_changed()
+                app.person_mask_button.invoke()
+                state["phase"] = "mask_restored"
+        elif phase == "mask_restored" and frame_current() and app.detail_frame is None:
+            require(not app.person_mask_var.get(), "Mask checkbox turns inspection off")
+            require(ImageTk.getimage(app.after_photo).tobytes() == state["mask_clean"], "Hiding mask restores displayed photo exactly")
+            require(app.live_image.tobytes() == state["mask_native"] and app.reference_image.tobytes() == state["mask_reference"],
+                    "Mask inspection never modifies rendered or original image buffers")
+            state["phase"] = "auto_strength"
+        elif phase == "auto_strength" and frame_current():
             require(app.history.can_undo, "Auto is a reversible edit")
             app.auto_strength_var.set(0)
             app._change_auto_strength()
@@ -318,6 +385,8 @@ def main():
                 "Session persisted without exporting a new recipe",
             )
             app._select_source(source, ready_status="Reopened")
+            require(app.last_person_analysis is None and not app.person_mask_var.get() and app.person_mask_button.instate(["disabled"]),
+                    "Reopening clears transient masks rather than carrying them to a different import")
             require(app._selected_export_bit_depth() == args.tiff_bit_depth, "Reopening restores TIFF bit depth")
             require(
                 app._current_overrides() == state["saved"], "Reopening restores edits"

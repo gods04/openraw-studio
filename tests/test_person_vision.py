@@ -134,6 +134,22 @@ class PersonVisionTests(unittest.TestCase):
             with patch.object(person, "_segmenter", None), patch.object(person.LocalPersonSegmenter, "segment", side_effect=RuntimeError("failed")):
                 self.assertEqual(person.analyze_person(Image.new("RGB", (200, 200))).evidence.status, "unavailable")
 
+    def test_confirmed_model_selection_is_refined_once_at_analysis_resolution(self):
+        raw = probabilities()
+        confirmed = person.PersonAnalysis(person.PersonEvidence("ready"), raw)
+        with TemporaryDirectory() as directory, patch.dict(os.environ, {
+            "OPENRAW_PERSON_MODEL": directory, "OPENRAW_SCENE": "auto", "OPENRAW_PERSON": "auto",
+        }):
+            Path(directory, "person.onnx").touch()
+            with patch.object(person, "_segmenter", None), patch.object(person.LocalPersonSegmenter, "segment", return_value=raw), \
+                    patch.object(person, "confirm_person", return_value=confirmed):
+                result = person.analyze_person(Image.new("RGB", (300, 200), (60, 90, 150)))
+                self.assertEqual(result.evidence, confirmed.evidence)
+                self.assertIs(result.probabilities, raw)
+                self.assertEqual(result.selection.shape, (200, 300))
+                self.assertFalse(result.selection.flags.writeable)
+                self.assertTrue(np.all(result.selection <= person.project_selection(raw, (200, 300))))
+
     def test_setup_rejects_wrong_checkpoint_without_replacing_installed_files(self):
         install = runpy.run_path(str(Path(__file__).resolve().parents[1] / "scripts/prepare_person_model.py"))["install"]
         with TemporaryDirectory() as directory:
