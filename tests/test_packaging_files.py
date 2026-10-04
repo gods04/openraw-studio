@@ -1,7 +1,10 @@
 import runpy
+import errno
+from tempfile import TemporaryDirectory
 import tomllib
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,6 +35,42 @@ class PackagingFilesTests(unittest.TestCase):
         self.assertIn('@{ Name = "Tifffile"; Pattern = "tifffile-*.dist-info" }', script)
         self.assertIn("Copy-Item", script)
         self.assertTrue((ROOT / "NOTICE").is_file())
+
+    def test_scene_runtime_is_explicit_and_retains_notices_without_weights(self):
+        script = (ROOT / "scripts" / "build_windows.ps1").read_text(encoding="utf-8")
+        project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        self.assertIn("onnxruntime==1.30.0", project["project"]["optional-dependencies"]["scene"])
+        self.assertIn(".[packaging,scene]", script)
+        self.assertIn("ThirdPartyNotices.txt", script)
+        self.assertNotIn("scene.onnx", script)
+        self.assertTrue((ROOT / "packaging/licenses/flatbuffers/Apache-2.0.txt").is_file())
+
+    def test_scene_publisher_handles_identical_and_redirected_files(self):
+        publish = runpy.run_path(str(ROOT / "scripts/prepare_scene_model.py"))["_publish"]
+        with TemporaryDirectory() as directory:
+            source, destination = Path(directory, "pending"), Path(directory, "model")
+            source.write_bytes(b"same")
+            destination.write_bytes(b"same")
+            with patch.object(Path, "replace", side_effect=AssertionError("Unnecessary replace")):
+                publish(source, destination)
+            self.assertFalse(source.exists())
+            source.write_bytes(b"updated")
+            with patch.object(Path, "replace", side_effect=OSError(errno.EXDEV, "Cross-device")):
+                publish(source, destination)
+            self.assertEqual(destination.read_bytes(), b"updated")
+            self.assertFalse(source.exists())
+
+    def test_scene_publisher_does_not_hide_other_filesystem_errors(self):
+        publish = runpy.run_path(str(ROOT / "scripts/prepare_scene_model.py"))["_publish"]
+        with TemporaryDirectory() as directory:
+            source, destination = Path(directory, "pending"), Path(directory, "model")
+            source.write_bytes(b"new")
+            destination.write_bytes(b"old")
+            with patch.object(Path, "replace", side_effect=PermissionError("Denied")):
+                with self.assertRaises(PermissionError):
+                    publish(source, destination)
+            self.assertEqual(destination.read_bytes(), b"old")
+            self.assertEqual(source.read_bytes(), b"new")
 
     def test_numba_sources_are_present_for_frozen_cache_locator(self):
         script = (ROOT / "scripts" / "build_windows.ps1").read_text(encoding="utf-8")

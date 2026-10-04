@@ -16,7 +16,25 @@ Next quality work: Auto under difficult lighting, broader camera calibration
 and gamut handling, edge-aware demosaic, actual sensor highlight reconstruction,
 and sensor-domain denoise with calibrated luminance-noise advice. Further first-use initialization and broader verified HE profiles
 also remain open.
-Semantic portrait/scene AI and mobile remain later phases.
+Face detection, semantic masks/local subject edits, and mobile remain later
+phases. Coarse local scene/lighting analysis is now an optional experiment.
+
+The latest Auto increment combines pretrained local CLIP scene evidence with
+OpenRAW's measured color solver. Scene weights select color objectives instead
+of fixed per-scene adjustment presets. Bounded Temperature/Tint/Saturation
+proposals must improve those objectives and pass existing rendered tone guards,
+plus finer-preview and intermediate-strength color checks. Missing/uncertain
+model evidence retains tonal Auto. This is not a learned aesthetic ranking,
+semantic pixel segmentation, or a guarantee of correct scene recognition.
+See `models/README.md` and `MODEL_LICENSES.md` for explicit local setup and
+deployment limits. No model weights or private photos are published.
+
+The 33-photo local scene comparison refines 11 photos and leaves 22 unchanged;
+44 full-resolution strength checks remain within the existing tone budgets.
+Two 47-check desktop workflows and ten source/EXE comparisons pass, including
+six exact TIFF16 arrays. Disabled/missing-model EXE fallbacks retain the previous
+Auto and export bytes. These checks do not establish general recognition or
+aesthetic accuracy; mixed scenes and local subject protection remain next.
 
 Latest import increment avoids whole-RAW copies during metadata/JPEG reads and
 uses reduced JPEG decoding for the temporary camera reference. It retains

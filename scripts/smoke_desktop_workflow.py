@@ -174,6 +174,23 @@ def main():
             report["auto_seconds"] = perf_counter() - state["auto_started"]
             report["auto"] = app.last_auto_suggestion.as_overrides()
             report["auto_metrics"] = app.last_auto_suggestion.metrics
+            if app.last_auto_suggestion.scene_evidence is not None:
+                from dataclasses import asdict
+                report["scene_analysis"] = asdict(app.last_auto_suggestion.scene_evidence)
+                report["auto_summary"] = app.auto_summary_var.get()
+                app.controls_canvas.yview_moveto(0)
+                app.root.update_idletasks()
+                label = app.auto_summary_label
+                require(
+                    app.controls_canvas.winfo_rooty() <= label.winfo_rooty()
+                    and label.winfo_rooty() + label.winfo_height()
+                    <= app.controls_canvas.winfo_rooty() + app.controls_canvas.winfo_height(),
+                    "Scene summary is visible in the compact Adjust tab",
+                )
+            state["scene_ready"] = perf_counter()
+            state["phase"] = "auto_summary"
+        elif phase == "auto_summary" and frame_current() and perf_counter() - state["scene_ready"] > .4:
+            capture_window(app.root, args.output / "auto-scene.png")
             require(app.history.can_undo, "Auto is a reversible edit")
             app.auto_strength_var.set(0)
             app._change_auto_strength()

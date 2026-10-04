@@ -1869,3 +1869,85 @@ hits every used kernel cache with zero misses and produces the same TIFF16 in
 5.14 s, versus 8.29 s on the first run of the changed native sources. This is
 compilation reuse, not a new export algorithm speedup. The local Windows EXE
 has been rebuilt; no photos, public ZIP, or installer are distributed.
+
+### Experimental Content-Conditioned Auto
+
+The desktop and per-photo batch Auto paths can now use a separately installed,
+local CLIP ViT-B/32 scene encoder. It supplies coarse content and lighting
+similarities, not exposure presets, face identities, or a learned aesthetic
+score. English prompt ensembles cover 15 content groups and six lighting
+groups. Absolute similarity and ambiguity bound influence; lighting without a
+clear winner is displayed as mixed. These gates are heuristics, not calibrated
+probabilities. Mixed content and small subjects can still be misclassified.
+
+Existing tonal Auto runs first. The new `decision/scene_color.py` stage selects
+color objectives from scene weights and actual original pixels: restrained
+chroma opportunity in muted green/blue materials, preservation of measured
+ambient color, and conservative daylight neutral refinement. Finite-difference
+RAW renders measure the camera's response to Temperature/Tint/Saturation;
+a regularized least-squares proposal and backoff solve bounded changes per
+image. There is no fixed adjustment dictionary per scene. Already-vivid colors,
+uncertain evidence, or candidates without measured benefit retain prior values.
+
+Accepted proposals pass the existing highlight/shadow guards on proxy, native
+samples, and finer preview, including intermediate Auto strengths. Additional
+color checks limit broad color clipping and hue/saturation drift in possible
+warm subject materials. Those selections are color heuristics, not face/skin
+segmentation. Adjustments remain global, not separate sky/person masks. The
+objective's improvement is not proof that a person will prefer the result.
+Portrait light, mixed-scene handling, calibrated confidence, and local masks
+remain priority work; no skin whitening or demographic inference is used.
+
+The runtime is optional for source installs and included in Windows builds.
+Model files stay outside Git and the app bundle. Explicit setup verifies the
+official checkpoint, compares exported ONNX/PyTorch outputs (maximum checked
+error about 1.5e-7), retains the license, and installs a hash/prompt manifest.
+Runtime inference is CPU-only, offline, and has telemetry events disabled.
+One lazy session and a bounded 16-image content cache run only inside Auto's
+worker; sliders/export never run the scene model. Invalid/missing models fall
+back to tonal Auto. Restart after model replacement. See `models/README.md`
+and `MODEL_LICENSES.md` for setup, model provenance, and deployment limits.
+
+The initial private 33-photo comparison applies further color refinement to
+11 photos; the remaining 22 retain prior adjustment values. CPU/GPU-rendered
+inputs agree on scene/lighting choices and refinement decisions, with a maximum
+observed parameter difference of 0.0001. This is a local regression set, not a
+general scene-recognition accuracy benchmark. All original hashes remain exact.
+All 11 changed photos pass 44 full-resolution checks at 25/50/70/100% strength,
+both against unedited RAW output and against the prior Auto at the same strength.
+Passing means staying within the established clipping/shadow budgets, not zero
+pixel change or sensor-domain recovery. Visual comparisons were checked on
+coast, aquarium, and grassland examples. Saved recipes still render as before;
+only a new Auto action can request the new color parameters.
+
+In that 33-photo run, total Auto medians are 0.92 s with GPU rendering and
+2.78 s with CPU rendering. The 11 changed cases improved from 4.74 to 1.35 s
+GPU median during this experiment by reusing color objectives and equivalent
+RGB extrema operations, with identical proposals. This is not a speedup over
+the older tonal-only Auto. CPU scene inference itself takes about 55 ms per
+new image after a roughly 1.04 s initial model load/inference; an identical
+cached input takes about 5 ms. These are local observations, not guarantees.
+
+Two real desktop workflows pass 47 checks each at 900x640 and 1080x720,
+including visible scene summaries, history, strength, noise advice, comparison,
+retained edits, JPEG, and TIFF16. Ten rebuilt-EXE cases match source scene
+evidence, Auto parameters/metrics, noise advice, and native-detail pixels;
+all six TIFF16 arrays match exactly. Two older saved recipes remain unchanged.
+Separate disabled/missing-model EXE runs reproduce the prior aquarium Auto
+and TIFF file byte for byte. All tested original RAW hashes remain unchanged.
+
+A separate D500 live benchmark, without noise reduction and with highlights
+at -0.5, measures slider-to-display medians of 46/61 ms GPU/CPU and JPEG export
+of 1.13/1.49 s. These warm-cache checks exclude process startup and must not be
+compared directly with denoised TIFF timings. No scene inference occurs on
+slider changes or export. The refreshed local Windows build retains runtime
+notices and contains neither model weights nor PyTorch; no public release or
+private photographic assets are published.
+
+All 632 tests pass in source and Windows packaging environments. GPU-off also
+passes with six expected GPU skips; dependency checks and focused static checks
+pass. The added coverage exercises uncertain/missing/broken models, manifest
+validation, bounded content caching, exact preprocessing for odd aspect ratios,
+scene-dependent and pixel-dependent objectives, vivid-color abstention,
+ambient-color preservation, possible warm-subject hue guards, finer-preview
+vetoes, and optional-model publishing failures.

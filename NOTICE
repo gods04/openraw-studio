@@ -129,3 +129,17 @@ typing_extensions.
 
 The PyOpenCL dependency siphash24 is used under its Apache-2.0 option. Its
 license and upstream attribution are retained under THIRD_PARTY_LICENSES/siphash24.
+
+Optional Scene Analysis
+-----------------------
+
+The Windows app includes ONNX Runtime 1.30.0 for offline scene analysis.
+Its MIT license and complete ThirdPartyNotices are retained under
+THIRD_PARTY_LICENSES/ONNXRuntime, with Protobuf, FlatBuffers, and packaging
+notices in their respective directories. No model weights are bundled in Git
+or automatically downloaded by the app.
+
+The separately prepared local scene model derives from OpenAI CLIP ViT-B/32.
+The model setup script retains the upstream MIT license alongside the exported
+model. See docs/MODEL_LICENSES.md for provenance and the upstream model-card
+limitations. OpenRAW does not train this visual model or use it to decode RAW.

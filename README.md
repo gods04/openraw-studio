@@ -193,8 +193,14 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - Auto color noise is sampled rendered-chroma advice, not a calibrated noise
   model or semantic texture recognition. It currently requires native compressed
   Nikon samples; generic DNG and preview-only files do not gain automatic advice.
-- Auto is a deterministic luminance/color heuristic, not semantic AI or
+- Auto retains its deterministic tonal/clipping guards. An optional local CLIP
+  scene model now conditions a measured color refinement on scene and lighting
+  evidence. This is an experimental hybrid, not a trained aesthetic editor or
   sensor highlight recovery. It cannot reconstruct clipped detail.
+- Scene analysis can mistake content or miss small people in mixed scenes.
+  Low-confidence/model-unavailable cases retain tonal Auto. Color selections
+  are pixel heuristics, not face detection or semantic segmentation. No skin
+  whitening, identity inference, or automatic model training is performed.
 - Auto white-balance refinement is not gray-card calibration or illuminant
   recognition. Pale colored materials can resemble neutrals; manual Temperature
   and Tint remain available. Existing saved settings do not change until Auto is run.
@@ -323,6 +329,18 @@ may appear while the RAW loads or when sensor rendering is unsupported; it is
 a reference only and is never used as the source for OpenRAW export.
 During native loading, this temporary image is labeled `Camera`, then replaced
 automatically by the editable RAW frame. It does not contain your saved edits.
+
+With the optional local scene model installed, **Auto** also considers content
+such as coast, grassland, sky, and portrait, plus separate lighting evidence.
+It solves bounded Temperature/Tint/Saturation corrections through trial RAW
+renders, rather than loading one preset per scene. Already-vivid colors and
+uncertain cases can remain unchanged. The sidebar shows the inferred scene and
+lighting; these labels are fallible, not calibrated confidence guarantees.
+This analysis runs only for Auto, never during slider rendering. Existing saved
+edits and export recipes do not change until Auto is run again.
+See [local model setup](models/README.md); the app never downloads weights or
+uploads photos. `OPENRAW_SCENE=off` retains tonal Auto without scene refinement.
+
 The compact histogram follows the displayed Before, Camera Preview, or After
 image and reports near-black and near-white clipping percentages. It analyzes
 the displayed rendered 8-bit image, not untouched sensor values.

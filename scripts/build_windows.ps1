@@ -44,7 +44,7 @@ try {
     Write-Host "Installing packaging dependencies..."
     & $PythonExe -m pip install --upgrade pip
     if ($LASTEXITCODE -ne 0) { throw "Could not update pip." }
-    & $PythonExe -m pip install -e ".[packaging]"
+    & $PythonExe -m pip install -e ".[packaging,scene]"
     if ($LASTEXITCODE -ne 0) { throw "Could not install packaging dependencies." }
 
     & $PythonExe -c "from openraw_studio.raw.native import he_cpu; assert he_cpu.extension is not None, he_cpu.import_error"
@@ -94,7 +94,9 @@ try {
         @{ Name = "PyOpenCL"; Pattern = "pyopencl-*.dist-info" },
         @{ Name = "pytools"; Pattern = "pytools-*.dist-info" },
         @{ Name = "platformdirs"; Pattern = "platformdirs-*.dist-info" },
-        @{ Name = "typing_extensions"; Pattern = "typing_extensions-*.dist-info" }
+        @{ Name = "typing_extensions"; Pattern = "typing_extensions-*.dist-info" },
+        @{ Name = "Protobuf"; Pattern = "protobuf-*.dist-info" },
+        @{ Name = "packaging"; Pattern = "packaging-*.dist-info" }
     )) {
         $DistInfo = Get-ChildItem -Path (Join-Path $BuildVenvDir "Lib\site-packages") -Directory -Filter $Package.Pattern |
             Sort-Object Name -Descending |
@@ -119,6 +121,12 @@ try {
         }
     }
     Copy-Item -LiteralPath (Join-Path $RepoRoot "packaging\licenses\siphash24") -Destination $ThirdPartyRoot -Recurse -Force
+    Copy-Item -LiteralPath (Join-Path $RepoRoot "packaging\licenses\flatbuffers") -Destination $ThirdPartyRoot -Recurse -Force
+    $OnnxNotices = Join-Path $ThirdPartyRoot "ONNXRuntime"
+    New-Item -ItemType Directory -Path $OnnxNotices -Force | Out-Null
+    foreach ($NoticeFile in @("LICENSE", "ThirdPartyNotices.txt")) {
+        Copy-Item -LiteralPath (Join-Path $BuildVenvDir "Lib\site-packages\onnxruntime\$NoticeFile") -Destination $OnnxNotices -Force
+    }
 
     if (-not $SkipZip) {
         if (Test-Path $ZipPath) {

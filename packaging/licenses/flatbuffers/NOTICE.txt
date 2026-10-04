@@ -1,0 +1,7 @@
+FlatBuffers Python runtime
+Copyright 2014 Google Inc. All rights reserved.
+
+Licensed under the Apache License, Version 2.0.
+The unmodified runtime is a dependency of ONNX Runtime.
+Upstream: https://github.com/google/flatbuffers/tree/v25.12.19/python/flatbuffers
+License: https://github.com/google/flatbuffers/blob/v25.12.19/LICENSE

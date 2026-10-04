@@ -9,6 +9,8 @@ from pathlib import Path
 import numpy as np
 
 from openraw_studio.decision.white_balance import NeutralCast, refine_white_balance
+from openraw_studio.decision.scene_color import refine_scene_color
+from openraw_studio.vision.scene import SceneEvidence, analyze_scene
 from openraw_studio.raw.native.interactive import InteractivePhoto
 from openraw_studio.raw.native.preview import render_preview_image
 from openraw_studio.raw.native.tone import PreviewRgbImage
@@ -46,6 +48,7 @@ class AutoAdjustSuggestion:
     rationale: tuple[str, ...]
     scene: str = "Balanced"
     metrics: dict[str, float] = field(default_factory=dict)
+    scene_evidence: SceneEvidence | None = None
 
     def as_overrides(self) -> dict[str, float]:
         return {
@@ -201,7 +204,8 @@ def suggest_auto_adjustments_for_photo(photo: InteractivePhoto) -> AutoAdjustSug
         )
     return suggest_auto_adjustments_from_preview(
         original, render=lambda values: analysis.render(values)[0],
-        validation_strengths=(.7, .5, .25, *_SHOULDER_STRENGTHS), **detail
+        validation_strengths=(.7, .5, .25, *_SHOULDER_STRENGTHS),
+        scene_evidence=analyze_scene(detail.get("detail_preview", original)), **detail
     )
 
 
@@ -219,6 +223,7 @@ def suggest_auto_adjustments_from_preview(
     native_preview=None,
     render_native: Callable | None = None,
     validation_strengths: tuple[float, ...] = (),
+    scene_evidence: SceneEvidence | None = None,
 ) -> AutoAdjustSuggestion:
     """Analyze an unedited preview, optionally validating against the same renderer.
 
@@ -234,7 +239,8 @@ def suggest_auto_adjustments_from_preview(
     the same original shadow midtones and revalidated at both proxy resolutions.
     Still-dim scenes can recover bounded exposure with additional compression;
     these candidates also check low/intermediate-strength shoulder peaks.
-    This is a local heuristic, not a trained AI model or semantic scene classifier.
+    Optional local model evidence can refine color after the tonal safety checks.
+    Without it, this remains the existing pixel-statistics heuristic.
     """
     if (detail_preview is None) != (render_detail is None) or (render_detail is not None and render is None):
         raise ValueError("Detail validation requires a baseline, a detail renderer, and the analysis renderer")
@@ -359,6 +365,7 @@ def suggest_auto_adjustments_from_preview(
         ],
         rationale=tuple(notes),
         scene=scene,
+        scene_evidence=scene_evidence,
         metrics={
             "median_luma": float(median),
             "shadow_fraction": dark_fraction,
@@ -568,6 +575,12 @@ def suggest_auto_adjustments_from_preview(
                     measure_detail=(lambda candidate: guards[-1].measure(candidate).neutral_bias) if render_detail is not None else None,
                     validation_strengths=final_strengths,
                 )
+            values, scene_metrics = refine_scene_color(
+                preview, render, values, scene_evidence,
+                lambda candidate: highlights_preserved(candidate, all_strengths=True, strengths=final_strengths) and tones_preserved(candidate),
+                detail_preview=detail_preview, render_detail=render_detail,
+                validation_strengths=final_strengths,
+            )
             notes = suggestion.rationale + (
                 ("Reduced contrast to preserve dark subjects.",) if contrast_guarded else ()
             ) + (
@@ -584,6 +597,8 @@ def suggest_auto_adjustments_from_preview(
                 ("Recovered midtones within rendered highlight limits.",) if exposure_refined else ()
             ) + (
                 ("Refined a consistent near-neutral cast using measured renderer response.",) if balance_metrics["white_balance_refined"] else ()
+            ) + (
+                ("Refined content-conditioned color using measured renderer response.",) if scene_metrics["scene_color_refined"] else ()
             )
             metrics = primary.metrics(values)
             for guard, prefix in zip(guards[1:], prefixes[1:]):
@@ -592,10 +607,12 @@ def suggest_auto_adjustments_from_preview(
                 suggestion,
                 **values,
                 rationale=notes,
+                scene=f"{scene_evidence.scene} / {scene_evidence.lighting}" if scene_evidence is not None and scene_evidence.status == "ready" else suggestion.scene,
                 metrics={
                     **suggestion.metrics,
                     **metrics,
                     **balance_metrics,
+                    **scene_metrics,
                     "contrast_guarded": float(contrast_guarded),
                     "exposure_guarded": float(exposure_guarded),
                     "highlights_guarded": float(highlights_guarded),
@@ -603,7 +620,7 @@ def suggest_auto_adjustments_from_preview(
                     "shadows_refined": float(shadows_refined),
                     "exposure_refined": float(exposure_refined),
                     "guard_strength": amount,
-                    "validated_strength_samples": float(1 + len(final_strengths) if needs_strength_checks(values) or balance_metrics["white_balance_refined"] else 1),
+                    "validated_strength_samples": float(1 + len(final_strengths) if needs_strength_checks(values) or balance_metrics["white_balance_refined"] or scene_metrics["scene_color_refined"] else 1),
                 },
             )
     return suggestion

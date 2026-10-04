@@ -25,6 +25,7 @@ openraw = "openraw_studio.cli:main"
 
 [project.optional-dependencies]
 dev = []
+scene = ["onnxruntime==1.30.0"]
 packaging = [
   "pyinstaller>=6.0",
 ]

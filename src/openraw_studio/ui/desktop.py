@@ -1475,11 +1475,16 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             if run_id != self.run_counter:
                 return
             self.last_auto_suggestion = suggestion
-            self.auto_summary_var.set(
-                suggestion.scene + " | Color preserved"
-                if not suggestion.warmth and not suggestion.tint
-                else suggestion.scene + " | Neutral balance"
-            )
+            evidence = suggestion.scene_evidence
+            if evidence is not None and evidence.status == "ready":
+                summary = evidence.scene + " | " + evidence.lighting
+            elif evidence is not None and evidence.status == "uncertain":
+                summary = suggestion.scene + " | Scene uncertain"
+            elif evidence is not None and evidence.status == "unavailable":
+                summary = suggestion.scene + " | Model unavailable"
+            else:
+                summary = suggestion.scene + " | Tonal Auto"
+            self.auto_summary_var.set(summary)
             self._set_busy(False)
             self._change_auto_strength()
             self._commit_edit()

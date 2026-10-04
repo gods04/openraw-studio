@@ -69,6 +69,9 @@ def smoke_test(source: Path, output: Path, *, color_noise=0.0, luminance_noise=0
         report["auto_seconds"] = perf_counter() - started
         report["auto"] = suggestion.as_overrides()
         report["auto_metrics"] = suggestion.metrics
+        if suggestion.scene_evidence is not None:
+            from dataclasses import asdict
+            report["scene_analysis"] = asdict(suggestion.scene_evidence)
         edits = {**suggestion.as_overrides(), "color_noise": color_noise, "luminance_noise": luminance_noise}
         if auto_color_noise:
             started = perf_counter()

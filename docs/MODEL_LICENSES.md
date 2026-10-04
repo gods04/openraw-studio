@@ -19,6 +19,34 @@ model weights, datasets, LUTs, sample images, icons, and other assets.
 
 ## Candidate Components To Review
 
+### Local Scene Experiment
+
+The optional local scene beta uses [OpenAI CLIP](https://github.com/openai/CLIP)
+at source revision `d05afc436d78f1c48dc0dbf8e5980a9d471f35f6`, under the upstream
+[MIT license](https://github.com/openai/CLIP/blob/main/LICENSE). The separately
+downloaded ViT-B/32 checkpoint is the upstream published artifact with SHA-256
+`40d365715913c9da98579312b702a82c18be219cc2a73407c4526f58eba950af`.
+The exported local encoder is 351,751,892 bytes in the checked toolchain; its
+SHA-256 and prompt hash are stored in its generated manifest. The MIT text is
+retained beside it. No model or private image is committed or bundled with the
+Windows app, and the source model's training data is not distributed here.
+
+**Public/commercial model distribution remains under review.** The upstream
+[model card](https://github.com/openai/CLIP/blob/main/model-card.md) describes
+research use, warns against untested deployment, and calls for domain-specific
+evaluation. A repository code license is not a blanket clearance of training
+data rights or a claim of suitability for every downstream deployment. This
+local experiment is limited to photography scene/lighting hints, with no
+identity, demographic inference, or face recognition. Color changes remain
+bounded and reversible. Broader evaluation is needed before a public release.
+
+The optional CPU runtime is ONNX Runtime 1.30.0, under its
+[MIT license](https://github.com/microsoft/onnxruntime/blob/v1.30.0/LICENSE).
+Windows builds retain the installed runtime's complete `ThirdPartyNotices.txt`
+and license, plus Protobuf's installed license, FlatBuffers' Apache-2.0 license
+and Google attribution, and packaging's installed licenses. ONNX Runtime
+telemetry events are disabled before creating the inference session.
+
 These are candidates from the product brief. They are not approved for bundling
 until the review fields above are completed with source evidence.
 
@@ -31,7 +59,7 @@ until the review fields above are completed with source evidence.
 | MediaPipe Image Segmenter | model/runtime | TBD | TBD | TBD | TBD | TBD | TBD | needs review | Candidate for person segmentation; model weight terms must be checked separately from code. |
 | SigLIP or SigLIP 2 | model | TBD | TBD | TBD | TBD | TBD | TBD | needs review | Candidate scene classifier; code, weights, and dataset terms require separate review. |
 | EasyPortrait-style face parsing | model | TBD | TBD | TBD | TBD | TBD | TBD | needs review | Must avoid research-only or non-commercial weights without explicit approval. |
-| ONNX Runtime | inference runtime | TBD | TBD | TBD | TBD | TBD | TBD | needs review | Candidate local inference runtime for CPU/CUDA/DirectML paths. |
+| ONNX Runtime | inference runtime | microsoft/onnxruntime | 1.30.0 | MIT plus third-party notices | per license terms | retain notices | yes | runtime included | CPU-only local scene beta; model weights remain separate. CUDA/DirectML paths are not implemented for this classifier. |
 
 ## Policy
 
