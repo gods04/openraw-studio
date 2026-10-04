@@ -11,7 +11,9 @@ import numpy as np
 from openraw_studio.decision.white_balance import NeutralCast, refine_white_balance
 from openraw_studio.decision.ambient_color import analyze_ambient_color
 from openraw_studio.decision.scene_color import refine_scene_color
-from openraw_studio.decision.tonal_intent import dark_scene_intent, limit_dark_lift, little_visible_detail
+from openraw_studio.decision.tonal_intent import (
+    dark_noise_evidence, dark_scene_intent, limit_dark_lift, little_visible_detail,
+)
 from openraw_studio.vision.scene import SceneEvidence, analyze_scene
 from openraw_studio.vision.person import PersonAnalysis, PersonEvidence, analyze_person
 from openraw_studio.raw.native.interactive import InteractivePhoto
@@ -309,14 +311,18 @@ def suggest_auto_adjustments_from_preview(
     )
     trimmed = luma[(luma >= p10) & (luma <= p90)]
     midtone = float(0.65 * median + 0.35 * np.mean(trimmed))
-    if little_visible_detail(preview) and (detail_preview is None or little_visible_detail(detail_preview)):
+    empty = little_visible_detail(preview) and (detail_preview is None or little_visible_detail(detail_preview))
+    noise = dark_noise_evidence(preview, detail_preview) if not empty and p99 < 24 / 255 else None
+    if empty or noise is not None:
         return AutoAdjustSuggestion(
             0., 0., 0., 0., 0., 0., 0.,
-            rationale=("Too little visible tonal information for a reliable automatic correction.",),
+            rationale=(("Dark preview variation appears noise-dominated; no reliable automatic correction."
+                        if noise is not None else
+                        "Too little visible tonal information for a reliable automatic correction."),),
             scene="Low visible detail",
             scene_evidence=replace(scene_evidence, status="insufficient-information") if scene_evidence is not None else None,
             person_evidence=person.evidence if person is not None else None,
-            metrics={"insufficient_tonal_information": 1., "median_luma": float(median)},
+            metrics={"insufficient_tonal_information": 1., "median_luma": float(median), **(noise or {})},
         )
     spread = float(p95 - p05)
     clipped = _clipping(pixels)

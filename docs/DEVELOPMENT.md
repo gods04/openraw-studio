@@ -2627,3 +2627,60 @@ replaced by the repeat. The optional Numba TBB DLL packaging warning remains;
 this implementation uses ordinary bounded threads and the tested CPU paths work.
 Dependency, compile, and diff checks pass. No public ZIP, model, or private
 photograph was published.
+
+### Noise-Dominated Dark Previews
+
+`tonal_intent.dark_noise_evidence` extends the existing information-abstention
+path, not denoising or scene classification. It uses actual unedited RGB8
+analysis/display domains. Both must have low luminance/channel percentiles,
+small 16x16 tile spans, and no connected tiny lights or substantial bright
+coverage. Pixel spread must dominate coarse spread in the finest domain.
+Absolute neighbor correlations at 1/2/4 pixels in both domains protect fine
+repeated texture and coherent faint gradients. Noise attenuation in the smaller
+proxy alone does not invalidate evidence from the larger proxy.
+
+These are conservative heuristics in rendered preview space, not calibrated
+sensor SNR or a proof that the RAW lacks signal. Weak structure below the noise
+floor, isolated tiny subjects, demosaic artifacts, and unusual textures remain
+ambiguous. Metadata, camera identity, filenames, and ISO are not inputs. The
+extra checks run only on very dark Auto candidates, not during ordinary slider
+or pixel-export rendering.
+Diagnostic metrics accompany abstention; desktop Auto uses the existing
+no-op path, preserving manual edits, history, and preview pixels.
+
+Thirteen focused tests cover random noise, cross-scale attenuation/vetoes,
+sub-code faint gradients, small subjects, edge/diagonal light pairs, hot pixels,
+periodic texture with/without noise, strong colored light, rotations/reflections,
+minimum dimensions, and invalid numeric input. Prior night-intent, clipping,
+shadow, color, and intermediate-strength checks are unchanged.
+
+Source and packaging tests pass all 791 cases. A targeted private audit covers 16 D500
+captures on CPU/GPU, including 12 hash-distinct additions to the earlier
+69-photo development set. Two nearly black red-noise captures now abstain
+instead of proposing +1.2 EV; the other 14 retain their prior advice/metrics.
+The two new abstention decisions agree across backends. New examples include
+high-ISO portraits, a faint textured surface, aquarium light, and small moons.
+Neighboring captures are correlated; this is development evidence, not a
+held-out aesthetic benchmark. Original checksums remain unchanged. Reports and
+comparison images are private in `output/dark-noise-{gpu,cpu}`.
+
+Real Tk workflows each pass 30 checks at 800x560 (GPU) and 1440x900 (CPU), using
+the two newly abstaining captures. Manual edits, history, displayed pixels,
+comparison/panning, JPEG/TIFF16 export, and reopened settings are preserved.
+Screenshots were inspected; controls do not overlap. Evidence lives under
+`output/noise-gui-{gpu,cpu}`. The prior full-native tiny-highlight and tight
+moon-median sampling exceptions are unchanged and remain open.
+
+Both 63-photo CPU/GPU regressions retain all previous parameters, rationale,
+evidence, metrics, and combined-edit preview pixels at 70/100%, comparing each
+backend with its own baseline. Reports: `output/noise-regression-cpu` and
+`output/noise-regression-gpu-final`.
+
+The refreshed local Windows EXE passes six source-equivalence cases covering
+both new abstentions on CPU/GPU, a normally adjusted star field, disabled
+optional models, and JPEG/TIFF8/TIFF16. Auto settings match exactly, metrics
+within 1e-6, and exported/native-detail pixels exactly; original hashes remain
+unchanged. Reports: `output/noise-frozen-*` and
+`output/noise-frozen-verification.json`. The existing optional TBB DLL packaging
+warning remains; tested CPU paths work. Dependency, compile, and diff checks
+pass. No public ZIP, model, or private photo was published.

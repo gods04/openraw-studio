@@ -205,6 +205,9 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - Corroborated dark lighting can set a relative brightness-lift budget from
   the original tones, checked during actual rendering. Almost-black previews
   without enough visible structure abstain; the desktop retains manual edits.
+  Very dark, noise-dominated previews also abstain after cross-scale structure,
+  small-light, and spatial-correlation checks. This is preview evidence, not
+  calibrated sensor-noise measurement or automatic denoising.
   This is not a learned aesthetic judgment or proof of missing RAW detail.
 - Scene analysis can mistake content or miss small people in mixed scenes.
   Low-confidence/model-unavailable cases retain tonal Auto. Optional person

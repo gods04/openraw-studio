@@ -37,6 +37,13 @@ overwriting desktop manual edits. Faint structure and sparse bright subjects
 remain eligible. This is a conservative heuristic, not learned aesthetic
 ranking, calibrated confidence, or exhaustive RAW-signal analysis.
 
+Very dark, noise-dominated previews now share that abstention path. Both
+analysis/display domains must lack strong spatial structure; the finest domain
+must show much more pixel variation than coarse variation. Small connected
+lights and correlated fine texture veto abstention. No filename, ISO value,
+camera model, or fixed scene preset selects this behavior. Manual editing and
+export remain available; extremely faint unresolved subjects remain ambiguous.
+
 Auto now fits positive contrast through bounded rendered trials instead of
 only halving or removing it. A soft two-code near-black margin catches detail
 that can disappear between Fit and full-resolution rendering; intermediate
