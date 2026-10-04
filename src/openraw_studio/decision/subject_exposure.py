@@ -7,6 +7,7 @@ from PIL import Image
 
 from openraw_studio.core.subject import clean_subject, global_adjustments
 from openraw_studio.raw.native.subject import apply_subject, subject_weights
+from openraw_studio.vision.face import face_interiors
 
 
 @dataclass(frozen=True)
@@ -17,20 +18,9 @@ class SubjectExposureSuggestion:
 
 
 def _face_samples(faces, weights, shape):
-    height, width = shape
     groups = []
-    x = (np.arange(width)[None, :] + .5) / width
-    y = (np.arange(height)[:, None] + .5) / height
-    for face in faces:
-        x0, y0, x1, y1 = face.box
-        if not (0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1 and .9 <= face.score <= 1):
-            continue
-        # An inset ellipse meters visible face interiors, not hair, clothing,
-        # or a skin-color range. Intersection also corroborates segmentation.
-        ellipse = (((x - (x0 + x1) / 2) / ((x1 - x0) * .32)) ** 2
-                   + ((y - (y0 + y1) / 2) / ((y1 - y0) * .35)) ** 2) <= 1
-        if ellipse.sum() < 24:
-            continue
+    # Face interiors, not clothing or a skin-color range, set the exposure.
+    for ellipse in face_interiors(faces, shape):
         selected = ellipse & (weights >= .85)
         if selected.sum() >= ellipse.sum() * .85:
             groups.append(np.flatnonzero(selected))

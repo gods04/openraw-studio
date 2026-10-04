@@ -36,6 +36,21 @@ class FaceAnalysis:
     model: str = MODEL_ID
 
 
+def face_interiors(faces, shape):
+    """Inset normalized ellipses shared by selection checks and face metering."""
+    height, width = shape
+    x = (np.arange(width)[None, :] + .5) / width
+    y = (np.arange(height)[:, None] + .5) / height
+    for face in faces:
+        x0, y0, x1, y1 = face.box
+        if not (0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1 and .9 <= face.score <= 1):
+            continue
+        ellipse = (((x - (x0 + x1) / 2) / ((x1 - x0) * .32)) ** 2
+                   + ((y - (y0 + y1) / 2) / ((y1 - y0) * .35)) ** 2) <= 1
+        if ellipse.sum() >= 24:
+            yield ellipse
+
+
 def prepare_face_input(image):
     image = image.convert("RGB")
     scale = min(INPUT_SIZE / image.width, INPUT_SIZE / image.height)

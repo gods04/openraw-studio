@@ -94,9 +94,12 @@ The optional person model supplies a coarse mask for Auto's color objectives
 and protection checks. It does not identify people, infer demographics, detect
 faces, or smooth skin. Accepted masks can also create a separate subject
 exposure layer. Its mask must have enough
-high-scoring area and be corroborated by the scene model on the candidate crop.
+high-scoring area and be corroborated by the scene model on the candidate crop,
+or by a reliable overlapping face when the optional face locator is installed.
 Distinct substantial regions can be checked separately when a group crop is
 ambiguous. Small, uncertain, and unconfirmed subjects retain scene-only Auto.
+Face support confirms only matching components, not every proposed region.
+It cannot remove wrongly included objects or make mask boundaries precise.
 No model score is a calibrated guarantee of correctness.
 
 After the scene model/runtime setup above, explicitly run:
@@ -114,8 +117,9 @@ The default location is `%LOCALAPPDATA%\OpenRAW Studio\models\pphumanseg-2023mar
 (under the same local share directory on non-Windows). `OPENRAW_PERSON_MODEL`
 overrides the folder. `OPENRAW_PERSON=off` keeps scene Auto but disables person
 analysis; `OPENRAW_SCENE=off` disables both. Missing/broken person models retain
-scene-only Auto. Missing scene evidence prevents a person mask from influencing
-new Auto decisions; saved local layers remain usable. Restart after installing
+scene-only Auto. Without scene evidence, the optional face locator can still
+corroborate a selection, but automatic local exposure/color advice still requires
+reliable lighting context. Saved local layers remain usable. Restart after installing
 or replacing a model. Neither model is bundled
 in the app or downloaded automatically. See `docs/MODEL_LICENSES.md` for the
 source, hash, license, and remaining deployment review.
@@ -133,7 +137,8 @@ license, verifies SHA-256, and records provenance beside the model. An existing
 download can be supplied with `--source`; setup still retrieves its license.
 Default folder: `%LOCALAPPDATA%\OpenRAW Studio\models\yunet-2023mar`.
 `OPENRAW_FACE_MODEL` overrides that directory; `OPENRAW_FACE=off` disables face
-metering. Scene/person disable flags also disable it. Restart after replacement.
+metering and face-based mask confirmation. Scene/person disable flags also
+disable it. Restart after replacement.
 
 The existing CPU ONNX runtime locates faces offline. No OpenCV runtime, identity
 recognition, demographic inference, or training on private photos is involved.

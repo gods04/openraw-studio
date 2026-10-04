@@ -1,4 +1,4 @@
-"""Optional local person masks, corroborated by independent scene evidence."""
+"""Optional local person masks, corroborated by independent scene or face evidence."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from PIL import Image
 
 from openraw_studio.vision.scene import analyze_scene
 from openraw_studio.vision.mask import guided_selection, project_selection
+from openraw_studio.vision.face import analyze_faces, face_interiors
 
 
 MODEL_ID = "pphumanseg-2023mar"
@@ -36,6 +37,7 @@ class PersonEvidence:
     scene_agreement: float = 0.0
     regions: int = 0
     model: str = MODEL_ID
+    face_regions: int = 0
 
 
 @dataclass(frozen=True)
@@ -139,7 +141,7 @@ def _components(core):
         yield mask
 
 
-def confirm_person(image, probabilities, *, classify=analyze_scene):
+def confirm_person(image, probabilities, *, classify=analyze_scene, locate_faces=None):
     core = probabilities >= .9
     coverage = float(core.mean())
     score = float(probabilities[core].mean()) if core.any() else 0.0
@@ -158,22 +160,38 @@ def confirm_person(image, probabilities, *, classify=analyze_scene):
     components = list(_components(core))
     accepted = np.zeros_like(core)
     regions = 0
+    pending = []
     # Only retry distinct substantial candidates, not repeated crops of one blob.
-    if len(components) > 1:
-        for mask in components:
-            if probabilities[mask].mean() < .95:
-                continue
-            vote = corroborate(mask)
-            if vote >= .15:
+    for mask in components:
+        if probabilities[mask].mean() < .95:
+            continue
+        vote = corroborate(mask) if len(components) > 1 else agreement
+        if vote >= .15:
+            accepted |= mask
+            agreement = max(agreement, vote)
+            regions += 1
+        else:
+            pending.append(mask)
+    # A face anchors only its overlapping component. Its support is counted
+    # separately, never substituted for the scene model's agreement score.
+    face_regions = 0
+    if pending and locate_faces is not None:
+        try:
+            faces = locate_faces(image)
+            interiors = list(face_interiors(faces.faces, core.shape)) if faces.status == "ready" else []
+        except Exception:  # Optional face inference cannot invalidate scene-confirmed regions.
+            interiors = []
+        for mask in pending:
+            if any(np.count_nonzero(mask & ellipse) >= .85 * ellipse.sum() for ellipse in interiors):
                 accepted |= mask
-                agreement = max(agreement, vote)
                 regions += 1
+                face_regions += 1
     if not regions:
         return PersonAnalysis(PersonEvidence("unconfirmed", coverage, score, agreement))
     selected = np.where(accepted, probabilities, 0)
     selected.setflags(write=False)
     return PersonAnalysis(PersonEvidence("ready", float(accepted.mean()), float(probabilities[accepted].mean()),
-                                         agreement, regions), selected)
+                                         agreement, regions, face_regions=face_regions), selected)
 
 
 _lock = threading.Lock()
@@ -200,7 +218,7 @@ def analyze_person(image):
                 _segmenter = LocalPersonSegmenter(folder)
             probabilities = _segmenter.segment(image)
         # Do not hold two model locks while corroborating a candidate region.
-        analysis = confirm_person(image, probabilities)
+        analysis = confirm_person(image, probabilities, classify=analyze_scene, locate_faces=analyze_faces)
         if analysis.evidence.status == "ready":
             analysis = replace(analysis, selection=guided_selection(image, analysis.probabilities))
         return analysis

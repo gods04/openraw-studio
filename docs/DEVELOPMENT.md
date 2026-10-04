@@ -2684,3 +2684,89 @@ unchanged. Reports: `output/noise-frozen-*` and
 `output/noise-frozen-verification.json`. The existing optional TBB DLL packaging
 warning remains; tested CPU paths work. Dependency, compile, and diff checks
 pass. No public ZIP, model, or private photo was published.
+
+### Face-Corroborated Person Regions
+
+In additional low-light D500 portraits, a visible aquarium subject had a
+high-scoring PPHumanSeg mask and a YuNet face, but its CLIP crop emphasized the
+aquarium and rejected person confirmation. `confirm_person` now accepts an
+optional lazy face locator for otherwise unconfirmed substantial components.
+Existing area/mean-score gates, the three-component bound, scene thresholds,
+and the successful scene-only path remain unchanged. A score-qualified face
+interior must cover at least 24 pixels on the segmentation grid and overlap
+the same component by at least 85%. Other candidates do not inherit that face.
+
+Face inference is invoked at most once per confirmation attempt, only when
+eligible unresolved components remain. Disabled/missing/failed face inference
+leaves scene-confirmed components intact. `PersonEvidence.face_regions` is an
+additive count of face-confirmed components; `scene_agreement` retains only the
+scene model's evidence. No lighting confidence is invented. `face_interiors`
+shares the previous normalized ellipse geometry with local exposure metering;
+its score, bounds, minimum area, and overlap behavior are unchanged there.
+
+No model, prompt, weight, decoder, render kernel, or recipe schema changes.
+Guided selection still only reduces the proposed mask, and saved layers replay
+without inference. Face confirmation does not establish precise person/skin
+boundaries: one group portrait still includes a foreground glass in its mask.
+That example's Auto remains balanced, but manual mask refinement and better
+occlusion handling remain open. A dark two-person image still lacks detected
+faces, and another small subject fails the face/selection overlap check; this
+increment does not silently loosen those downstream safeguards.
+
+Source and packaging suites pass 804 tests, including 13 new
+confirmation/geometry tests.
+They cover strong versus weak/tiny/diffuse masks, independent components,
+partial overlaps, invalid faces, missing scene confidence, disabled/failed face
+inference, preservation of scene-confirmed components, and analysis wiring.
+
+Both 63-photo CPU/GPU regressions retain their own baseline's global parameters
+and every combined-edit preview pixel at 70/100%. Two photos gain confirmed
+regions: a group with a second person and an uncertain-light pair. Neither
+receives a new local Auto correction. Evidence/metrics are not byte-identical:
+`face_regions` is additive everywhere, and the group meters two faces instead
+of one. Reports: `output/{existing,unseen}-auto-face[-cpu]` and
+`output/face-regression-comparison.json`.
+
+A separate 16-photo mask audit changes only the aquarium subject, and six
+low-light portraits were rendered on both backends. The aquarium case keeps its
+measured low scene-crop agreement while gaining one face-confirmed region.
+Person color protection removes the previously proposed global temperature/tint
+shift and limits added saturation; local exposure is about +0.46 EV. Local color
+abstains because material evidence is uncertain. Reports and inspected private
+comparisons: `output/face-confirmation-{audit,extra}` and
+`output/lowlight-people-{baseline,face,face-cpu}`. These are correlated development
+captures, not a held-out aesthetic benchmark.
+
+Eight full-native aquarium checks cover CPU/GPU, 70/100% global strength and
+RGB8/RGB16. Compared with global-only rendering, subject exposure raises face
+median luminance by about 0.04, preserves all 14,822,591 zero-weight background
+pixels exactly, and introduces no tested new clipped or black channels. RGB8
+native face crops match full rendering exactly; combined RGB8 results pass the
+existing whole-image highlight/shadow proxy budgets. Source checksums are
+unchanged. Evidence: `output/face-native/report.json`. This does not resolve the
+previous tiny-highlight and tight moon-median sampling exceptions.
+
+Real Tk workflows pass 55 checks each at 800x560 (GPU) and 1440x900 (CPU),
+including independent selection, local Auto, mask inspection, stale-result
+rejection, undo/redo, JPEG/TIFF16, and restored edits. Screenshots were inspected.
+The batch workflow passes all 14 checks. Reports: `output/face-gui-{gpu,cpu}`
+and `output/face-batch`.
+
+For this 3712x5568 photo on the local RTX 5070 machine, separate initialized
+desktop runs measure median slider-to-display latency of 46.3 ms GPU / 75.9 ms
+CPU; the continuous 50-edit drag displays 49 / 41 intermediate frames. JPEG
+export is 1.66 / 1.88 seconds. Auto before those drags takes 2.75 / 3.27 seconds,
+including initial model setup. Camera preview appears at 240 / 215 ms, with
+native RAW preview at 1.47 / 1.29 seconds. These are single-run observations,
+not cross-photo performance guarantees or a measured speedup from this change.
+Evidence: `output/face-live-{gpu,cpu}/benchmark.json`.
+
+The refreshed local Windows EXE passes eight source-equivalence cases: aquarium
+CPU/GPU, JPEG/TIFF8/TIFF16, the group and uncertain-light pair, a prior local-color
+portrait, face inference off, and all optional models off. Auto parameters
+match exactly, metrics within 1e-6, and exported/native-detail pixels exactly.
+Face-off advice also matches its pre-change CPU baseline. Original hashes
+remain unchanged. Reports: `output/face-frozen-*` and
+`output/face-frozen-verification.json`. The existing optional TBB DLL packaging
+warning remains; tested CPU paths work. Dependency, compile, and diff checks
+pass. No public ZIP, model, or private photo was published.

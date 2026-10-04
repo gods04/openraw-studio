@@ -360,9 +360,12 @@ uploads photos. `OPENRAW_SCENE=off` retains tonal Auto without scene refinement.
 An additional optional person model can separate confirmed subject pixels from
 blue/green scenery targets. Measured subject color is included in the solver,
 with checks across small subject regions so a large shirt cannot hide a smaller
-color shift. The sidebar reports `Person detected` only when segmentation and
-crop classification agree. This is person-aware **global** Auto, not a local
-brush, face/skin editing, or identification. `OPENRAW_PERSON=off` keeps scene
+color shift. The sidebar reports `Person detected` when strong segmentation is
+corroborated by crop classification or, with the optional face locator, an
+overlapping reliable face. Face confirmation is restricted to its matching
+component and does not make uncertain lighting reliable. This is person-aware
+**global** Auto, not a local brush, face/skin editing, or identification.
+`OPENRAW_PERSON=off` keeps scene
 Auto without person analysis. Missing/uncertain masks leave scene Auto unchanged.
 
 **Adjust > Subject > Select** creates a person selection without changing the

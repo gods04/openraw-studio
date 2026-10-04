@@ -20,6 +20,13 @@ Manual mask refinement, richer local masks, and mobile remain later
 phases. Coarse scene/lighting analysis and corroborated person masks are now
 optional local experiments.
 
+Person confirmation can now use the existing optional face locator when a
+strong segmentation component is not corroborated by its scene crop. A reliable
+face must overlap the same component; unrelated disconnected candidates stay
+excluded. Existing scene-confirmed paths keep their behavior. This does not
+raise scene confidence, force a local correction, or produce precise masks:
+occluding objects, clothing boundaries, and missed faces remain limitations.
+
 CPU Auto now reuses up to four bounded workers for larger preview candidates.
 It shares the existing export worker limit/ownership guard, warms the compiled
 signature before parallel work, and releases the pool after each Auto call.
