@@ -61,7 +61,8 @@ photography validation and a new exported manifest.
 
 The optional person model supplies a coarse mask for Auto's color objectives
 and protection checks. It does not identify people, infer demographics, detect
-faces, smooth skin, or create separate local edits. Its mask must have enough
+faces, or smooth skin. Accepted masks can also create a separate subject
+exposure layer. Its mask must have enough
 high-scoring area and be corroborated by the scene model on the candidate crop.
 Distinct substantial regions can be checked separately when a group crop is
 ambiguous. Small, uncertain, and unconfirmed subjects retain scene-only Auto.
@@ -83,6 +84,35 @@ The default location is `%LOCALAPPDATA%\OpenRAW Studio\models\pphumanseg-2023mar
 overrides the folder. `OPENRAW_PERSON=off` keeps scene Auto but disables person
 analysis; `OPENRAW_SCENE=off` disables both. Missing/broken person models retain
 scene-only Auto. Missing scene evidence prevents a person mask from influencing
-edits. Restart after installing or replacing a model. Neither model is bundled
+new Auto decisions; saved local layers remain usable. Restart after installing
+or replacing a model. Neither model is bundled
 in the app or downloaded automatically. See `docs/MODEL_LICENSES.md` for the
 source, hash, license, and remaining deployment review.
+
+## Experimental Face-Metered Exposure
+
+After scene/person setup, explicitly install the optional face locator:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\prepare_face_model.py
+```
+
+This downloads the pinned 232,589-byte YuNet 2023mar ONNX model and its MIT
+license, verifies SHA-256, and records provenance beside the model. An existing
+download can be supplied with `--source`; setup still retrieves its license.
+Default folder: `%LOCALAPPDATA%\OpenRAW Studio\models\yunet-2023mar`.
+`OPENRAW_FACE_MODEL` overrides that directory; `OPENRAW_FACE=off` disables face
+metering. Scene/person disable flags also disable it. Restart after replacement.
+
+The existing CPU ONNX runtime locates faces offline. No OpenCV runtime, identity
+recognition, demographic inference, or training on private photos is involved.
+Face interiors must overlap the corroborated person selection. Background and
+ambient-light evidence set a bounded relative exposure target; trial renders
+check each face and newly clipped subject channels. Small, hidden, profile,
+poorly lit, or excluded faces can be missed. Model scores are not calibrated
+accuracy estimates, and a detected box is not a precise face/skin matte.
+
+Missing/broken models leave global Auto and manual local editing available.
+Saved subject layers need no model to reopen, preview, or export. No weights
+are bundled or downloaded automatically. Public model distribution and broader
+photographic evaluation remain under review; see `docs/MODEL_LICENSES.md`.

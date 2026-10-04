@@ -17,6 +17,7 @@ from openraw_studio.core.artifacts import ArtifactPlan
 from openraw_studio.core.files import is_supported_raw_path
 from openraw_studio.core.recipe import validate_recipe_shape
 from openraw_studio.core.subject import clean_subject, global_adjustments, subject_for_person, validate_subject_source
+from openraw_studio.decision.subject_exposure import suggest_subject_exposure_for_photo
 from openraw_studio.decision.auto_adjust import (
     AutoAdjustSuggestion,
     suggest_auto_adjustments_for_photo,
@@ -1471,11 +1472,11 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.status_var.set("Auto adjusting...")
             threading.Thread(
                 target=self._auto_adjust_worker,
-                args=(run_id, self.source_path),
+                args=(run_id, self.source_path, round(self.auto_strength_var.get()) / 100, self._current_overrides()),
                 daemon=True,
             ).start()
 
-        def _auto_adjust_worker(self, run_id: int, source: Path) -> None:
+        def _auto_adjust_worker(self, run_id: int, source: Path, strength: float, current: dict) -> None:
             try:
                 from openraw_studio.vision.person import analyze_person
 
@@ -1485,6 +1486,14 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                 person = analyze_person(photo.render({})[0])
                 suggestion = suggest_auto_adjustments_for_photo(photo, person_analysis=person)
                 subject = subject_for_person(person, source)
+                if subject is not None and current.get("subject") is None:
+                    overrides = {key: value * strength for key, value in suggestion.as_overrides().items()}
+                    overrides.update({key: current.get(key, 0) for key in ("color_noise", "luminance_noise")})
+                    advice = suggest_subject_exposure_for_photo(
+                        photo, {**overrides, "subject": subject}, scene=suggestion.scene_evidence,
+                    )
+                    if advice.exposure is not None:
+                        subject["exposure"] = advice.exposure
                 from openraw_studio.raw.native.subject import prepare_subject_renderer
                 prepare_subject_renderer(subject)
             except (
@@ -1508,7 +1517,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.last_person_analysis = person
             if self.subject is None and subject is not None:
                 self.subject = clean_subject(subject)
-                self.subject_exposure_var.set(0)
+                self.subject_exposure_var.set(self.subject["exposure"])
                 self.subject_enabled_var.set(True)
             self.person_mask_var.set(False)
             evidence = suggestion.scene_evidence
@@ -1538,6 +1547,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             editable = not self.is_busy and self.current_can_render is True
             selected = self.subject is not None
             self.subject_select_button.configure(state="normal" if editable else "disabled")
+            self.subject_auto_button.configure(state="normal" if editable and selected else "disabled")
             self.subject_enabled_button.configure(state="normal" if editable and selected else "disabled")
             self.subject_exposure_scale.configure(state=(
                 "normal" if editable and selected and self.subject_enabled_var.get() else "disabled"
@@ -1549,6 +1559,49 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
         def _subject_changed(self, *_args) -> None:
             self._refresh_subject_controls()
             self._sync_adjustment_labels()
+
+        def _auto_subject(self) -> None:
+            if self.is_busy or not self.current_can_render or self.source_path is None or self.subject is None:
+                return
+            self._commit_edit()
+            self.run_counter += 1
+            self._set_busy(True)
+            self.status_var.set("Metering subject...")
+            threading.Thread(target=self._auto_subject_worker,
+                             args=(self.run_counter, self.source_path, self._current_overrides()), daemon=True).start()
+
+        def _auto_subject_worker(self, run_id, source, overrides) -> None:
+            try:
+                photo = self.live_worker.get_prepared_photo(source)
+                if photo is None:
+                    photo = prepare_interactive_photo(self.pipeline.raw_processor, source)
+                advice = suggest_subject_exposure_for_photo(photo, overrides)
+            except (PipelineError, OSError, ValueError, RuntimeError, NotImplementedError) as exc:
+                message = _friendly_error_message(exc)
+                self._post(lambda: self._show_error(message, run_id=run_id))
+                return
+            self._post(lambda: self._apply_subject_auto(advice, run_id=run_id))
+
+        def _apply_subject_auto(self, advice, *, run_id) -> None:
+            if run_id != self.run_counter:
+                return
+            self._set_busy(False)
+            if advice.exposure is None:
+                message = {
+                    "balanced": "Subject balanced; edits unchanged",
+                    "face-not-installed": "Face metering model not installed; edits unchanged",
+                    "face-disabled": "Face metering disabled; edits unchanged",
+                    "face-unavailable": "Face metering unavailable; edits unchanged",
+                    "face-no-face": "No reliable face found; edits unchanged",
+                }.get(advice.status, "No safe subject adjustment; edits unchanged")
+                self.status_var.set(message)
+                return
+            self.subject_exposure_var.set(advice.exposure)
+            self.subject_enabled_var.set(True)
+            self._subject_changed()
+            self._commit_edit()
+            self.status_var.set(f"Subject exposure: {advice.exposure:+.1f} EV")
+            self._schedule_live_preview()
 
         def _select_subject(self) -> None:
             if self.is_busy or not self.current_can_render or self.source_path is None:
@@ -1920,15 +1973,25 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                         else {}
                     )
                 if mode == "Auto each photo":
+                    from openraw_studio.vision.person import analyze_person
+
                     photo = prepare_interactive_photo(
                         self.pipeline.raw_processor, source
                     )
-                    suggested = suggest_auto_adjustments_for_photo(photo)
-                    return {
+                    person = analyze_person(photo.render({})[0])
+                    suggested = suggest_auto_adjustments_for_photo(photo, person_analysis=person)
+                    result = {
                         **{key: value * strength for key, value in suggested.as_overrides().items()},
                         "color_noise": overrides.get("color_noise", 0),
                         "luminance_noise": overrides.get("luminance_noise", 0),
                     }
+                    subject = subject_for_person(person, source)
+                    if subject is not None:
+                        result["subject"] = subject
+                        advice = suggest_subject_exposure_for_photo(photo, result, scene=suggested.scene_evidence)
+                        if advice.exposure is not None:
+                            subject["exposure"] = advice.exposure
+                    return result
                 return global_adjustments(overrides)
 
             def on_progress(done: int, total: int, item: BatchItemResult) -> None:

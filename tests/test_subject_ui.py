@@ -8,6 +8,8 @@ import numpy as np
 from PIL import Image
 
 from openraw_studio.core.subject import make_subject
+from openraw_studio.decision.auto_adjust import AutoAdjustSuggestion
+from openraw_studio.decision.subject_exposure import SubjectExposureSuggestion
 from openraw_studio.ui import desktop
 from openraw_studio.ui.mask_overlay import subject_overlay
 
@@ -89,3 +91,83 @@ class SubjectUiTests(unittest.TestCase):
         result = subject_overlay(image, self.subject)
         self.assertNotEqual(result.tobytes(), image.tobytes())
         self.assertEqual(result.getpixel((8, 0)), image.getpixel((8, 0)))
+
+    def test_first_auto_uses_metered_subject_but_preserves_existing_manual_layer(self):
+        app = self.app
+        suggestion = AutoAdjustSuggestion(.4, 0, 0, 0, 0, 0, 0, ())
+        app._apply_auto_adjustment(suggestion, subject={**self.subject, 'exposure': .6}, run_id=app.run_counter)
+        self.assertEqual(app._current_overrides()['subject']['exposure'], .6)
+        app.subject_exposure_var.set(-.3)
+        app._subject_changed()
+        app._commit_edit()
+        app._apply_auto_adjustment(suggestion, subject={**self.subject, 'exposure': .8}, run_id=app.run_counter)
+        self.assertEqual(app._current_overrides()['subject']['exposure'], -.3)
+
+    def test_subject_auto_is_undoable_and_preserves_global_controls(self):
+        app = self.app
+        app._apply_subject(self.subject, None, run_id=app.run_counter)
+        app.exposure_var.set(.4)
+        app.warmth_var.set(-.2)
+        app._commit_edit()
+        before = app._current_overrides()
+        app._apply_subject_auto(SubjectExposureSuggestion(.6, 'suggested'), run_id=app.run_counter)
+        after = app._current_overrides()
+        self.assertEqual(after['exposure'], .4)
+        self.assertEqual(after['warmth'], -.2)
+        self.assertEqual(after['subject']['exposure'], .6)
+        app._undo()
+        self.assertEqual(app._current_overrides(), before)
+        app._redo()
+        self.assertEqual(app._current_overrides(), after)
+
+    def test_abstention_and_stale_auto_leave_edits_unchanged(self):
+        app = self.app
+        app._apply_subject(self.subject, None, run_id=app.run_counter)
+        app.subject_exposure_var.set(-.2)
+        app._commit_edit()
+        before = app._current_overrides()
+        app._apply_subject_auto(SubjectExposureSuggestion(.7, 'suggested'), run_id=app.run_counter - 1)
+        for status in ('balanced', 'face-not-installed', 'face-unavailable', 'conflicting-faces', 'no-safe-benefit'):
+            app._apply_subject_auto(SubjectExposureSuggestion(None, status), run_id=app.run_counter)
+            self.assertEqual(app._current_overrides(), before)
+            self.assertIn('unchanged', app.status_var.get())
+
+    def test_subject_auto_requires_selection_and_is_disabled_during_work(self):
+        app = self.app
+        self.assertTrue(app.subject_auto_button.instate(['disabled']))
+        app._apply_subject(self.subject, None, run_id=app.run_counter)
+        self.assertFalse(app.subject_auto_button.instate(['disabled']))
+        app._set_busy(True)
+        self.assertTrue(app.subject_auto_button.instate(['disabled']))
+        app._set_busy(False)
+
+    def test_auto_batch_uses_each_photos_own_selection_and_keeps_noise_controls(self):
+        app = self.app
+        other = Path(self.temp.name) / 'second.NEF'
+        other.write_bytes(b'second original')
+        subjects = {self.source: self.subject, other: make_subject(np.ones((2, 2)), other)}
+        recorded = []
+        photo = SimpleNamespace(render=lambda _: (Image.new('RGB', (100, 100)), None))
+        suggestion = AutoAdjustSuggestion(.4, 0, 0, 0, 0, 0, 0, ())
+        def export(*_args, **kwargs):
+            for source in (self.source, other):
+                recorded.append(kwargs['adjustments_for_source'](source))
+            return None
+        def select(_person, source):
+            return dict(subjects[source])
+        with patch.object(desktop, 'prepare_interactive_photo', return_value=photo), \
+                patch('openraw_studio.vision.person.analyze_person', return_value=None), \
+                patch.object(desktop, 'suggest_auto_adjustments_for_photo', return_value=suggestion), \
+                patch.object(desktop, 'subject_for_person', side_effect=select), \
+                patch.object(desktop, 'suggest_subject_exposure_for_photo', return_value=SubjectExposureSuggestion(.5, 'suggested')), \
+                patch.object(desktop, 'run_batch_export', side_effect=export), patch.object(app, '_post'):
+            app._batch_export_worker(app.run_counter, (self.source, other), Path(self.temp.name),
+                                     {'subject': self.subject, 'color_noise': .3, 'luminance_noise': .2},
+                                     'jpeg', 92, 'Auto each photo', .7)
+        self.assertEqual(len(recorded), 2)
+        for edits, source in zip(recorded, (self.source, other)):
+            self.assertEqual(edits['subject']['source_sha256'], subjects[source]['source_sha256'])
+            self.assertEqual(edits['subject']['exposure'], .5)
+            self.assertAlmostEqual(edits['exposure'], .28)
+            self.assertEqual(edits['color_noise'], .3)
+            self.assertEqual(edits['luminance_noise'], .2)

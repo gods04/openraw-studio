@@ -353,8 +353,19 @@ Auto without person analysis. Missing/uncertain masks leave scene Auto unchanged
 **Adjust > Subject > Select** creates a person selection without changing the
 global adjustments. Auto also prepares a selection when person evidence is
 corroborated. **Subject > Exposure** applies a separate, bounded local correction;
-**Enabled** bypasses it. It starts at zero: automatic local metering is not yet
-enabled. **Person mask** inspects the saved soft selection at Fit, zoom, and
+**Enabled** bypasses it. Select starts at zero. With the optional local face
+meter installed, a first Auto can also suggest subject exposure based on visible
+face interiors, background brightness, and scene/lighting evidence. It tests
+rendered candidates with clipping and per-face guards, rather than setting all
+faces to a fixed brightness. Conflicting faces or insufficient evidence leave
+local exposure unchanged. This is experimental metering, not recognition,
+skin-color correction, or calibrated portrait retouching.
+
+The wand beside **Subject > Enabled** recalculates local exposure independently
+against current global settings. Top-level Auto preserves an existing local
+layer; **Global Auto strength** changes only global settings. Local Auto runs on
+request, never while dragging sliders or replaying a saved recipe.
+**Person mask** inspects the saved soft selection at Fit, zoom, and
 native detail. Check it before editing: refinement cannot recover missed people
 or correct wrongly included objects. There is no manual mask brush yet.
 
@@ -362,7 +373,8 @@ The layer follows undo/redo, local edit retention, and JPEG/8/16-bit TIFF export
 Its compressed mask is saved in the recipe and bound to the original RAW's
 SHA256, so reopening/export needs no model inference. Original files remain
 untouched. Batch **Current adjustments** copies only global controls; **Saved
-edits** retains each photo's own subject layer. The magenta inspection overlay
+edits** retains each photo's own subject layer; **Auto each photo** meters each
+photo independently. The magenta inspection overlay
 never enters exports. This is rendered-image exposure with a white-preserving
 shoulder, not RAW highlight recovery or calibrated face/skin retouching.
 

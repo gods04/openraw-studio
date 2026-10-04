@@ -70,6 +70,27 @@ Public model distribution and broad photographic suitability remain under
 review; weights, masks, and private validation photos are not published. The
 training dataset is not redistributed or independently licensed by this app.
 
+### Local Face-Metering Experiment
+
+The optional face locator is the unmodified
+[YuNet 2023mar ONNX artifact](https://github.com/opencv/opencv_zoo/tree/47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_detection_yunet),
+232,589 bytes, SHA-256
+`8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4`.
+The pinned directory publishes an
+[MIT license with Shiqi Yu attribution](https://github.com/opencv/opencv_zoo/blob/47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_detection_yunet/LICENSE),
+retained in full beside the separately installed artifact. Runtime checks the
+pinned hash before constructing a CPU ONNX session. No weights are bundled.
+
+The fixed input is BGR float32, raw 0-255, 640x640. OpenRAW preserves aspect
+ratio, uses Pillow bilinear resizing and bottom/right zero padding, and decodes
+stride-center boxes with floating-point IoU suppression. OpenCV's
+[FaceDetectorYN implementation](https://github.com/opencv/opencv/blob/4.x/modules/objdetect/src/face_detect.cpp)
+was an external development oracle, not copied or required by the app. The
+application uses face locations only as a photographic exposure-metering aid;
+it does not perform identity recognition or infer demographics. The training
+dataset is not redistributed. Public/commercial model distribution and general
+photographic suitability still require review and broader evaluation.
+
 These are candidates from the product brief. They are not approved for bundling
 until the review fields above are completed with source evidence.
 

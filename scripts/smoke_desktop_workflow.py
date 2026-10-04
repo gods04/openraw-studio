@@ -27,6 +27,7 @@ def main():
     parser.add_argument("--tiff-bit-depth", type=int, choices=(8, 16), default=8)
     parser.add_argument("--subject-exposure", type=float, default=0)
     parser.add_argument("--select-subject", action="store_true")
+    parser.add_argument("--auto-subject", action="store_true")
     args = parser.parse_args()
     if not 0 <= args.color_noise <= 1:
         parser.error("--color-noise must be within [0, 1]")
@@ -194,6 +195,10 @@ def main():
             report["auto_seconds"] = perf_counter() - state["auto_started"]
             report["auto"] = app.last_auto_suggestion.as_overrides()
             report["auto_metrics"] = app.last_auto_suggestion.metrics
+            if args.auto_subject and not args.select_subject:
+                require(app._current_overrides().get("subject", {}).get("exposure", 0) > 0,
+                        "First Auto applies face-metered local exposure")
+                report["initial_subject_exposure"] = app._current_overrides()["subject"]["exposure"]
             if app.last_auto_suggestion.person_evidence is not None:
                 from dataclasses import asdict
                 report["person_analysis"] = asdict(app.last_auto_suggestion.person_evidence)
@@ -353,10 +358,38 @@ def main():
             app._commit_edit()
             state["phase"] = "compare"
         elif phase == "compare" and frame_current():
+            if args.auto_subject and not state.get("auto_subject_tested"):
+                require(app.subject is not None, "Local Auto has a portable selection")
+                app.subject_exposure_var.set(-.25)
+                app._subject_changed()
+                app._commit_edit()
+                state["before_local_auto"] = app._current_overrides()
+                button = app.subject_auto_button
+                app.root.update_idletasks()
+                canvas = app.controls_canvas
+                y = canvas.canvasy(button.winfo_rooty() - canvas.winfo_rooty())
+                canvas.yview_moveto(max(0, (y - canvas.winfo_height() / 2) / canvas.bbox("all")[3]))
+                app.root.update_idletasks()
+                require(canvas.winfo_rooty() <= button.winfo_rooty()
+                        and button.winfo_rooty() + button.winfo_height() <= canvas.winfo_rooty() + canvas.winfo_height(),
+                        "Subject Auto is accessible in compact window")
+                report['subject_control_widths'] = [(widget.winfo_width(), widget.winfo_reqwidth()) for widget in
+                                                    (button, app.subject_select_button, app.subject_enabled_button)]
+                require(all(widget.winfo_width() >= widget.winfo_reqwidth() for widget in
+                            (button, app.subject_select_button, app.subject_enabled_button)),
+                        "Subject row controls fit without clipped icons or labels")
+                button.invoke()
+                require(app.is_busy and button.instate(['disabled']), "Subject Auto is asynchronous and prevents duplicate work")
+                state["phase"] = "local_auto"
+                app.root.after(15, tick)
+                return
             if args.subject_exposure and not state.get("subject_tested"):
                 require(app.subject is not None, "Auto prepared a portable person selection")
                 state["subject_before"] = app._current_overrides()
                 state["subject_pixels"] = app.live_image.tobytes()
+                from openraw_studio.core.subject import global_adjustments
+                photo = app.live_worker.get_prepared_photo(source)
+                state["subject_disabled_pixels"] = photo.render(global_adjustments(app._current_overrides()))[0].tobytes()
                 scale = app.subject_exposure_scale
                 app.root.update_idletasks()
                 canvas = app.controls_canvas
@@ -435,6 +468,19 @@ def main():
                 app._current_overrides() == state["saved"], "Reopening restores edits"
             )
             state["phase"] = "capture"
+        elif phase == "local_auto" and not app.is_busy and frame_current():
+            from openraw_studio.core.subject import global_adjustments
+            before, after = state["before_local_auto"], app._current_overrides()
+            require(global_adjustments(before) == global_adjustments(after), "Subject Auto preserves every global adjustment")
+            require(after['subject']['exposure'] > 0, "Subject Auto replaces prior exposure with a fresh metered result")
+            report['subject_auto_exposure'] = after['subject']['exposure']
+            app.undo_button.invoke()
+            require(app._current_overrides() == before, "Undo restores edits before local Auto")
+            app.redo_button.invoke()
+            require(app._current_overrides() == after, "Redo restores local Auto")
+            capture_window(app.root, args.output / "subject-auto.png")
+            state["auto_subject_tested"] = True
+            state["phase"] = "compare"
         elif phase == "subject_edit" and frame_current():
             require(app.live_image.tobytes() != state["subject_pixels"], "Local exposure changes real rendered pixels")
             app.undo_button.invoke()
@@ -451,7 +497,7 @@ def main():
             require(app.subject_exposure_scale.instate(["disabled"]), "Disabled subject freezes its exposure control")
             state["phase"] = "subject_disabled"
         elif phase == "subject_disabled" and frame_current():
-            require(app.live_image.tobytes() == state["subject_pixels"], "Disabling subject restores baseline pixels exactly")
+            require(app.live_image.tobytes() == state["subject_disabled_pixels"], "Disabling subject restores global-only pixels exactly")
             app.subject_enabled_button.invoke()
             app._commit_edit()
             state["subject_tested"] = True

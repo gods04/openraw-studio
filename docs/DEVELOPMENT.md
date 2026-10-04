@@ -2151,3 +2151,72 @@ retain all previous parameters, metrics, and exported file bytes, including
 five exact source TIFF16 arrays; two older recipes also remain exact. Original
 SHA256 values stay unchanged. No weights, private photos, or public ZIP release
 are included. Local metering and content-dependent local color remain open.
+
+### Face-Metered Local Exposure
+
+The next increment adds an optional offline face locator and a local exposure
+solver, separate from global scene/color Auto. `vision/face.py` verifies the
+pinned YuNet 2023mar artifact, prepares aspect-preserved BGR640 input, decodes
+boxes, applies score/size/border/NMS guards, and caches up to 16 results. This is
+location-only inference, not identification, demographics, or a skin matte.
+Models remain separately installed; missing/corrupt/disabled inference is an
+explicit abstention, never a requirement for saved-layer replay or editing.
+
+`decision/subject_exposure.py` meters inset face ellipses only when at least 85%
+overlaps the corroborated person selection. Background luminance and continuous
+night/sunset/colored-light/aquarium evidence limit a relative fill target.
+Clothing is not the face brightness target. Twelve bounded trial renders test
+the actual local-exposure transform; each face and the rest of the selected
+subject have clipping guards. Conflicting face needs, insufficient background,
+or no verified benefit produce no change. This remains a bounded heuristic
+objective, not a learned aesthetic score or calibrated skin rendering.
+
+First toolbar Auto may add metered exposure when creating a new selection.
+Existing layers, including disabled/manual ones, are preserved. The Subject
+wand independently recalculates exposure against current global settings,
+excluding the prior local effect, and is undoable. The strength label explicitly
+says Global Auto. Per-photo batch Auto analyzes each original independently;
+Current adjustments still excludes source-bound masks, and Saved edits retains
+them. Model work is confined to explicit Auto/Select commands, not slider or
+export replay. Noise controls remain unchanged.
+
+On 33 private/public RAW validation files, the initial face threshold accepts
+five boxes in four photos. Identical prepared input compared with the external
+OpenCV FaceDetectorYN oracle gives matching accepted boxes (IoU above .999,
+score difference below .0001). OpenCV is a development-only oracle, not an app
+dependency. This small comparison does not establish general face accuracy.
+CPU/GPU local-advice decisions agree: two portraits receive +.7675/+.7763 EV,
+31 photos receive no new local exposure. Missing/excluded faces are not treated
+as proof that a photo has no people.
+
+Both changed portraits pass full-resolution checks at 70/100% global strength,
+8/16-bit output, CPU/GPU: 16 cases. Zero-weight background pixels remain exact;
+no new channels cross from below 250/255 to at least 254/255 or from above 8/255
+to at most 2/255. Native face crops match full RGB8 renders. These are measured
+sample results, not an exhaustive guarantee for unseen photographs.
+
+Three real Tk workflows pass 50/60/64 checks: first Auto, independent local Auto,
+manual edits after advice, disable/enable, undo/redo, native inspection,
+JPEG/TIFF16, reopen, and selection without global changes. The 800x560 check
+also verifies that all Subject controls retain their requested widths; the
+Select button uses content width to avoid clipping its neighbor. Screenshots
+were inspected. Eleven batch checks pass, plus a focused test proves that each
+Auto-batch photo receives its own source-bound selection and retains chosen
+noise amounts. Build-environment tests pass 703 cases.
+
+The refreshed Windows EXE passes six additional checks: GPU/CPU portrait advice,
+JPEG/TIFF16, face-disabled, face-missing, and all-models-off layer replay. Advice
+matches source execution exactly; exported pixels and native detail match source
+rendering, including five complete TIFF16 arrays. Models-off replay uses the
+saved selection without inference. The sampled warm full-size JPEG export is
+1.95 s; local metering adds 0.55-0.72 s in those processes, including cached
+person analysis and face inference. These are local measurements, not cold-start
+or universal performance promises. Original hashes remain unchanged. No public
+ZIP, model weights, or private photos are released.
+
+Eight prior frozen Auto cases retain their earlier global parameters, metrics,
+noise advice, and exported file bytes; five TIFF16 arrays also match source
+rendering. Two older saved recipes retain exact native-detail pixels. The Z f
+HE CPU Auto is separately checked against its CPU baseline, not the slightly
+different GPU baseline. No RAW decoder, global color solver, or saved-layer
+render transform changes in this increment.

@@ -65,8 +65,12 @@ For renderable photos, moving a slider updates the image automatically, includin
 during continuous dragging. Metadata and support details are in the `Info` tab.
 The screen-size preview is never used as the full-resolution export source.
 
-`Auto` suggests a conservative correction; `Auto strength` varies it from 0 to
-100%. Light and Color groups contain manual sliders. The comparison icon switches
+`Auto` suggests a conservative correction; `Global Auto strength` varies global
+settings from 0 to 100%. Light and Color groups contain manual sliders. With the
+optional face meter installed, Auto can add local subject exposure; the Subject
+wand recalculates it separately. Existing subject layers are preserved by global
+Auto. See [local model setup](../models/README.md).
+The comparison icon switches
 between an unedited RAW render and the current edit. Undo/redo buttons (Ctrl+Z /
 Ctrl+Y) restore edits during the current photo session. Fit/2x/4x zoom and dragging
 allow closer preview inspection, not full-resolution 1:1 pixel inspection.

@@ -16,17 +16,22 @@ Next quality work: Auto under difficult lighting, broader camera calibration
 and gamut handling, edge-aware demosaic, actual sensor highlight reconstruction,
 and sensor-domain denoise with calibrated luminance-noise advice. Further first-use initialization and broader verified HE profiles
 also remain open.
-Face detection, manual mask refinement, local color, and mobile remain later
+Manual mask refinement, local color, and mobile remain later
 phases. Coarse scene/lighting analysis and corroborated person masks are now
 optional local experiments.
 
-Person selections now support a separate manual local-exposure layer. Auto or
-Subject > Select prepares a conservative soft selection; its initial exposure
-is zero. The layer has an enable toggle, undo/redo, source-bound persistence,
+Person selections now support a separate local-exposure layer. Subject > Select
+prepares a conservative soft selection at zero exposure. First Auto can meter
+local exposure using optional offline face locations, surrounding brightness,
+and scene/lighting evidence. It tests bounded rendered candidates; missing or
+conflicting evidence leaves local exposure unchanged. Existing local layers are
+preserved by global Auto; a separate Subject wand recalculates local exposure.
+The layer has an enable toggle, undo/redo, source-bound persistence,
 native-detail projection, and 8/16-bit derivative output without model replay.
 Inspection uses the saved selection. A fused optional CPU kernel reduces the
-added export cost, with a pixel-identical NumPy fallback. Automatic local
-metering and local color remain next; masks still miss people or include objects.
+added export cost, with a pixel-identical NumPy fallback. Metering is experimental,
+not learned aesthetic ranking or calibrated face retouching; masks still miss
+people or include objects. No identity/demographic inference is performed.
 
 The latest person-color increment excludes confirmed subject pixels from
 scenery color targets and adds spatial subject-color constraints to the global
@@ -35,7 +40,8 @@ score, and CLIP crop checks limit which candidates can influence Auto. Ambiguous
 groups can retry up to three distinct substantial components. A 4x4 subject
 grid limits small-region hue/saturation changes. These are evaluated heuristics,
 not calibrated confidence or accurate skin segmentation. Auto's proposed
-parameters remain global; the separate subject-exposure layer is manual for now.
+color parameters remain global; face metering now addresses the separate local
+exposure layer without changing those color settings.
 
 In the current 33-photo local regression, nine photos gain corroborated person
 regions; one aquarium color proposal changes and 32 retain prior parameters.

@@ -367,7 +367,7 @@ def build_workspace(app, filedialog, messagebox):
     app.histogram_status_label.pack(anchor="w", pady=(6, 12))
     amount_row = ttk.Frame(controls)
     amount_row.pack(fill="x")
-    ttk.Label(amount_row, text="Auto strength", style="Panel.TLabel").pack(side="left")
+    ttk.Label(amount_row, text="Global Auto strength", style="Panel.TLabel").pack(side="left")
     ttk.Label(
         amount_row, textvariable=app.auto_strength_label_var, style="Muted.TLabel"
     ).pack(side="right")
@@ -422,7 +422,13 @@ def build_workspace(app, filedialog, messagebox):
         subject_row, "wand-sparkles", "Select person", app._select_subject,
         text="  Select", style="TButton", disabled=True,
     )
+    app.subject_select_button.configure(width=0)
     app.subject_select_button.pack(side="right")
+    app.subject_auto_button = button(
+        subject_row, "wand-sparkles", "Auto subject exposure: meter face and surrounding light",
+        app._auto_subject, disabled=True,
+    )
+    app.subject_auto_button.pack(side="right", padx=(0, 5))
     row = ttk.Frame(subject)
     row.pack(fill="x")
     ttk.Label(row, text="Exposure", style="Panel.TLabel").pack(side="left")
