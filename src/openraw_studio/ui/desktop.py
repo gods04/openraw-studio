@@ -692,6 +692,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.library_items: list[tuple[Path, str, bool]] = []
             self.current_can_preview: bool | None = None
             self.current_can_render: bool | None = None
+            self.preview_failure: str | None = None
             self.library_scan_counter = 0
             self.showing_after = True
             self.last_export_path: Path | None = None
@@ -1024,6 +1025,8 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.source_path = source
             self.source_orientation = 1
             self.preview_only_name = "Camera JPEG"
+            self.preview_failure = None
+            self.retry_preview_button.grid_remove()
             self.support_notice_var.set("")
             self.support_notice_label.pack_forget()
             self.zoom_var.set("Fit")
@@ -1143,8 +1146,8 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
         def _photo_info_worker(self, source: Path, run_id: int) -> None:
             try:
                 info, support = _read_photo_info_with_support(source)
-            except OSError:
-                info = "Photo info unavailable"
+            except OSError as error:
+                info = _friendly_error_message(error)
                 support = None
             self._post(
                 lambda: self._show_photo_info(source, info, support, run_id=run_id)
@@ -1160,7 +1163,18 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
         ) -> None:
             if self.source_path != source or run_id != self.run_counter:
                 return
+            if support is None:
+                self.photo_info_var.set(info)
+                self._show_preview_failure(info)
+                return
             if support is not None:
+                if not support.can_render:
+                    if self.preview_failure:
+                        self._clear_result()
+                        self.preview_label.configure(text="RAW preview unavailable")
+                        self.support_notice_var.set(f"RAW unavailable\n{support.reason}")
+                    self.preview_failure = None
+                    self.retry_preview_button.grid_remove()
                 self.source_orientation = support.metadata.get("orientation", 1)
                 self.current_can_preview = support.can_preview or support.can_render
                 self.current_can_render = support.can_render
@@ -1235,12 +1249,12 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
         def _refresh_history_buttons(self) -> None:
             self.undo_button.configure(
                 state="normal"
-                if self.history.can_undo and not self.is_busy
+                if self.history.can_undo and not self.is_busy and self.current_can_render and not self.preview_failure
                 else "disabled"
             )
             self.redo_button.configure(
                 state="normal"
-                if self.history.can_redo and not self.is_busy
+                if self.history.can_redo and not self.is_busy and self.current_can_render and not self.preview_failure
                 else "disabled"
             )
 
@@ -1248,7 +1262,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             if self.edit_after_id is not None:
                 self.root.after_cancel(self.edit_after_id)
                 self.edit_after_id = None
-            if self.source_path is None or not self.current_can_render:
+            if self.source_path is None or not self.current_can_render or self.preview_failure:
                 return True
             self.history.commit(self._current_overrides())
             self._refresh_history_buttons()
@@ -1261,7 +1275,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                 return False
 
         def _undo(self) -> None:
-            if self.is_busy:
+            if self.is_busy or not self.current_can_render or self.preview_failure:
                 return
             self._commit_edit()
             self._set_adjustment_values(self.history.undo())
@@ -1269,7 +1283,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self._commit_edit()
 
         def _redo(self) -> None:
-            if self.is_busy:
+            if self.is_busy or not self.current_can_render or self.preview_failure:
                 return
             self._commit_edit()
             self._set_adjustment_values(self.history.redo())
@@ -1277,7 +1291,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self._commit_edit()
 
         def _reset_one(self, key: str) -> str:
-            if not self.is_busy:
+            if not self.is_busy and self.current_can_render and not self.preview_failure:
                 self._commit_edit()
                 getattr(self, key + "_var").set(0)
                 self._sync_adjustment_labels()
@@ -1315,7 +1329,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
 
         def _detail_view(self):
             scale = {"100%": 1, "200%": 2}.get(self.zoom_var.get())
-            if scale is None or not self.current_can_render:
+            if scale is None or not self.current_can_render or self.preview_failure:
                 return None
             return DetailView(
                 (max(1, self.preview_label.winfo_width() - 2), max(1, self.preview_label.winfo_height() - 2)),
@@ -1407,7 +1421,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                 )
 
         def _reset_adjustments(self) -> None:
-            if self.is_busy or not self.current_can_render:
+            if self.is_busy or not self.current_can_render or self.preview_failure:
                 return
             self._commit_edit()
             self.exposure_var.set(0.0)
@@ -1429,7 +1443,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self._commit_edit()
 
         def _auto_color_noise(self) -> None:
-            if self.is_busy or not self.current_can_render or self.source_path is None:
+            if self.is_busy or not self.current_can_render or self.preview_failure or self.source_path is None:
                 return
             self._commit_edit()
             self.run_counter += 1
@@ -1473,7 +1487,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self._schedule_live_preview()
 
         def _auto_adjust(self) -> None:
-            if self.is_busy or not self.current_can_render:
+            if self.is_busy or not self.current_can_render or self.preview_failure:
                 return
             if self.source_path is None:
                 self.messagebox.showinfo("OpenRAW Studio", "Import a RAW photo first.")
@@ -1568,7 +1582,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self._schedule_live_preview()
 
         def _refresh_subject_controls(self) -> None:
-            editable = not self.is_busy and self.current_can_render is True
+            editable = not self.is_busy and self.current_can_render is True and not self.preview_failure
             selected = self.subject is not None
             self.subject_select_button.configure(state="normal" if editable else "disabled")
             self.subject_auto_button.configure(state="normal" if editable and selected else "disabled")
@@ -1591,7 +1605,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self._start_subject_auto(color=True)
 
         def _start_subject_auto(self, *, color) -> None:
-            if self.is_busy or not self.current_can_render or self.source_path is None or self.subject is None:
+            if self.is_busy or not self.current_can_render or self.preview_failure or self.source_path is None or self.subject is None:
                 return
             self._commit_edit()
             self.run_counter += 1
@@ -1656,7 +1670,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self._schedule_live_preview()
 
         def _select_subject(self) -> None:
-            if self.is_busy or not self.current_can_render or self.source_path is None:
+            if self.is_busy or not self.current_can_render or self.preview_failure or self.source_path is None:
                 return
             self._commit_edit()
             self.run_counter += 1
@@ -1728,10 +1742,59 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self._show_histogram(None, view="After")
 
         def _update_preview(self) -> None:
-            if self.current_can_render:
+            if self.preview_failure:
+                self._retry_live_preview()
+            elif self.current_can_render:
                 self._schedule_live_preview()
             else:
                 self._start_pipeline(preview_only=True)
+
+        def _show_preview_failure(self, message, image=None) -> None:
+            self.live_worker.invalidate()
+            # A folder job owns its own errors and must continue past this file.
+            if not self.batch_running:
+                self.run_counter += 1
+            for name in ("live_after_id", "histogram_after_id"):
+                callback = getattr(self, name)
+                if callback is not None:
+                    self.root.after_cancel(callback)
+                    setattr(self, name, None)
+            self.preview_failure = message
+            self.current_can_render = False
+            self.current_can_preview = image is not None
+            self.zoom_var.set("Fit")
+            self.last_person_analysis = self.last_auto_suggestion = None
+            self.person_mask_var.set(False)
+            self.auto_summary_var.set("")
+            self._clear_result()
+            if image is not None:
+                self.live_image = self.reference_image = image.copy()
+                self.before_view_name = "Camera Preview"
+                self.view_var.set("Camera")
+                self._fit_live_image()
+            else:
+                self.preview_label.configure(text="RAW preview unavailable")
+            self.support_notice_var.set(f"RAW processing failed\n{message}")
+            self.support_notice_label.pack(before=self.histogram_canvas, fill="x", pady=(0, 12))
+            self.retry_preview_button.grid()
+            self._set_busy(self.is_busy and self.batch_running)
+            self.status_var.set("RAW unavailable; editing and export disabled")
+            self.edit_status_var.set("Edits retained")
+            self._refresh_preview_state()
+
+        def _retry_live_preview(self) -> None:
+            if self.is_busy or self.source_path is None or not self.preview_failure or self.current_can_render is not False:
+                return
+            self.live_worker.invalidate()
+            self.current_can_render = None
+            self.run_counter += 1
+            self._set_busy(False)
+            self.status_var.set("Retrying RAW preview...")
+            self._refresh_preview_state()
+            threading.Thread(
+                target=self._photo_info_worker,
+                args=(self.source_path, self.run_counter), daemon=True,
+            ).start()
 
         def _schedule_live_preview(self) -> None:
             if self.source_path is None or not self.current_can_render:
@@ -1759,8 +1822,12 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                 and frame.detail_view == self._detail_view()
             ):
                 if frame.error:
-                    self.preview_state_var.set("Live preview unavailable")
-                    self.status_var.set(frame.error)
+                    if frame.revision == self.live_revision:
+                        if frame.preparation_failed:
+                            self._show_preview_failure(frame.error, frame.image if frame.reference else None)
+                        else:
+                            self.preview_state_var.set("Live preview unavailable")
+                            self.status_var.set(frame.error)
                 else:
                     image = frame.image.copy()
                     if frame.detail_view is None:
@@ -1776,9 +1843,17 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                         self.before_view_name = "Camera Preview"
                         self.view_var.set("Camera")
                         self.compare_button.configure(state="disabled", text="")
-                        self.preview_state_var.set("Camera preview | Preparing RAW...")
+                        self.preview_state_var.set("Camera preview | Retrying RAW..." if self.preview_failure
+                                                   else "Camera preview | Preparing RAW...")
                         self.live_poll_id = self.root.after(8, self._poll_live_preview)
                         return
+                    if self.preview_failure:
+                        self.preview_failure = None
+                        self.support_notice_var.set("")
+                        self.support_notice_label.pack_forget()
+                        self.retry_preview_button.grid_remove()
+                        self._set_busy(self.is_busy)
+                        self._commit_edit()
                     self.last_preview_overrides = dict(frame.adjustments)
                     if frame.original_image is not None:
                         if frame.detail_view is None and self.reference_image is not frame.original_image:
@@ -1939,6 +2014,8 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.root.destroy()
 
         def _export_photo(self) -> None:
+            if self.preview_failure:
+                return
             self._start_pipeline(preview_only=False)
 
         def _export_folder(self) -> None:
@@ -2096,11 +2173,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.batch_running = False
             self._set_busy(False)
             self.status_var.set(_batch_result_status(result))
-            self.preview_state_var.set(
-                _preview_state_text(
-                    self.last_preview_overrides, self._current_overrides()
-                )
-            )
+            self._refresh_preview_state()
             self.export_label.configure(text=_format_batch_result_summary(result))
             self._refresh_output_info()
             if result.processed:
@@ -2113,7 +2186,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                 self.cancel_batch_button.configure(state="disabled")
 
         def _start_pipeline(self, *, preview_only: bool) -> None:
-            if self.is_busy:
+            if self.is_busy or self.preview_failure:
                 return
             if self.source_path is None:
                 self.messagebox.showinfo("OpenRAW Studio", "Import a RAW photo first.")
@@ -2226,7 +2299,10 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             can_preview = (
                 self.current_can_preview is True or self.current_can_render is True
             )
-            can_render = self.current_can_render is True
+            can_render = self.current_can_render is True and not self.preview_failure
+            self.retry_preview_button.configure(
+                state="normal" if self.preview_failure and self.current_can_render is False and not busy else "disabled"
+            )
             preview_state = (
                 "normal"
                 if not busy and self.source_path is not None and can_preview
@@ -2290,6 +2366,13 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             return result
 
         def _refresh_preview_state(self) -> str:
+            if self.preview_failure:
+                preview_state = (
+                    "Retrying RAW preview..." if self.current_can_render is not False
+                    else "Camera JPEG | RAW unavailable" if self.current_can_preview else "RAW unavailable"
+                )
+                self.preview_state_var.set(preview_state)
+                return preview_state
             if self.current_can_preview and self.current_can_render is False:
                 preview_state = f"{self.preview_only_name} | Preview only"
                 self.preview_state_var.set(preview_state)

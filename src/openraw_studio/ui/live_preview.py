@@ -28,6 +28,7 @@ class LiveFrame:
     detail_view: DetailView | None = None
     native_size: tuple[int, int] | None = None
     region: tuple[int, int, int, int] | None = None
+    preparation_failed: bool = False
 
 
 class LivePreviewWorker:
@@ -116,25 +117,31 @@ class LivePreviewWorker:
                     return
                 revision, source, adjustments, requested_at, generation, detail_view = self._pending
                 self._pending = None
+            camera_reference = None
+            stage = "edits"
             try:
                 validate_subject_source(adjustments.get("subject"), source)
+                stage = "source"
                 stat = source.stat()
                 current_key = (source.resolve(), stat.st_size, stat.st_mtime_ns)
                 if current_key != key:
                     if source.suffix.lower() in {".nef", ".nrw"}:
-                        self._show_camera_reference(
+                        camera_reference = self._show_camera_reference(
                             revision, source, adjustments, requested_at, generation
                         )
                     with self._condition:
                         if generation != self._generation or self._closed:
                             continue
+                    stage = "prepare"
                     photo = self.prepare(self.processor, source)
                     original, _backend = photo.render({})
+                    stage = "render"
                     if adjustments.get("subject") is not None:
                         from openraw_studio.raw.native.subject import prepare_subject_renderer
                         prepare_subject_renderer(adjustments["subject"])
                     key = current_key
                     detail_photo = detail_original = detail_region = None
+                stage = "render"
                 with self._condition:
                     if generation == self._generation and not self._closed:
                         self._prepared = (key, photo)
@@ -167,7 +174,12 @@ class LivePreviewWorker:
                     region=region if detail_view is not None else None,
                 )
             except Exception as exc:  # noqa: BLE001 - Report worker failures to the UI.
-                frame = LiveFrame(revision, source, adjustments, error=str(exc), detail_view=detail_view)
+                frame = LiveFrame(
+                    revision, source, adjustments, image=camera_reference,
+                    error=str(exc), detail_view=detail_view,
+                    reference=camera_reference is not None,
+                    preparation_failed=stage in {"source", "prepare"},
+                )
             with self._condition:
                 # A finished frame is useful during a drag even if a newer edit is
                 # pending. Source changes/invalidation still reject all old work.
@@ -205,3 +217,4 @@ class LivePreviewWorker:
                     (perf_counter() - requested_at) * 1000,
                     reference=True,
                 )
+                return image

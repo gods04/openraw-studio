@@ -128,6 +128,10 @@ Then import `sample-data\openraw-synthetic.DNG` or
   refreshes and export do not repeatedly decode or regenerate unchanged work
 - Automatic, in-memory live preview during slider dragging, with one replaceable
   pending edit instead of a growing render queue; no refresh button is required
+- Failed RAW preparation retains a labeled camera JPEG when available, freezes
+  unavailable RAW edits/export without discarding saved adjustments, and exposes
+  a retry icon beside zoom. A successful retry restores native editing; folder
+  export still reports individual failures and continues with readable files.
 - Photo-first workspace with Adjust/Library/Export/Info tabs, original-RAW
   comparison, native 100%/200% detail inspection, zoom/pan, undo/redo, and automatic
   local edit retention

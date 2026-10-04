@@ -12,6 +12,13 @@ verified Z5 12/14-bit lossless and D40 non-split lossy FX, and the verified Z f 
 with approximate nonlinear mapping.
 Local Windows EXE builds are available; this is not a public installer release.
 
+Unreadable RAW imports now retain an explicitly labeled camera reference when
+available, preserve edits, disable unavailable RAW actions, and offer a retry
+beside zoom. Recovering the source restores native editing without resetting
+the recipe. Per-file batch failures do not block other photos. This is error
+recovery, not file repair or expanded codec support; transient edit/detail
+render errors remain distinct from failures to prepare a RAW source.
+
 Next quality work: Auto under difficult lighting, broader camera calibration
 and gamut handling, edge-aware demosaic, actual sensor highlight reconstruction,
 and sensor-domain denoise with calibrated luminance-noise advice. Further first-use initialization and broader verified HE profiles

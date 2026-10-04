@@ -254,6 +254,11 @@ def build_workspace(app, filedialog, messagebox):
     )
     app.zoom_combo.grid(row=0, column=3)
     app.zoom_combo.bind("<<ComboboxSelected>>", app._zoom_changed)
+    app.retry_preview_button = button(
+        photo_bar, "rotate-ccw", "Retry RAW preview", app._retry_live_preview,
+    )
+    app.retry_preview_button.grid(row=0, column=4, padx=(4, 0))
+    app.retry_preview_button.grid_remove()
     app.preview_label = tk.Label(
         viewer,
         background="#e7ebee",

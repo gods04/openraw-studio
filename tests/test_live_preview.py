@@ -297,6 +297,7 @@ class LivePreviewWorkerTests(unittest.TestCase):
                 frame = self.wait_for_frame(worker)
                 self.assertEqual(frame.detail_view, view)
                 self.assertEqual(frame.error, "unsupported detail")
+                self.assertFalse(frame.preparation_failed)
                 worker.submit(source, {})
                 frame = self.wait_for_frame(worker)
                 self.assertEqual(frame.image, "fit")
@@ -313,6 +314,169 @@ class LivePreviewWorkerTests(unittest.TestCase):
                 return frame
             time.sleep(0.005)
         self.fail("Preview worker did not produce a frame")
+
+    def wait_for_error(self, worker):
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            frame = self.wait_for_frame(worker)
+            if frame.error is not None:
+                return frame
+        self.fail('Preview worker did not report failure')
+
+    def test_prepare_failure_carries_camera_pixels_even_if_initial_frame_is_replaced(self):
+        def fail(*_):
+            raise ValueError('Bad payload')
+
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / 'sample.NEF'
+            original = synthetic_nikon_nef_metadata_bytes(embedded_jpeg=embedded_jpeg_bytes(), orientation=6)
+            source.write_bytes(original)
+            worker = LivePreviewWorker(None, prepare=fail)
+            try:
+                revision = worker.submit(source, {})
+                frame = self.wait_for_error(worker)
+                self.assertTrue(frame.preparation_failed)
+                self.assertTrue(frame.reference)
+                self.assertEqual(frame.image.size, (2, 3))
+                self.assertEqual(frame.revision, revision)
+                self.assertEqual(frame.error, 'Bad payload')
+                self.assertIsNone(worker.get_prepared_photo(source))
+                self.assertEqual(source.read_bytes(), original)
+            finally:
+                worker.close()
+                worker._thread.join(3)
+
+    def test_missing_source_is_a_preparation_failure_without_a_camera_frame(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / 'missing.NEF'
+            worker = LivePreviewWorker(None)
+            try:
+                worker.submit(source, {})
+                frame = self.wait_for_error(worker)
+                self.assertTrue(frame.preparation_failed)
+                self.assertFalse(frame.reference)
+                self.assertIsNone(frame.image)
+            finally:
+                worker.close()
+                worker._thread.join(3)
+
+    def test_retry_after_preparation_failure_reprepares_and_shares_only_successful_photo(self):
+        calls = []
+
+        class Photo:
+            def render(self, _values):
+                return 'native', 'CPU'
+
+        def prepare(*_):
+            calls.append(True)
+            if len(calls) == 1:
+                raise ValueError('Temporary read failure')
+            return Photo()
+
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / 'sample.DNG'
+            source.write_bytes(b'fixture')
+            worker = LivePreviewWorker(None, prepare=prepare)
+            try:
+                worker.submit(source, {})
+                self.assertTrue(self.wait_for_error(worker).preparation_failed)
+                self.assertIsNone(worker.get_prepared_photo(source))
+                worker.invalidate()
+                worker.submit(source, {})
+                frame = self.wait_for_frame(worker)
+                self.assertEqual(frame.image, 'native')
+                self.assertIsNone(frame.error)
+                self.assertEqual(len(calls), 2)
+                self.assertIsNotNone(worker.get_prepared_photo(source))
+            finally:
+                worker.close()
+                worker._thread.join(3)
+
+    def test_edited_render_failure_keeps_the_valid_original_and_prepared_photo(self):
+        class Photo:
+            def render(self, values):
+                if values.get('exposure') == 1:
+                    raise ValueError('Edit failed')
+                return 'native', 'CPU'
+
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / 'sample.DNG'
+            source.write_bytes(b'fixture')
+            worker = LivePreviewWorker(None, prepare=lambda *_: Photo())
+            try:
+                worker.submit(source, {'exposure': 1})
+                self.assertFalse(self.wait_for_error(worker).preparation_failed)
+                self.assertIsNotNone(worker.get_prepared_photo(source))
+                worker.submit(source, {})
+                self.assertEqual(self.wait_for_frame(worker).image, 'native')
+            finally:
+                worker.close()
+                worker._thread.join(3)
+
+    def test_invalid_subject_is_an_edit_error_not_a_raw_preparation_failure(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / 'sample.DNG'
+            source.write_bytes(b'fixture')
+            with patch('openraw_studio.ui.live_preview.validate_subject_source', side_effect=ValueError('Wrong source')):
+                worker = LivePreviewWorker(None)
+                try:
+                    worker.submit(source, {'subject': {}})
+                    frame = self.wait_for_error(worker)
+                    self.assertEqual(frame.error, 'Wrong source')
+                    self.assertFalse(frame.preparation_failed)
+                finally:
+                    worker.close()
+                    worker._thread.join(3)
+
+    def test_initial_unedited_render_failure_is_not_reported_as_valid_raw(self):
+        class Photo:
+            def render(self, _values):
+                raise RuntimeError('Renderer unavailable')
+
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / 'sample.DNG'
+            source.write_bytes(b'fixture')
+            worker = LivePreviewWorker(None, prepare=lambda *_: Photo())
+            try:
+                worker.submit(source, {})
+                self.assertTrue(self.wait_for_error(worker).preparation_failed)
+                self.assertIsNone(worker.get_prepared_photo(source))
+            finally:
+                worker.close()
+                worker._thread.join(3)
+
+    def test_stale_preparation_failure_cannot_replace_a_new_source(self):
+        entered, release = threading.Event(), threading.Event()
+
+        class Photo:
+            def render(self, _values):
+                return 'new photo', 'CPU'
+
+        def prepare(_processor, source):
+            if source.name == 'first.DNG':
+                entered.set()
+                release.wait(3)
+                raise ValueError('Old source failed')
+            return Photo()
+
+        with tempfile.TemporaryDirectory() as folder:
+            first, second = (Path(folder) / name for name in ('first.DNG','second.DNG'))
+            first.write_bytes(b'first')
+            second.write_bytes(b'second')
+            worker = LivePreviewWorker(None, prepare=prepare)
+            try:
+                worker.submit(first,{})
+                self.assertTrue(entered.wait(2))
+                revision = worker.submit(second,{})
+                release.set()
+                frame = self.wait_for_frame(worker)
+                self.assertEqual(frame.revision, revision)
+                self.assertEqual(frame.source, second)
+                self.assertIsNone(frame.error)
+            finally:
+                release.set()
+                worker.close()
+                worker._thread.join(3)
 
     def test_inflight_frame_survives_new_edit_but_not_source_change(self):
         entered = threading.Event()

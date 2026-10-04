@@ -2770,3 +2770,66 @@ remain unchanged. Reports: `output/face-frozen-*` and
 `output/face-frozen-verification.json`. The existing optional TBB DLL packaging
 warning remains; tested CPU paths work. Dependency, compile, and diff checks
 pass. No public ZIP, model, or private photo was published.
+
+### RAW Preview Failure Recovery
+
+A mixed-light/night-color audit added 20 readable D500 photos and found one
+unreadable copy with a valid embedded JPEG. Other same-named copies decode;
+the failing copy has the same length but a substantially different compressed
+tail. The native decoder reports an early bitstream end. This is not evidence
+for a new unsupported encoding, and no original was repaired or rewritten.
+Private comparisons are under `output/mixed-light-baseline`; eight existing
+white-balance refinements were separately inspected under
+`output/mixed-balance-baseline`. These are diagnostic baselines, not a measured
+color improvement. No Auto, decoder, renderer, model, or recipe math changed.
+
+`LiveFrame.preparation_failed` distinguishes source/initial-preparation failure
+from invalid edits or later render/detail errors. A fast failure retains the
+oriented camera JPEG even when it supersedes the temporary reference frame.
+Only a failure for the current source, revision, and viewport disables RAW
+editing. Existing generation checks still reject stale worker results.
+
+The desktop clears stale native pixels/histograms, labels the camera-only view,
+and shows a retry icon beside zoom. Auto, export, history, resets, and local
+editing remain frozen, while parameters and saved sessions are retained. Retry
+rereads metadata and prepares the source once; controls stay frozen until a
+native frame arrives. Unsupported metadata, repeated failure, switching photos,
+and missing files have explicit recovery states. Folder jobs keep their own
+run identifier and failure accounting; their completion preserves the selected
+photo's failure status. A transient edited/detail render error does not disable
+an otherwise working RAW source.
+
+Real Tk recovery checks pass 32 assertions each at 800x560 with automatic GPU
+selection and 1440x900 with forced CPU. They cover the actual failed D500 copy,
+failed retry, same-path recovery using an intentionally rewritten generated
+fixture, retained edits, normal reimport, scene-adaptive Auto, JPEG/TIFF16, and
+a mixed-validity folder job that exports one photo and reports one failure.
+Original-photo hashes remain unchanged. Settled screenshots were inspected;
+the error banner and retry icon fit both windows. Evidence is private under
+`output/import-recovery-{gpu,cpu}`.
+
+The existing 55-check real-Tk person-selection/Auto/history/comparison/export
+workflow and 14-check batch workflow also pass. Evidence:
+`output/recovery-desktop` and `output/recovery-batch`. No 63-photo Auto rerun is
+claimed for this UI-only increment; the Auto/RAW code is unchanged.
+
+Source and packaging environments both pass 821 tests, including 17 new
+worker/UI tests for failure stages, stale results, retry, retained edits, and
+batch ownership. The source pytest run also passes 2,046 subtests. The real
+Windows Tk checks above complement GUI unit tests that skip without a display.
+Both environments pass dependency checks; compilation and diff checks pass.
+
+The refreshed local Windows EXE passes four source-equivalence cases: mixed
+light on GPU/CPU, a face-corroborated aquarium subject, and optional models off.
+JPEG/TIFF16 exports and native-detail pixels match the same-backend source
+renderer exactly; Auto settings match exactly and metrics within 1e-6. Two
+additional frozen checks reject the unreadable RAW with a nonzero exit and no
+exports. All original hashes are unchanged. Reports:
+`output/recovery-frozen-summary.json`, `output/recovery-frozen-*`,
+`output/recovery-error-*`, and `output/recovery-frozen-verification.json`.
+The actual packaged GUI was also opened on the failing photo, captured, and
+closed cleanly; its camera-only label, disabled controls, and retry icon are
+visible in `output/recovery-frozen-ui/unreadable-raw.png`. Functional retry
+automation remains the source Tk audit, not the frozen CLI checks. The existing
+optional TBB packaging warning remains; tested CPU paths work. No public ZIP,
+model weights, generated derivatives, or private photos were published.
