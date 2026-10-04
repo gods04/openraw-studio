@@ -94,7 +94,9 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - Chunked CPU compilation of full-resolution Bayer interpolation and color for
   supported compressed Nikon exports and native-pixel inspection
 - Bounded parallel CPU strips for large compiled renders and both noise filters;
-  small previews and compiler fallback remain serial, with unchanged pixel math
+  slider previews and compiler fallback remain serial, with unchanged pixel math
+- Reused, bounded CPU workers for Auto's larger preview candidates when no GPU
+  is used, retaining the same adjustment search and rendered quality checks
 - MHC gradient-corrected interpolation for full-size Nikon export and native
   detail, with matching GPU, compiled CPU, and NumPy paths; the Fit proxy stays fast
 - Vectorized Nikon preview lookup construction and bounded-memory RGB histogram/QC,

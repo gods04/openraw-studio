@@ -9,8 +9,9 @@ MAX_SCRATCH_BYTES = 128 * 1024 * 1024
 _parallel_frame = Lock()
 
 
-def _worker_limit(pixel_count, strips, scratch_bytes):
-    if pixel_count < MIN_PARALLEL_PIXELS or strips < 2:
+def _worker_limit(pixel_count, strips, scratch_bytes, *, minimum_pixels=None):
+    minimum_pixels = MIN_PARALLEL_PIXELS if minimum_pixels is None else minimum_pixels
+    if pixel_count < minimum_pixels or strips < 2:
         return 1
     processors = max(1, (os.cpu_count() or 1) - 1)
     try:

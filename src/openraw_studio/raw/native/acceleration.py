@@ -440,7 +440,7 @@ def render_tone(pixels, params):
             return gpu.tone(pixels, params), "GPU: " + gpu.name
         except Exception:
             disable_gpu()
-    from openraw_studio.raw.native.compiled_tone import render
+    from openraw_studio.raw.native.cpu_tone_batch import render
 
     compiled = render(pixels, params)
     if compiled is not None:

@@ -15,6 +15,7 @@ from openraw_studio.decision.tonal_intent import dark_scene_intent, limit_dark_l
 from openraw_studio.vision.scene import SceneEvidence, analyze_scene
 from openraw_studio.vision.person import PersonAnalysis, PersonEvidence, analyze_person
 from openraw_studio.raw.native.interactive import InteractivePhoto
+from openraw_studio.raw.native.cpu_tone_batch import cpu_tone_batch
 from openraw_studio.raw.native.preview import render_preview_image
 from openraw_studio.raw.native.tone import PreviewRgbImage
 
@@ -226,6 +227,7 @@ class _RenderGuard:
         }
 
 
+@cpu_tone_batch()
 def suggest_auto_adjustments_for_photo(
     photo: InteractivePhoto, *, person_analysis: PersonAnalysis | None = None,
 ) -> AutoAdjustSuggestion:

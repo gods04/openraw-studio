@@ -2553,3 +2553,77 @@ about the optional Numba TBB-pool DLL; the tested CPU paths work without that
 pool. No public ZIP, private photograph, or model was published. Further work
 should prioritize information/noise discrimination, native sampling exceptions,
 and Auto latency without weakening the rendered quality checks.
+
+### Bounded CPU Auto Rendering
+
+Profiling the star-field example found repeated tone rendering, not model
+inference, dominated initialized CPU Auto. A private experiment estimated that
+32 MiB of candidate-image caching would save about .89 s in that run; the
+implemented change instead parallelizes independent rows without retaining
+candidate images. It does not change the tone kernel, precision, search order,
+candidate count, metrics, clipping budgets, or strength checks.
+
+`raw/native/cpu_tone_batch.py` provides a thread-local scope around
+`suggest_auto_adjustments_for_photo`. CPU tone frames of at least 200,000 pixels
+can use one lazily created, reused pool. Up to four row jobs follow a serial
+one-row warmup, so JIT/cache setup completes before sharing the signature.
+The existing `OPENRAW_CPU_WORKERS`, spare-CPU, and scratch limits still apply.
+The pool shares `cpu_chunks`' nonblocking ownership guard: another Auto/export
+does not create a competing pool and can proceed serially. A batch releases its
+pool and ownership on normal completion or exceptions. Nested scopes reuse the
+outer scope; normal slider rendering outside Auto is unchanged.
+
+GPU tone rendering bypasses this path. Compiler failure still reaches the
+NumPy fallback. Failed thread creation or partial submission joins outstanding
+work before a serial retry; pixel-processing errors are propagated, including
+errors in work queued by a failed submission. Partial RGB is never returned.
+The focused tests cover lifecycle, concurrency, worker limits, GPU failure,
+compiler/thread failures, exact row coverage, and exact real-kernel pixels with
+orientation, color, and immutable strided inputs.
+
+Both 63-photo CPU/GPU regressions retain every prior Auto parameter, rationale,
+evidence value, quality metric, and combined-edit preview pixel. Original hashes
+are unchanged. Private diagnostic and comparison artifacts remain under
+`output/intent-auto-profile`, `output/auto-batch-cpu`, `output/auto-batch-gpu`, and
+`output/probe_auto_render_reuse.py`. This performance work does not resolve the
+previous dark-scene sampling, low-information, or tiny-highlight exceptions.
+
+All 778 source tests pass, including 13 focused batch tests. Four alternating
+old/new pairs per photograph, after initializing models/kernels, compare against
+`3bc6ad2` in the same process. CPU Auto medians fall from 7.08 to 4.81 s for a star
+field, 5.58 to 3.45 s for a coast, and 2.53 to 1.83 s for a portrait (about
+27-38% less time). Every paired suggestion and metric is exact. These figures
+exclude import/initialization and are not cold-start or universal speed claims.
+
+GPU medians in the initial four-pair check vary from about -2% to +6%; a ten-pair
+star-field repeat measures 2.695/2.706 s before/after. No GPU speedup is claimed.
+Private timings: `output/auto-batch-benchmark-*`. Actual 1080x720 Tk benchmarks
+on the star field measure 58/74 ms median exposure-slider latency for GPU/CPU,
+49/47 continuous-drag frames, and 61/86 ms release-to-final latency. JPEG exports
+take 1.27/1.84 s; desktop Auto, including per-process model initialization, takes
+3.24/4.57 s. Camera previews appear in .19/.18 s and RAW previews in 1.44/1.03 s.
+Original hashes remain unchanged. Evidence: `output/auto-batch-live-*`.
+
+Actual desktop workflows pass 69 CPU checks at 1440x900 for local exposure/color,
+28 GPU checks at 800x560 for a night scene, and 14 batch checks. Undo/redo,
+comparison, JPEG/TIFF16, reopened settings, cancellation, and compact export
+controls work; inspected screenshots show no overlapping controls. Evidence:
+`output/auto-batch-gui-*` and `output/auto-batch-batch`.
+
+The packaging environment also passes 778 tests. The rebuilt local EXE passes
+12 source-equivalence cases covering CPU/GPU, JPEG/TIFF8/TIFF16, local edits,
+abstention, disabled models, and explicit single-worker mode. Auto settings are
+exact, metrics agree to 1e-6, and export/native-crop pixels match source execution.
+Every original hash is unchanged. Evidence: `output/batch-frozen-*` and
+`output/batch-frozen-verification.json`.
+
+The first frozen CPU star-field Auto takes 7.34 s and records tone/Bayer cache
+misses. Native code changes deliberately invalidate the content-checked frozen
+cache, so this first-use compilation cost remains. With cache hits, separate
+fresh-process star-field runs take 7.25 s with one worker and 5.15 s with four;
+these single-run measurements include model setup and are distinct from the
+paired warm-source benchmarks. The slower first result is retained, not
+replaced by the repeat. The optional Numba TBB DLL packaging warning remains;
+this implementation uses ordinary bounded threads and the tested CPU paths work.
+Dependency, compile, and diff checks pass. No public ZIP, model, or private
+photograph was published.

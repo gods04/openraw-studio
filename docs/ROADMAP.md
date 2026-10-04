@@ -20,6 +20,13 @@ Manual mask refinement, richer local masks, and mobile remain later
 phases. Coarse scene/lighting analysis and corroborated person masks are now
 optional local experiments.
 
+CPU Auto now reuses up to four bounded workers for larger preview candidates.
+It shares the existing export worker limit/ownership guard, warms the compiled
+signature before parallel work, and releases the pool after each Auto call.
+Ordinary sliders, GPU rendering, candidate selection, and quality checks keep
+their previous behavior. Thread/compiler failures fall back without returning
+partial pixels; explicit single-worker mode remains available.
+
 Dark lighting evidence now participates in the tonal target as well as color.
 The observed median/interquartile range sets a relative lift budget, relaxed
 when semantic evidence is weak. Bounded rendered trials fit exposure/shadows;
