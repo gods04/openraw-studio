@@ -146,8 +146,10 @@ Then import `sample-data\openraw-synthetic.DNG` or
   accepting it; uncertain or dim color-dominated scenes retain the prior correction.
 - Highlight-limited Auto can add a bounded shadow lift, checking visible benefit
   and clipping at both preview sizes; low-key and predominantly dark scenes are excluded
-- Still-dim Auto results can recover bounded exposure with stronger highlight
-  compression, rechecking native samples and low/intermediate Auto strengths
+- Still-dim Auto results fit exposure to the photo's measured response instead
+  of choosing a fixed lift. Optional highlight compression and color are checked
+  together at every integer Auto strength before accepting a fitted correction;
+  analysis/display proxies and available native samples retain clipping guards
 - Optional `Detail > Color noise` and `Luminance noise` controls, with GPU/CPU
   fallback, live preview, undo/redo, saved edits, and JPEG/TIFF export. Both default
   to off; Auto preserves manual amounts instead of guessing a noise level.
@@ -203,6 +205,8 @@ Then import `sample-data\openraw-synthetic.DNG` or
   scene model now conditions a measured color refinement on scene and lighting
   evidence. This is an experimental hybrid, not a trained aesthetic editor or
   sensor highlight recovery. It cannot reconstruct clipped detail.
+  Render-fitted exposure adds analysis work, especially on CPU; Auto analysis
+  runs separately from cached slider rendering and export.
 - Positive contrast is fitted against each image's rendered shadow limits,
   including near-black detail. These remain sampled guards, not a guarantee
   that every original-resolution pixel is protected at every Auto strength.

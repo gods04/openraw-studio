@@ -30,9 +30,12 @@ def main():
     parser.add_argument("--select-subject", action="store_true")
     parser.add_argument("--auto-subject", action="store_true")
     parser.add_argument("--auto-subject-color", action="store_true")
+    parser.add_argument("--expect-subject-color-abstain", action="store_true")
     parser.add_argument("--subject-color", action="store_true", help="Exercise both local color sliders")
     parser.add_argument("--expect-auto-abstain", action="store_true")
     args = parser.parse_args()
+    if args.expect_subject_color_abstain and not args.auto_subject_color:
+        parser.error("--expect-subject-color-abstain requires --auto-subject-color")
     if not 0 <= args.color_noise <= 1:
         parser.error("--color-noise must be within [0, 1]")
     if not 0 <= args.luminance_noise <= 1:
@@ -543,7 +546,10 @@ def main():
         elif phase == 'local_color_auto' and not app.is_busy and frame_current():
             before, after = state['before_color_auto'], app._current_overrides()
             report['subject_auto_color'] = {key: after['subject'].get(key, 0) for key in ('warmth', 'tint')}
-            require(any(report['subject_auto_color'].values()), 'Color Auto derives a nonzero local correction')
+            if args.expect_subject_color_abstain:
+                require(after == before, 'Uncertain local color Auto preserves all existing edits')
+            else:
+                require(any(report['subject_auto_color'].values()), 'Color Auto derives a nonzero local correction')
             require({k: v for k, v in before.items() if k != 'subject'} == {k: v for k, v in after.items() if k != 'subject'},
                     'Local color Auto preserves global adjustments')
             require(before['subject']['exposure'] == after['subject']['exposure'], 'Local color Auto preserves exposure')

@@ -235,7 +235,8 @@ class AutoAdjustTests(unittest.TestCase):
         self.assertLessEqual(result.exposure, .15)
         self.assertLessEqual(result.metrics["detail_validation_renders"], 2)
         self.assertGreater(result.metrics["validation_renders"], 10)
-        self.assertLessEqual(result.metrics["validation_renders"], 42)
+        # Two bounded exposure fits add at most fourteen small-proxy probes.
+        self.assertLessEqual(result.metrics["validation_renders"], 56)
 
     def test_detail_validation_requires_matching_baseline_and_renderer(self):
         pixels = np.full((4, 4, 3), 100, dtype=np.uint8)
@@ -398,7 +399,7 @@ class AutoAdjustTests(unittest.TestCase):
         self.assertEqual(result.metrics["highlight_detail_loss_fraction"], 0)
         self.assertGreater(result.metrics["median_luma_after"], result.metrics["median_luma"])
         self.assertEqual(result.metrics["highlights_guarded"], 1)
-        self.assertLessEqual(result.metrics["validation_renders"], 42)
+        self.assertLessEqual(result.metrics["validation_renders"], 56)
 
     def test_joint_tone_guard_can_help_without_positive_exposure(self):
         pixels = np.full((100, 100, 3), 110, dtype=np.uint8)

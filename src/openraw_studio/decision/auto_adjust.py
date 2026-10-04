@@ -124,6 +124,27 @@ def _limit_contrast(values, preserved):
     return safe
 
 
+def _fit_exposure(values, upper, preserved):
+    """Refine within a checked interval; never return an unchecked midpoint."""
+    low, high = values["exposure"], round(upper, 4)
+    if high <= low:
+        return values
+    candidate = {**values, "exposure": high}
+    if preserved(candidate):
+        return candidate
+    if not preserved(values):
+        return values
+    safe = values
+    for _ in range(5):
+        middle = round((low + high) / 2, 4)
+        candidate = {**values, "exposure": middle}
+        if preserved(candidate):
+            low, safe = middle, candidate
+        else:
+            high = middle
+    return safe
+
+
 class _RenderGuard:
     """Cached measurements in one unedited proxy's own sampling domain."""
 
@@ -347,7 +368,8 @@ def suggest_auto_adjustments_from_preview(
     if intent is not None:
         target = min(target, midtone + intent.lift)
     metering_floor = 1 / 255 if intent_target else .025
-    exposure = float(np.clip(2.2 * np.log2(target / max(midtone, metering_floor)), -0.8, 1.2))
+    metered_exposure = float(2.2 * np.log2(target / max(midtone, metering_floor)))
+    exposure = float(np.clip(metered_exposure, -0.8, 1.2))
     if abs(midtone - target) < (2 / 255 if intent_target else .035):
         exposure = 0.0
     requested_exposure = exposure
@@ -492,8 +514,9 @@ def suggest_auto_adjustments_from_preview(
     # More exposure/compression can have a clipping peak below the usual 25%
     # strength sample, even when both the original and full correction are safe.
     recovery_strengths = tuple(dict.fromkeys((*validation_strengths, *_SHOULDER_STRENGTHS)))
+    fitted_strengths = tuple(dict.fromkeys((*recovery_strengths, *(percent / 100 for percent in range(1, 100)))))
 
-    def highlights_preserved(values, *, all_strengths=False, strengths=None):
+    def highlights_preserved(values, *, all_strengths=False, strengths=None, median_ceiling=None):
         # Compression can protect the endpoint while weaker settings still clip.
         # Reject on the small proxy before spending work at display resolution.
         samples = [values]
@@ -502,9 +525,11 @@ def suggest_auto_adjustments_from_preview(
                 {key: value * strength for key, value in values.items()}
                 for strength in (validation_strengths if strengths is None else strengths)
             )
-        for guard in guards:
+        for guard, prefix in zip(guards, prefixes):
             for index, candidate in enumerate(samples):
                 if not guard.highlights_preserved(candidate) or (index and not guard.tones_preserved(candidate)):
+                    return False
+                if median_ceiling is not None and prefix != "native_" and guard.measure(candidate).median > median_ceiling:
                     return False
         return True
 
@@ -536,41 +561,51 @@ def suggest_auto_adjustments_from_preview(
         return values
 
     def refine_exposure(values):
-        # The upper-tail exposure estimate precedes rendered highlight recovery.
-        # Revisit that limit only for still-dim scenes with usable shadow tones.
+        # Keep the accepted correction as an anchor. The metered range may
+        # extend to the desktop's +2 EV limit, but rendered tones decide the fit.
         before = primary.measure(values)
+        upper = min(2.0, metered_exposure)
         if (
-            low_key or dark_fraction >= 0.55 or values["highlights"] > -0.16
-            or requested_exposure <= values["exposure"] + 0.15
-            or before.median >= min(0.35, target - 0.07)
+            low_key or dark_fraction >= 0.55
+            or upper <= values["exposure"] + 0.03
+            or before.median >= target - 2 / 255
             or primary.shadow_midtone_fraction < 0.10
         ):
-            return values
+            return []
 
         def useful(guard, candidate):
             old, new = guard.measure(values), guard.measure(candidate)
-            ceiling = min(0.38, old.shadow_midtone_mean + 0.05, old.shadow_midtone_mean * 1.25)
             return (
-                old.median + 2 / 255 <= new.median <= min(target, old.median + 0.06)
-                and old.shadow_midtone_mean + 1 / 255 <= new.shadow_midtone_mean <= ceiling
+                old.median + 2 / 255 <= new.median
+                and old.shadow_midtone_mean + 1 / 255 <= new.shadow_midtone_mean
             )
 
-        for increment in (0.40, 0.20):
-            exposure = round(min(requested_exposure, values["exposure"] + increment), 4)
-            for highlights in dict.fromkeys((values["highlights"], -0.50)):
-                candidate = {**values, "exposure": exposure, "highlights": highlights}
-                if not useful(primary, candidate):
-                    continue
-                if (
-                    highlights_preserved(candidate, all_strengths=True, strengths=recovery_strengths)
-                    and tones_preserved(candidate)
-                    and all(
-                        useful(guard, candidate)
-                        for guard, prefix in zip(guards[1:], prefixes[1:]) if prefix != "native_"
-                    )
-                ):
-                    return candidate
-        return values
+        whole_image_guards = [guard for guard, prefix in zip(guards, prefixes) if prefix != "native_"]
+
+        def preserved(candidate):
+            return (
+                highlights_preserved(candidate, all_strengths=True, strengths=recovery_strengths,
+                                     median_ceiling=target + 1 / 255)
+                and tones_preserved(candidate)
+            )
+
+        candidates = []
+        for highlights in dict.fromkeys((values["highlights"], min(values["highlights"], -0.50))):
+            anchor = {**values, "highlights": highlights}
+            candidate = _fit_exposure(anchor, upper, lambda v: (
+                primary.highlights_preserved(v) and primary.tones_preserved(v)
+                and primary.measure(v).median <= target + 1 / 255
+            ))
+            if not useful(primary, candidate):
+                continue
+            candidate = _fit_exposure(anchor, candidate["exposure"], preserved)
+            if (
+                candidate["exposure"] > values["exposure"]
+                and all(useful(guard, candidate) for guard in whole_image_guards)
+                and preserved(candidate)
+            ):
+                candidates.append(candidate)
+        return sorted(candidates, key=lambda v: primary.measure(v).median, reverse=True)
 
     initial_values = suggestion.as_overrides()
     intent_values = limit_dark_lift(
@@ -654,26 +689,37 @@ def suggest_auto_adjustments_from_preview(
             refined = refine_shadows(values) if amount else values
             shadows_refined = refined["shadows"] > values["shadows"]
             values = refined
-            refined = refine_exposure(values) if amount else values
-            exposure_refined = refined["exposure"] > values["exposure"]
-            values = refined
-            final_strengths = recovery_strengths if exposure_refined else validation_strengths
-            balance_metrics = {"white_balance_refined": 0.0}
-            if amount and not low_key:
-                values, balance_metrics = refine_white_balance(
-                    primary.neutral, lambda candidate: primary.measure(candidate).neutral_bias, values,
-                    lambda candidate: highlights_preserved(candidate, all_strengths=True, strengths=final_strengths) and tones_preserved(candidate),
-                    detail_evidence=guards[-1].neutral if render_detail is not None else None,
-                    measure_detail=(lambda candidate: guards[-1].measure(candidate).neutral_bias) if render_detail is not None else None,
-                    validation_strengths=final_strengths,
+            exposure_candidates = refine_exposure(values) if amount else []
+            anchor = values
+            # Validate the complete correction, including color, before adopting
+            # a fitted exposure. Reuse those measurements for the final check.
+            for candidate in [*exposure_candidates, anchor]:
+                exposure_refined = candidate["exposure"] > anchor["exposure"]
+                final_strengths = fitted_strengths if exposure_refined else validation_strengths
+                color_strengths = recovery_strengths if exposure_refined else validation_strengths
+
+                def validated(candidate):
+                    return highlights_preserved(
+                        candidate, all_strengths=True, strengths=final_strengths,
+                        median_ceiling=target + 1 / 255 if exposure_refined else None,
+                    ) and tones_preserved(candidate)
+
+                values = candidate
+                balance_metrics = {"white_balance_refined": 0.0}
+                if amount and not low_key:
+                    values, balance_metrics = refine_white_balance(
+                        primary.neutral, lambda candidate: primary.measure(candidate).neutral_bias, values, validated,
+                        detail_evidence=guards[-1].neutral if render_detail is not None else None,
+                        measure_detail=(lambda candidate: guards[-1].measure(candidate).neutral_bias) if render_detail is not None else None,
+                        validation_strengths=color_strengths,
+                    )
+                values, scene_metrics = refine_scene_color(
+                    preview, render, values, scene_evidence, validated,
+                    detail_preview=detail_preview, render_detail=render_detail,
+                    validation_strengths=color_strengths, person=person,
                 )
-            values, scene_metrics = refine_scene_color(
-                preview, render, values, scene_evidence,
-                lambda candidate: highlights_preserved(candidate, all_strengths=True, strengths=final_strengths) and tones_preserved(candidate),
-                detail_preview=detail_preview, render_detail=render_detail,
-                validation_strengths=final_strengths,
-                person=person,
-            )
+                if not exposure_refined or validated(values):
+                    break
             notes = suggestion.rationale + (
                 ("Fitted exposure and shadow lift to the rendered dark-scene reference.",) if intent_refined else ()
             ) + (
@@ -716,7 +762,7 @@ def suggest_auto_adjustments_from_preview(
                     "shadows_refined": float(shadows_refined),
                     "exposure_refined": float(exposure_refined),
                     "guard_strength": amount,
-                    "validated_strength_samples": float(1 + len(final_strengths) if needs_strength_checks(values) or balance_metrics["white_balance_refined"] or scene_metrics["scene_color_refined"] else 1),
+                    "validated_strength_samples": float(1 + len(final_strengths) if exposure_refined or needs_strength_checks(values) or balance_metrics["white_balance_refined"] or scene_metrics["scene_color_refined"] else 1),
                 },
             )
     return suggestion

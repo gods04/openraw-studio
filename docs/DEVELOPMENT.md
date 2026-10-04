@@ -2833,3 +2833,99 @@ visible in `output/recovery-frozen-ui/unreadable-raw.png`. Functional retry
 automation remains the source Tk audit, not the frozen CLI checks. The existing
 optional TBB packaging warning remains; tested CPU paths work. No public ZIP,
 model weights, generated derivatives, or private photos were published.
+
+### Render-Fitted Exposure
+
+The initial exposure estimate still uses the existing conservative -0.8/+1.2 EV
+bounds. When the rendered correction remains dim, the recovery stage now fits
+within the measured exposure range, bounded by the desktop's +2 EV maximum,
+instead of trying only +0.4/+0.2 EV. The accepted initial correction remains a
+fallback, including when no candidate offers a visible gain. Low-key or
+predominantly dark scenes retain their exclusions and dark-intent checks.
+
+Two existing highlight settings are considered. Each bounded interval search
+uses at most seven checks and returns only a measured candidate, not an
+unchecked midpoint. Cheap primary-proxy rejection precedes native/detail work.
+Both whole-image domains must improve their median and original shadow
+midtones; their scene-derived brightness target limits the lift. Native samples
+protect clipping/tones but never supply a whole-image brightness target.
+
+Promising candidates pass through existing measured white-balance and semantic
+color refinement before adoption. The complete result must pass highlight,
+shadow, and brightness checks at every integer strength from 1% to 100%, plus
+any custom caller strengths. Checking after color allows a genuinely safe
+combined correction while rejecting later color changes that invalidate it.
+Color benefit itself keeps its earlier bounded strength samples. Existing
+measurement caching avoids re-rendering identical checks across these stages.
+
+This dense check applies to newly fitted exposure, not every unchanged fallback
+or every possible continuous strength. It uses bounded proxies/native samples,
+not exhaustive full-resolution QC. No scene model, prompt, decoder, render
+kernel, or saved recipe format changes. Existing edits/export pixels change
+only when Auto is run again. This remains a deterministic optimizer conditioned
+on optional local model evidence, not learned aesthetic ranking.
+
+The source suite passes 835 tests and 2,057 subtests, including fourteen new
+interval/strength tests. They cover renderer-dependent fits beyond the old
+initial cap, unchanged non-rendered estimates, negative intervals, invalid
+anchors, bounded probes, detail-limited gain, no-gain pruning, clipping between
+old strength samples, caller-supplied fractional strengths, and color-stage
+ordering. Default pytest discovery now targets `tests`, excluding local ignored
+third-party source trees rather than requiring their development dependencies.
+
+The 33 existing, 30 additional, and 20 mixed-light readable samples total 83
+distinct source hashes. Both backends change the same 25 global suggestions;
+58 retain their own baseline's global/local parameters and every 70/100%
+combined-preview pixel. Scene/person evidence remains unchanged. Most changed
+comparisons are brighter; two have small decreases versus the earlier fixed
+recovery, including a group with less highlight compression. These were visually
+inspected, not declared universal aesthetic improvements. CPU/GPU global
+parameters agree exactly on 80 photos; three differ by at most 0.0001 per
+parameter. All scene labels agree, and combined previews differ by at most
+2 RGB8 codes per channel. One additional unreadable copy still reports the
+expected early-bitstream error; all source hashes remain unchanged.
+Private reports: `output/{existing,unseen}-auto-fit[-cpu]`,
+`output/mixed-light-fit-final[-cpu]`, and `output/fit-backend-comparison.json`.
+
+In these sequential local runs, global Auto analysis has a median of 1.47 s
+GPU / 2.63 s CPU and a maximum of 6.35 / 13.47 s. Those measurements exclude
+RAW preparation, the precomputed person analysis, local advice, and output
+saving; they are not UI latency or speedup claims. Dense fitted-strength checks
+add meaningful CPU cost. Further analysis optimization remains open, separately
+from the unchanged live-render/export algorithms.
+
+All 294 full-native RGB8 checks pass on the 25 changed photos across CPU/GPU:
+global strength 25/50/70/83/100%, plus combined subject layers at 70/100% where
+present. Every checked native crop matches its full render, and original
+hashes remain unchanged. Reports: `output/fit-native[-cpu]/report.json`.
+These checks use the existing highlight/shadow budgets; they do not imply
+zero clipping or resolve previously documented tiny-highlight/moon-median
+exceptions in unchanged photos. The local-color desktop smoke option
+`--expect-subject-color-abstain` now explicitly checks edit preservation for
+uncertain samples instead of requiring a nonzero correction from every photo.
+
+Real Tk workflows pass 70 checks each at 800x560/GPU and 1440x900/CPU on a
+changed daylight portrait, including selection, Auto/strength, local color
+abstention, manual local color, local exposure Auto, undo/redo, inspection,
+JPEG/TIFF16, and restored edits. The batch workflow passes 14 checks. Settled
+screenshots were inspected. Evidence: `output/fit-gui-{gpu,cpu}` and
+`output/fit-batch`.
+
+Separate initialized desktop runs on this 5568x3712 sample measure median
+slider-to-display latency of 59.6 ms GPU / 77.6 ms CPU; a 50-edit drag displays
+49 / 40 intermediate frames. JPEG export takes 1.55 / 1.93 s. Auto before the
+drag takes 4.11 / 7.04 s, including model initialization and local advice.
+Camera previews appear in 170 / 163 ms and native frames in 1.29 / 1.03 s.
+These single-run observations do not establish a speedup or a cross-photo
+performance guarantee. Evidence: `output/fit-live-{gpu,cpu}/benchmark.json`.
+
+The packaging environment also passes all 835 tests. The rebuilt local Windows
+EXE passes eight source-equivalence cases spanning changed D500/Z f portraits,
+mixed light, an HE* sample, CPU/GPU, JPEG/TIFF8/TIFF16, local advice, and optional
+models off. Auto parameters match exactly, metrics within 1e-6, and exported
+pixels/native-detail crops exactly on the same backend. All source hashes are
+unchanged. Evidence: `output/fit-frozen-*`, `output/fit-frozen-summary.json`, and
+`output/fit-frozen-verification.json`. Both environments pass dependency checks;
+compilation and diff checks pass. The existing optional TBB DLL packaging
+warning remains; tested CPU paths work. No public ZIP, model weights, private
+photos, or generated derivatives were published.

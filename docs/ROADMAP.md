@@ -12,6 +12,19 @@ verified Z5 12/14-bit lossless and D40 non-split lossy FX, and the verified Z f 
 with approximate nonlinear mapping.
 Local Windows EXE builds are available; this is not a public installer release.
 
+Still-dim Auto now fits exposure within the metered range rather than choosing
+between two fixed recovery increments. It retains the conservative starting
+correction, tests visible benefit at both whole-image preview sizes, and checks
+the complete exposure/color result at every integer strength from 1% to 100%.
+Dark-scene exclusions remain; biased native samples do not set scene brightness.
+This is bounded, content-conditioned optimization, not a learned aesthetic
+score. Broader full-resolution validation and analysis cost remain important;
+preview sampling cannot guarantee preservation of every original RAW pixel.
+This increment passes 835 tests, an 83-photo CPU/GPU regression, 294 full-native
+checks, real desktop/batch workflows, and eight rebuilt-EXE equivalence checks.
+Dense validation makes some Auto analyses slower; improving that cost remains
+separate work from the already responsive cached sliders and export.
+
 Unreadable RAW imports now retain an explicitly labeled camera reference when
 available, preserve edits, disable unavailable RAW actions, and offer a retry
 beside zoom. Recovering the source restores native editing without resetting

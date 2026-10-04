@@ -38,11 +38,11 @@ class ExposureRecoveryTests(unittest.TestCase):
         result = self.suggest(original, render, detail_preview=original, render_detail=render)
         self.assertEqual(result.metrics["exposure_refined"], 1)
         self.assertGreater(result.exposure, initial.exposure + .15)
-        self.assertLessEqual(result.exposure, initial.exposure + .4)
+        self.assertLessEqual(result.exposure + result.highlights, .12)
         self.assertEqual(result.highlights, -.5)
         self.assertEqual(result.metrics["new_highlight_clipping_fraction"], 0)
         self.assertEqual(result.metrics["detail_new_highlight_clipping_fraction"], 0)
-        self.assertEqual(result.metrics["validated_strength_samples"], 8)
+        self.assertEqual(result.metrics["validated_strength_samples"], 100)
         self.assertIn("Recovered midtones", " ".join(result.rationale))
         np.testing.assert_array_equal(original, saved)
 
@@ -55,16 +55,19 @@ class ExposureRecoveryTests(unittest.TestCase):
                 if domain != "primary":
                     kwargs.update({f"{domain}_preview": original, f"render_{domain}": unsafe})
                 result = self.suggest(original, unsafe if domain == "primary" else render, **kwargs)
-                self.assertEqual(result.metrics["exposure_refined"], 0)
+                self.assertEqual(result.metrics["exposure_refined"], 1)
                 self.assertLessEqual(result.exposure, .2)
+                for percent in range(1, 101):
+                    values = {key: value * percent / 100 for key, value in result.as_overrides().items()}
+                    self.assertLess(unsafe(values)[:20].max(), 254)
 
     def test_intermediate_strength_cannot_escape_recovery_checks(self):
         original, unsafe = recovery_scene(intermediate_clip=True)
         endpoint = suggest_auto_adjustments_from_preview(original, render=unsafe)
-        self.assertEqual(endpoint.metrics["exposure_refined"], 1)
+        self.assertEqual(endpoint.metrics["exposure_refined"], 0)
         result = self.suggest(original, unsafe)
         self.assertEqual(result.metrics["exposure_refined"], 0)
-        for strength in (.25, .5, .7, 1):
+        for strength in (percent / 100 for percent in range(1, 101)):
             self.assertLess(unsafe({key: value * strength for key, value in result.as_overrides().items()})[:20].max(), 254)
 
     def test_requires_measurable_gain_on_both_display_resolutions(self):
@@ -124,7 +127,7 @@ class ExposureRecoveryTests(unittest.TestCase):
 
         def render(values):
             result = base_render(values)
-            if values["warmth"] > 0 and -.08 < values["highlights"] < -.03 and values["exposure"] > .025:
+            if values["warmth"] > 0 and -.425 < values["highlights"] < -.405 and values["exposure"] > .025:
                 result[:20] = 255
             return result
 
@@ -140,20 +143,128 @@ class ExposureRecoveryTests(unittest.TestCase):
         self.assertEqual(result.metrics["white_balance_refined"], 0)
         self.assertEqual(result.warmth, 0)
 
-    def test_backs_off_excessive_lift_and_rejects_when_both_steps_are_too_large(self):
-        for lift, expected in ((50, 1), (90, 0)):
+    def test_integer_strength_peak_between_old_samples_rejects_the_fit_in_every_domain(self):
+        original, render = recovery_scene()
+
+        def unsafe(values):
+            image = render(values)
+            strength = values['contrast'] / .03
+            if .82 < strength < .84 and values['exposure'] > .1 * strength:
+                image[:20] = 255
+            return image
+
+        for domain in ('primary', 'detail', 'native'):
+            with self.subTest(domain=domain):
+                kwargs = {} if domain == 'primary' else {
+                    f'{domain}_preview': original, f'render_{domain}': unsafe,
+                }
+                result = self.suggest(original, unsafe if domain == 'primary' else render, **kwargs)
+                self.assertEqual(result.metrics['exposure_refined'], 0)
+                for percent in range(1, 101):
+                    image = unsafe({key: value * percent / 100 for key, value in result.as_overrides().items()})
+                    self.assertLess(image[:20].max(), 254)
+
+    def test_intermediate_brightness_ceiling_uses_whole_images_not_biased_native_samples(self):
+        original, render = recovery_scene()
+
+        def bright(values):
+            image = render(values)
+            strength = values['contrast'] / .03
+            if .82 < strength < .84 and values['exposure'] > .1 * strength:
+                image[20:] = 180
+            return image
+
+        for domain in ('primary', 'detail', 'native'):
+            with self.subTest(domain=domain):
+                kwargs = {} if domain == 'primary' else {
+                    f'{domain}_preview': original, f'render_{domain}': bright,
+                }
+                result = self.suggest(original, bright if domain == 'primary' else render, **kwargs)
+                self.assertEqual(result.metrics['exposure_refined'], int(domain == 'native'))
+
+    def test_caller_fractional_strength_is_retained_alongside_integer_samples(self):
+        original, render = recovery_scene()
+
+        def unsafe(values):
+            image = render(values)
+            strength = values['contrast'] / .03
+            if .834 < strength < .836 and values['exposure'] > .1 * strength:
+                image[:20] = 255
+            return image
+
+        integer_only = self.suggest(original, unsafe)
+        self.assertEqual(integer_only.metrics['exposure_refined'], 1)
+        result = suggest_auto_adjustments_from_preview(original, render=unsafe, validation_strengths=(.835,))
+        self.assertEqual(result.metrics['exposure_refined'], 0)
+        self.assertLess(unsafe({key: value * .835 for key, value in result.as_overrides().items()})[:20].max(), 254)
+
+    def test_final_check_rejects_unsafe_later_color_even_if_a_stage_omits_validation(self):
+        original, render = recovery_scene()
+
+        def unsafe(values):
+            image = render(values)
+            strength = values['contrast'] / .03
+            if values['warmth'] > 0 and .82 < strength < .84 and values['exposure'] > .1 * strength:
+                image[:20] = 255
+            return image
+
+        def color(_preview, _render, values, *_args, **_kwargs):
+            return {**values, 'warmth': .1}, {'scene_color_refined': 1.}
+
+        with patch('openraw_studio.decision.auto_adjust.refine_scene_color', side_effect=color):
+            result = self.suggest(original, unsafe)
+        self.assertEqual(result.metrics['exposure_refined'], 0)
+        for percent in range(1, 101):
+            self.assertLess(unsafe({key: value * percent / 100 for key, value in result.as_overrides().items()})[:20].max(), 254)
+
+    def test_complete_color_candidate_can_make_a_provisional_exposure_safe(self):
+        original, render = recovery_scene()
+
+        def colored(values):
+            image = render(values)
+            strength = values['contrast'] / .03
+            if values['warmth'] == 0 and .82 < strength < .84 and values['exposure'] > .1 * strength:
+                image[:20] = 255
+            return image
+
+        def color(_preview, _render, values, _evidence, validate, **_kwargs):
+            candidate = {**values, 'warmth': .1}
+            accepted = validate(candidate)
+            return (candidate if accepted else values), {'scene_color_refined': float(accepted)}
+
+        with patch('openraw_studio.decision.auto_adjust.refine_scene_color', side_effect=color):
+            result = self.suggest(original, colored)
+        self.assertEqual(result.metrics['exposure_refined'], 1)
+        self.assertEqual(result.warmth, .1)
+        self.assertEqual(result.metrics['validated_strength_samples'], 100)
+        for percent in range(1, 101):
+            self.assertLess(colored({key: value * percent / 100 for key, value in result.as_overrides().items()})[:20].max(), 254)
+
+    def test_fits_observed_lift_instead_of_choosing_between_two_fixed_steps(self):
+        results = []
+        for lift in (50, 90):
             with self.subTest(lift=lift):
                 original, render = recovery_scene(lift=lift)
                 initial = suggest_auto_adjustments_from_preview(original)
                 result = self.suggest(original, render)
-                self.assertEqual(result.metrics["exposure_refined"], expected)
-                self.assertLessEqual(result.exposure, initial.exposure + .2)
+                self.assertEqual(result.metrics["exposure_refined"], 1)
+                self.assertGreater(result.exposure, initial.exposure)
+                for percent in range(1, 101):
+                    image = render({key: value * percent / 100 for key, value in result.as_overrides().items()})
+                    self.assertLessEqual(float(np.median(image)), .44 * 255 + 1)
+                    self.assertLess(image[:20].max(), 254)
+                results.append(result.exposure)
+        self.assertGreater(results[0], results[1])
 
     def test_detail_resolution_cannot_hide_excessive_gain(self):
         original, render = recovery_scene()
         _, exaggerated = recovery_scene(lift=90)
         result = self.suggest(original, render, detail_preview=original, render_detail=exaggerated)
-        self.assertEqual(result.metrics["exposure_refined"], 0)
+        self.assertEqual(result.metrics["exposure_refined"], 1)
+        for percent in range(1, 101):
+            image = exaggerated({key: value * percent / 100 for key, value in result.as_overrides().items()})
+            self.assertLessEqual(float(np.median(image)), .44 * 255 + 1)
+        self.assertGreater(result.metrics['detail_median_luma_after'], result.metrics['median_luma_after'])
 
     def test_preserves_low_key_and_already_bright_scenes(self):
         for level in (6, 20, 150, 240):
