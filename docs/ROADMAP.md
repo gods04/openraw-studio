@@ -20,10 +20,21 @@ Dark-scene exclusions remain; biased native samples do not set scene brightness.
 This is bounded, content-conditioned optimization, not a learned aesthetic
 score. Broader full-resolution validation and analysis cost remain important;
 preview sampling cannot guarantee preservation of every original RAW pixel.
-This increment passes 835 tests, an 83-photo CPU/GPU regression, 294 full-native
+The render-fitted increment passed 835 tests, an 83-photo CPU/GPU regression, 294 full-native
 checks, real desktop/batch workflows, and eight rebuilt-EXE equivalence checks.
 Dense validation makes some Auto analyses slower; improving that cost remains
 separate work from the already responsive cached sliders and export.
+
+Auto now fuses rendered guard counts in an optional compiled CPU loop, with
+NumPy fallback and a content-checked Windows cache. It retains the existing
+candidate/color decisions and all strength checks. The 83-photo CPU/GPU rerun
+matches the prior parameters, evidence, metrics, local advice, and previews
+exactly. On one expensive D500 sample, interleaved warmed analysis improves from
+5.21 to 3.74 s GPU and 10.79 to 9.10 s CPU; these are not universal latency
+guarantees. First-use and difficult CPU analysis still need further work.
+The source suite passes 848 tests; an additional all-CPU/model-free run passes
+842 with six GPU-specific skips. Real desktop/batch checks and eight rebuilt-EXE
+source-equivalence cases also pass, including the new compiled kernel's cache.
 
 Unreadable RAW imports now retain an explicitly labeled camera reference when
 available, preserve edits, disable unavailable RAW actions, and offer a retry

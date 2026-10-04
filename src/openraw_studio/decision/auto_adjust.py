@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
+from openraw_studio.decision.compiled_metrics import measure_counts
 from openraw_studio.decision.white_balance import NeutralCast, refine_white_balance
 from openraw_studio.decision.ambient_color import analyze_ambient_color
 from openraw_studio.decision.scene_color import refine_scene_color
@@ -183,20 +184,15 @@ class _RenderGuard:
             if candidate.shape != self.pixels.shape:
                 raise ValueError("Auto validation render must match the baseline preview dimensions")
             candidate_luma = candidate @ self.weights
-            clipped_channels = candidate >= 254 / 255
-            crushed = float(np.mean(self.usable_shadows & (candidate_luma <= 2 / 255)))
-            risk = crushed
-            if self.shadow_margin and self.usable_shadow_fraction:
-                # RGB8 quantization and proxy smoothing can hide an incipient
-                # black threshold crossing. Count the next two codes softly.
-                near_black = np.clip((4 / 255 - candidate_luma[self.usable_shadows]) * (255 / 2), 0, 1)
-                risk = max(crushed, float(near_black.sum(dtype=np.float64) / len(candidate_luma)))
+            clipping, crushed, risk, new_clipping, lost = measure_counts(
+                candidate, candidate_luma, self.usable_shadows, self.headroom,
+                self.highlight_detail, bool(self.shadow_margin and self.usable_shadow_fraction),
+            )
+            shadow_mean = self._shadow_mean(candidate_luma)
+            # This luma buffer is private; partition only after mask-based work.
+            median = float(np.median(candidate_luma, overwrite_input=True))
             self.cache[key] = _RenderedMetrics(
-                float(np.mean(_any_rgb(clipped_channels))), float(np.median(candidate_luma)),
-                crushed, risk,
-                float(np.mean(_any_rgb(self.headroom & clipped_channels))),
-                int(np.count_nonzero(self.highlight_detail & clipped_channels)),
-                self._shadow_mean(candidate_luma),
+                clipping, median, crushed, risk, new_clipping, lost, shadow_mean,
                 self.neutral.measure(candidate) if self.neutral is not None else None,
             )
         return self.cache[key]

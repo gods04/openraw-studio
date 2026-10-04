@@ -14,6 +14,7 @@ from openraw_studio.core import kernel_cache
 
 
 NATIVE = Path(__file__).resolve().parents[1] / "src/openraw_studio/raw/native"
+DECISION = NATIVE.parents[1] / "decision"
 
 
 class KernelCacheTests(unittest.TestCase):
@@ -108,8 +109,11 @@ class KernelCacheTests(unittest.TestCase):
     def test_reviewed_kernels_have_no_external_project_jit_dependencies(self):
         allowed = {"__future__", "numpy", "numba", "numba.core.errors", "numba.extending",
                    "openraw_studio.raw.native.malvar"}
-        for name in kernel_cache._KERNELS:
-            tree = ast.parse((NATIVE / (name + ".py")).read_text())
+        paths = [NATIVE / (name + ".py") for name in kernel_cache._KERNELS]
+        paths += [DECISION / (name + ".py") for name in kernel_cache._DECISION_KERNELS]
+        for path in paths:
+            name = path.stem
+            tree = ast.parse(path.read_text())
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
                     self.assertTrue(all(alias.name in allowed for alias in node.names), name)
@@ -118,6 +122,32 @@ class KernelCacheTests(unittest.TestCase):
                         self.assertEqual((node.level, node.module, [a.name for a in node.names]), (1, None, ["he_cpu"]))
                     else:
                         self.assertIn(node.module, allowed, name)
+
+    def test_decision_kernel_has_independent_complete_source_identity(self):
+        root = self.bundle / 'openraw_studio/decision'
+        root.mkdir()
+        file = root / 'compiled_metrics.py'
+        file.write_text('def sample():\n    return 1\n', encoding='utf-8')
+        namespace = {'__name__': 'openraw_studio.decision.compiled_metrics'}
+        exec(compile(file.read_text(), str(file), 'exec'), namespace)
+        function = namespace['sample']
+        def locate():
+            return kernel_cache.FrozenKernelCacheLocator.from_function(function, str(file))
+        first = locate()
+        self.assertIsNotNone(first)
+        (self.native / 'malvar.py').write_text('# different native code\n', encoding='utf-8')
+        self.assertEqual(first.get_source_stamp(), locate().get_source_stamp())
+        file.write_text(file.read_text().replace('return 1', 'return 2'), encoding='utf-8')
+        self.assertNotEqual(first.get_source_stamp(), locate().get_source_stamp())
+        with patch.object(function, '__module__', 'openraw_studio.decision.auto_adjust'):
+            self.assertIsNone(locate())
+        wrong = self.native / 'compiled_metrics.py'
+        wrong.write_text(file.read_text(), encoding='utf-8')
+        self.assertIsNone(kernel_cache.FrozenKernelCacheLocator.from_function(function, str(wrong)))
+        with patch('openraw_studio.core.kernel_cache.tempfile.TemporaryFile', side_effect=PermissionError('denied')):
+            self.assertIsNone(locate())
+        file.unlink()
+        self.assertIsNone(locate())
 
 
 class KernelCacheProcessTests(unittest.TestCase):
@@ -167,6 +197,22 @@ for bits, dtype in ((8, np.uint8), (16, np.uint16)):
         hits=sum(kernel.stats.cache_hits.values()) - hits,
         misses=sum(kernel.stats.cache_misses.values()) - misses,
         locator=type(kernel._cache._impl.locator).__name__)
+import openraw_studio.decision as decision
+decision.__path__ = [str(Path(sys._MEIPASS) / 'openraw_studio/decision')]
+from openraw_studio.decision import compiled_metrics
+import importlib
+# The public decision package eagerly imports Auto before its path is replaced.
+importlib.reload(compiled_metrics)
+pixels = np.full((100, 3), .5, np.float32)
+luma = np.full(100, 3 / 255, np.float32)
+usable = np.ones(100, np.bool_)
+headroom = np.ones((100, 3), np.bool_)
+counts = compiled_metrics.measure_counts(pixels, luma, usable, headroom, headroom, True)
+assert compiled_metrics.last_error is None, compiled_metrics.last_error
+kernel = compiled_metrics.counts
+result['auto_metrics'] = dict(counts=counts,
+    hits=sum(kernel.stats.cache_hits.values()), misses=sum(kernel.stats.cache_misses.values()),
+    locator=type(kernel._cache._impl.locator).__name__)
 print(json.dumps(result))
 '''
         with tempfile.TemporaryDirectory() as folder:
@@ -174,18 +220,23 @@ print(json.dumps(result))
             bundle = root / "app"
             target = bundle / "openraw_studio/raw/native"
             shutil.copytree(NATIVE, target, ignore=shutil.ignore_patterns("__pycache__", "*.pyd", "*.so"))
+            decision_target = bundle / 'openraw_studio/decision'
+            decision_target.mkdir()
+            shutil.copyfile(DECISION / 'compiled_metrics.py', decision_target / 'compiled_metrics.py')
             exe = bundle / "test.exe"
             exe.write_bytes(b"first build")
             env = {k: v for k, v in os.environ.items() if not k.startswith("NUMBA_")}
             env["NUMBA_CACHE_DIR"] = str(root / "cache")
 
-            def run(expected_hits, expected_misses):
+            def run(expected_hits, expected_misses, metric_hits=None):
                 output = subprocess.check_output([sys.executable, "-c", script, str(bundle), str(exe)], env=env, text=True, timeout=90)
                 result = json.loads(output.strip().splitlines()[-1])
-                for item in result.values():
+                for name, item in result.items():
                     self.assertEqual(item["locator"], "FrozenKernelCacheLocator")
-                    self.assertEqual(item["hits"], expected_hits)
-                    self.assertEqual(item["misses"], expected_misses)
+                    hits = metric_hits if name == 'auto_metrics' and metric_hits is not None else expected_hits
+                    misses = 1 - hits if name == 'auto_metrics' and metric_hits is not None else expected_misses
+                    self.assertEqual(item["hits"], hits, name)
+                    self.assertEqual(item["misses"], misses, name)
                 return result
 
             first = run(0, 1)
@@ -204,8 +255,12 @@ print(json.dumps(result))
             stamp = changed.stat()
             changed.write_text(changed.read_text().replace("np.float32(255)", "np.float32(127)"), encoding="utf-8")
             os.utime(changed, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
-            updated = run(0, 1)
+            updated = run(0, 1, metric_hits=1)
             self.assertNotEqual(updated["8"]["pixel"], first["8"]["pixel"])
+            changed_metrics = moved / 'openraw_studio/decision/compiled_metrics.py'
+            changed_metrics.write_text(changed_metrics.read_text().replace('np.float32(254 / 255)', 'np.float32(126 / 255)'), encoding='utf-8')
+            changed_counts = run(1, 0, metric_hits=0)
+            self.assertNotEqual(changed_counts['auto_metrics']['counts'], first['auto_metrics']['counts'])
             env["NUMBA_BOUNDSCHECK"] = "1"
             run(0, 1)
             env["NUMBA_DEBUG_CACHE"] = "1"

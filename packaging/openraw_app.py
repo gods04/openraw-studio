@@ -13,6 +13,7 @@ def smoke_test(source: Path, output: Path, *, color_noise=0.0, luminance_noise=0
                export_format="jpeg", bit_depth=8, subject_recipe=None, auto_subject=False) -> int:
     """Exercise frozen runtime imports, GPU/JIT, adjustment and full export."""
     from openraw_studio.core.files import sha256_file
+    from openraw_studio.decision import compiled_metrics
     from openraw_studio.decision.auto_adjust import (
         suggest_auto_adjustments_for_photo,
     )
@@ -171,6 +172,9 @@ def smoke_test(source: Path, output: Path, *, color_noise=0.0, luminance_noise=0
         report['compiled_cpu_subject_color'] = bool(getattr(compiled_subject_color.balance, 'signatures', []))
         report['cpu_subject_color_fallback_reason'] = compiled_subject_color.last_error
         report['cpu_subject_color_cache_disabled_reason'] = compiled_subject_color.cache_disabled_reason
+        report['compiled_auto_metrics'] = bool(getattr(compiled_metrics.counts, 'signatures', []))
+        report['auto_metrics_fallback_reason'] = compiled_metrics.last_error
+        report['auto_metrics_cache_disabled_reason'] = compiled_metrics.cache_disabled_reason
         report["kernel_cache"] = {}
         kernels = {
             "decode": compiled_decode.decode, "he_decode": compiled_he.decode,
@@ -179,6 +183,7 @@ def smoke_test(source: Path, output: Path, *, color_noise=0.0, luminance_noise=0
             "chroma": compiled_chroma.chroma, "luminance": compiled_luminance.luminance,
             "subject": compiled_subject.expose,
             "subject_color": compiled_subject_color.balance,
+            "auto_metrics": compiled_metrics.counts,
             **compiled_he_transform.kernels,
         }
         for name, kernel in kernels.items():

@@ -150,6 +150,9 @@ Then import `sample-data\openraw-synthetic.DNG` or
   of choosing a fixed lift. Optional highlight compression and color are checked
   together at every integer Auto strength before accepting a fitted correction;
   analysis/display proxies and available native samples retain clipping guards
+- Auto guard statistics use an optional fused CPU kernel with a NumPy fallback.
+  Candidate selection, color reasoning, thresholds, and strength checks are unchanged;
+  cached slider rendering and export use their existing paths.
 - Optional `Detail > Color noise` and `Luminance noise` controls, with GPU/CPU
   fallback, live preview, undo/redo, saved edits, and JPEG/TIFF export. Both default
   to off; Auto preserves manual amounts instead of guessing a noise level.

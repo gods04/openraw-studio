@@ -2935,3 +2935,92 @@ unchanged. Evidence: `output/fit-frozen-*`, `output/fit-frozen-summary.json`, an
 compilation and diff checks pass. The existing optional TBB DLL packaging
 warning remains; tested CPU paths work. No public ZIP, model weights, private
 photos, or generated derivatives were published.
+
+### Fused Auto Measurements
+
+The rendered guard now measures clipping, newly clipped channels, highlight
+detail loss, crushed shadows, and the soft near-black margin in one optional
+Numba loop. Threshold arithmetic remains float32, soft shadow counts accumulate
+in float64, and fastmath is disabled. Normalization, luma matrix multiplication,
+masked shadow means, and neutral-color measurements retain NumPy's existing
+semantics. Median partitioning reuses a private luma buffer only after all
+position-dependent measurements finish. Input pixels and masks are not mutated.
+
+This changes measurement cost, not candidate generation, semantic evidence,
+color targets, rejection thresholds, or the fitted 1-100% strength checks.
+The same guard also serves sampled color-noise validation. Missing/disabled JIT,
+compilation failure, or unavailable disk cache retain checked fallbacks; failed
+compilation is not retried for every candidate. Strided/read-only inputs share
+one normalized compiled signature without changing the caller's write flags.
+
+The Windows hook retains only the new decision kernel's source alongside the
+existing native source bundle. Its content-checked cache is separately scoped
+to reviewed decision kernels; it does not invalidate unrelated native kernels.
+Tests exercise process restarts, EXE repacking, moving a bundle, source edits,
+runtime flags, and unavailable cache storage. Packaged smoke reports now include
+the Auto kernel's compiled status, fallback reason, cache locator, and hit/miss
+counts.
+
+An interleaved same-process benchmark on one expensive D500 street sample
+compares the exact previous guard method with the fused implementation, after
+warming both. Three measured runs per implementation give median global Auto
+times of 5.205 to 3.739 s on GPU and 10.791 to 9.103 s on CPU. Every suggestion,
+rationale, scene/person evidence, and metric is exactly equal. These roughly
+28%/16% reductions are single-sample analysis observations, not guarantees for
+other photos, total import latency, sliders, or export. Precomputed person
+analysis and RAW preparation are excluded. Private reports:
+`output/metrics-paired-{gpu,cpu}.json`.
+
+An isolated empty-cache check on 614,400 pixels measures the new kernel's first
+call at 0.416 s and warm median at 1.54 ms. This is statistics-only, not a full
+Auto measurement. Evidence: `output/metrics-startup.json`.
+
+All 83 distinct readable photos from the existing/additional/mixed-light cohorts
+retain exactly the previous same-backend Auto parameters, rationale, metrics,
+scene/person evidence, and local exposure/color advice on GPU and forced CPU.
+Original and combined 70/100% preview pixels also match exactly. The additional
+unreadable copy retains its early-bitstream error; all source hashes are unchanged.
+Private evidence: `output/metrics-regression[-cpu].json`. No full-native 294-check
+rerun is claimed for this measurement-only change; render math is unchanged.
+
+These new sequential cohort runs measure median global Auto at 1.237 s GPU /
+2.360 s CPU and maxima of 5.060 / 11.462 s. They exclude RAW preparation,
+precomputed person analysis, local advice, and image saving. The older cohort
+timings were not interleaved controls; use the paired benchmark above for its
+single-sample speed comparison. Difficult CPU analyses still take seconds.
+
+The source suite passes 848 tests and 2,183 subtests. The all-CPU, all-models-off
+run passes 842 tests and 2,181 subtests, with six GPU-specific skips. Thirteen
+new tests and expanded process-cache coverage exercise exact reference counts,
+float32 threshold neighbors, RGB8/float data, shadow margins, original mask
+coordinates, read-only/strided inputs, shared JIT signatures, concurrent calls,
+disabled compilation, cache retry/failure, and unchanged guard caching. Source
+dependency, compilation, and diff checks pass.
+
+Real Tk workflows pass 70 checks each at 800x560/GPU and 1440x900/CPU, including
+person selection, Auto/strength, local-color abstention, manual/local edits,
+undo/redo, native inspection, JPEG/TIFF16, and restored sessions. The batch
+workflow passes 14 checks. Settled Auto screenshots were inspected at both
+sizes. Evidence: `output/metrics-gui-{gpu,cpu}` and `output/metrics-batch`.
+
+The separate 5568x3712 desktop benchmark records median slider-to-display
+latency of 59.1 / 112.9 ms, 45 / 26 displayed frames during a 50-edit drag,
+and JPEG export at 2.19 / 2.87 s for GPU / CPU. Auto before the drag, including
+model setup/local advice, takes 4.61 / 9.05 s. These single-run end-to-end
+observations vary from the previous run and do not establish a desktop or
+export speedup. Source hashes remain unchanged. Evidence:
+`output/metrics-live-{gpu,cpu}/benchmark.json`.
+
+The packaging environment also passes all 848 tests. The rebuilt local EXE
+passes eight same-backend source-equivalence cases across D500, Z f, HE*,
+CPU/GPU, JPEG/TIFF8/TIFF16, local advice, and optional models off. Auto parameters
+match exactly, metrics within 1e-6, and export/native-detail pixels exactly.
+All eight use compiled Auto counts without fallback/cache errors; the first
+process records a cache miss and the remaining seven record hits through the
+content-checked locator. Original hashes remain unchanged. Evidence:
+`output/metrics-frozen-*`, `output/metrics-frozen-summary.json`, and
+`output/metrics-frozen-verification.json`.
+
+The existing optional TBB DLL packaging warning remains; tested CPU paths work.
+Both environments pass dependency checks. No public ZIP, model weights, private
+photos, or generated derivatives were published.
