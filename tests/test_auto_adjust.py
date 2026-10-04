@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 from fixtures_nikon import synthetic_nikon_nef_compressed_bytes
@@ -265,12 +266,19 @@ class AutoAdjustTests(unittest.TestCase):
         )
         coarse_result = np.asarray(photo.render(coarse_only.as_overrides())[0])
         self.assertGreaterEqual(coarse_result[300:302, 460:462].max(), 254)
-        result = suggest_auto_adjustments_for_photo(photo)
+        with patch("openraw_studio.decision.auto_adjust.analyze_scene", return_value=None), \
+                patch("openraw_studio.decision.auto_adjust.analyze_person", return_value=None):
+            result = suggest_auto_adjustments_for_photo(photo)
         self.assertGreater(result.exposure, 0)
         self.assertEqual(result.metrics["detail_highlight_detail_loss_fraction"], 0)
         self.assertGreater(result.metrics["detail_median_luma_after"], result.metrics["detail_median_luma"])
         self.assertTrue(np.all(values[300:302, 460:462] == .8))
-        self.assertLessEqual(result.metrics["detail_validation_renders"], 42)
+        self.assertEqual(result.metrics["validated_strength_samples"], 100)
+        # Include the bounded fitting probes and the complete strength grid.
+        self.assertLessEqual(result.metrics["detail_validation_renders"], 56 + result.metrics["validated_strength_samples"])
+        for strength in (.01, .25, .5, .7, .83, 1):
+            image = np.asarray(photo.render({key: value * strength for key, value in result.as_overrides().items()})[0])
+            self.assertLess(image[300:302, 460:462].max(), 254)
 
     def test_small_interactive_photo_needs_no_second_guard(self):
         photo = InteractivePhoto(np.full((4, 4, 3), .2, dtype=np.float32), np.eye(3), (1, 1, 1))

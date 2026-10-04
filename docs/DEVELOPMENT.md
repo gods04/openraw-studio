@@ -2872,6 +2872,12 @@ anchors, bounded probes, detail-limited gain, no-gain pruning, clipping between
 old strength samples, caller-supplied fractional strengths, and color-stage
 ordering. Default pytest discovery now targets `tests`, excluding local ignored
 third-party source trees rather than requiring their development dependencies.
+The real-renderer tiny-highlight fixture explicitly disables optional scene
+and person inference, budgets the dense strength grid, and checks the bright
+pixels at low/intermediate/full strength. This prevents installed models from
+hiding that tonal-only path. The additional all-CPU, all-models-off suite passes
+829 tests and 2,055 subtests; six GPU-specific tests skip. This test-only follow-up
+does not change the runtime algorithm or invalidate the photo/bundle comparisons.
 
 The 33 existing, 30 additional, and 20 mixed-light readable samples total 83
 distinct source hashes. Both backends change the same 25 global suggestions;
