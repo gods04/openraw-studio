@@ -1484,6 +1484,8 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                 summary = suggestion.scene + " | Model unavailable"
             else:
                 summary = suggestion.scene + " | Tonal Auto"
+            if suggestion.person_evidence is not None and suggestion.person_evidence.status == "ready":
+                summary += "\nPerson detected"
             self.auto_summary_var.set(summary)
             self._set_busy(False)
             self._change_auto_strength()

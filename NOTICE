@@ -143,3 +143,9 @@ The separately prepared local scene model derives from OpenAI CLIP ViT-B/32.
 The model setup script retains the upstream MIT license alongside the exported
 model. See docs/MODEL_LICENSES.md for provenance and the upstream model-card
 limitations. OpenRAW does not train this visual model or use it to decode RAW.
+
+The separately installed person-mask experiment uses the unmodified PPHumanSeg
+ONNX model published in OpenCV Zoo. Its Apache-2.0 license with PaddlePaddle
+attribution is retained by the setup script beside the model. The app does not
+bundle those weights or the OpenCV/Paddle runtimes. See docs/MODEL_LICENSES.md
+for the pinned source, checksum, preprocessing difference, and evaluation scope.

@@ -6,6 +6,7 @@ from openraw_studio.decision.scene_color import ColorObjective, refine_scene_col
 from openraw_studio.decision.auto_adjust import suggest_auto_adjustments_from_preview
 from openraw_studio.raw.native.interactive import InteractivePhoto
 from openraw_studio.vision.scene import SceneEvidence
+from openraw_studio.vision.person import PersonAnalysis, PersonEvidence
 
 
 ZERO = dict(exposure=0., contrast=0., highlights=0., shadows=0., warmth=0., tint=0., saturation=0.)
@@ -103,3 +104,62 @@ class SceneColorTests(unittest.TestCase):
             ColorObjective(np.zeros((10, 3)), np.zeros((10, 3)), evidence("Coast"))
         with self.assertRaises(ValueError):
             ColorObjective(np.zeros((10, 10, 3)), np.zeros((11, 10, 3)), evidence("Coast"))
+
+    def test_confirmed_blue_person_is_not_a_sea_color_target(self):
+        image = np.broadcast_to(np.array([95, 120, 140], np.uint8), (100, 100, 3)).copy()
+        probabilities = np.zeros((100, 100), np.float32)
+        probabilities[:, 50:] = .99
+        person = PersonAnalysis(PersonEvidence("ready"), probabilities)
+        plain = ColorObjective(image, image, evidence("Coast"))
+        guarded = ColorObjective(image, image, evidence("Coast"), person)
+        self.assertTrue(any(kind == "saturation" for kind, _ in plain.parts))
+        for kind, indices in guarded.parts:
+            if kind == "saturation":
+                self.assertTrue(np.all(indices % 100 < 50))
+        altered = image.copy()
+        altered[:, 50:, 0] -= 25
+        self.assertTrue(plain.preserved(altered))
+        self.assertFalse(guarded.preserved(altered))
+        self.assertTrue(guarded.preserved(image))
+
+    def test_unconfirmed_person_has_exact_legacy_color_objectives(self):
+        image = np.broadcast_to(np.array([95, 120, 140], np.uint8), (100, 100, 3)).copy()
+        plain = ColorObjective(image, image, evidence("Coast"))
+        candidate = ColorObjective(image, image, evidence("Coast"), PersonAnalysis(PersonEvidence("unconfirmed")))
+        np.testing.assert_array_equal(plain.target, candidate.target)
+        np.testing.assert_array_equal(plain.weight, candidate.weight)
+        np.testing.assert_array_equal(plain.measure(image), candidate.measure(image))
+
+    def test_small_subject_mask_is_projected_to_finer_preview_coordinates(self):
+        probabilities = np.zeros((24, 24), np.float32)
+        probabilities[6:18, 6:18] = .99
+        person = PersonAnalysis(PersonEvidence("ready"), probabilities)
+        for size in (48, 192):
+            image = np.broadcast_to(np.array([95, 120, 140], np.uint8), (size, size, 3)).copy()
+            objective = ColorObjective(image, image, evidence("Coast"), person)
+            selected = objective.person.reshape(size, size)
+            self.assertTrue(selected[size // 2, size // 2])
+            self.assertFalse(selected[0, 0])
+
+    def test_small_subject_color_patch_is_not_hidden_by_dominant_clothing(self):
+        image = np.broadcast_to(np.array([70, 110, 150], np.uint8), (100, 100, 3)).copy()
+        image[25:35, 25:35] = [155, 120, 95]
+        probabilities = np.zeros((100, 100), np.float32)
+        probabilities[20:80, 20:80] = .99
+        person = PersonAnalysis(PersonEvidence("ready"), probabilities)
+        objective = ColorObjective(image, image, evidence("Coast"), person)
+        changed = image.copy()
+        changed[25:35, 25:35, 2] -= 30
+        self.assertGreater(len(objective.person_regions), 1)
+        self.assertFalse(objective.preserved(changed))
+        self.assertTrue(objective.preserved(image))
+
+    def test_neutralized_subject_has_no_hue_to_rotate(self):
+        original = np.broadcast_to(np.array([155, 120, 95], np.uint8), (100, 100, 3)).copy()
+        baseline = np.full_like(original, 180)
+        objective = ColorObjective(original, baseline, evidence("Portrait"))
+        self.assertTrue(objective.protect_warm)
+        self.assertTrue(objective.preserved(baseline))
+        saturated = baseline.copy()
+        saturated[..., 2] = 120
+        self.assertFalse(objective.preserved(saturated))

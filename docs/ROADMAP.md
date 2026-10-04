@@ -16,8 +16,26 @@ Next quality work: Auto under difficult lighting, broader camera calibration
 and gamut handling, edge-aware demosaic, actual sensor highlight reconstruction,
 and sensor-domain denoise with calibrated luminance-noise advice. Further first-use initialization and broader verified HE profiles
 also remain open.
-Face detection, semantic masks/local subject edits, and mobile remain later
-phases. Coarse local scene/lighting analysis is now an optional experiment.
+Face detection, editable local masks/subject edits, and mobile remain later
+phases. Coarse scene/lighting analysis and corroborated person masks are now
+optional local experiments.
+
+The latest person-color increment excludes confirmed subject pixels from
+scenery color targets and adds spatial subject-color constraints to the global
+solver. A small separately installed PPHumanSeg model proposes a mask; area,
+score, and CLIP crop checks limit which candidates can influence Auto. Ambiguous
+groups can retry up to three distinct substantial components. A 4x4 subject
+grid limits small-region hue/saturation changes. These are evaluated heuristics,
+not calibrated confidence or accurate skin segmentation. All edit parameters
+remain global; selective subject exposure/color and editable masks remain open.
+
+In the current 33-photo local regression, nine photos gain corroborated person
+regions; one aquarium color proposal changes and 32 retain prior parameters.
+CPU/GPU acceptance decisions agree. Full-resolution tone and sampled native
+subject-color checks pass for the changed image. Two 48-check desktop workflows,
+eight source/EXE comparisons with five exact TIFF16 arrays, and three exact
+model-off/missing fallbacks pass. This is not a general segmentation accuracy
+benchmark; masks can miss people and do not imply precise face/skin boundaries.
 
 The latest Auto increment combines pretrained local CLIP scene evidence with
 OpenRAW's measured color solver. Scene weights select color objectives instead
@@ -25,7 +43,7 @@ of fixed per-scene adjustment presets. Bounded Temperature/Tint/Saturation
 proposals must improve those objectives and pass existing rendered tone guards,
 plus finer-preview and intermediate-strength color checks. Missing/uncertain
 model evidence retains tonal Auto. This is not a learned aesthetic ranking,
-semantic pixel segmentation, or a guarantee of correct scene recognition.
+general semantic pixel segmentation, or a guarantee of correct scene recognition.
 See `models/README.md` and `MODEL_LICENSES.md` for explicit local setup and
 deployment limits. No model weights or private photos are published.
 

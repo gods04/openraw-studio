@@ -19,6 +19,7 @@ def main():
     parser.add_argument("source", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--cpu", action="store_true")
+    parser.add_argument("--auto-before", action="store_true", help="Run Auto before timing slider changes and export")
     parser.add_argument("--geometry", default="1080x720")
     parser.add_argument("--screenshot", action="store_true")
     parser.add_argument("--highlights", type=float, help="Exercise a fixed highlight correction while dragging exposure")
@@ -50,6 +51,7 @@ def main():
         "color_noise": args.color_noise,
         "luminance_noise": args.luminance_noise,
         "mode": "CPU" if args.cpu else "auto",
+        "auto_before": args.auto_before,
         "first_display_ms": None,
         "camera_preview_ms": None,
         "slider_to_display_ms": [],
@@ -134,6 +136,20 @@ def main():
         if phase == "loading" and ready:
             report["first_raw_preview_ms"] = (perf_counter() - started) * 1000
             report["backend"] = app.preview_state_var.get()
+            if args.auto_before:
+                changed_at = perf_counter()
+                app.auto_adjust_button.invoke()
+                phase = "auto"
+            else:
+                phase = "prepare-adjust"
+        if phase == "auto" and not app.is_busy and app.last_auto_suggestion is not None:
+            if app.last_preview_overrides == app._current_overrides() and app.live_after_id is None:
+                from dataclasses import asdict
+                report["auto_seconds"] = perf_counter() - changed_at
+                report["scene_analysis"] = asdict(app.last_auto_suggestion.scene_evidence)
+                report["person_analysis"] = asdict(app.last_auto_suggestion.person_evidence)
+                phase = "prepare-adjust"
+        if phase == "prepare-adjust":
             if args.highlights is not None:
                 app.highlights_var.set(args.highlights)
             app.color_noise_var.set(args.color_noise)

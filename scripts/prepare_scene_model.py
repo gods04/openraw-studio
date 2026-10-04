@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import errno
 import hashlib
 import json
 from pathlib import Path
@@ -15,29 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from openraw_studio.vision.scene import LIGHTING, MODEL_ID, SCENES, model_directory, prompt_digest
-
-
-def _checksum(path):
-    with path.open("rb") as handle:
-        return hashlib.file_digest(handle, "sha256").hexdigest()
-
-
-def _publish(source, destination):
-    expected = _checksum(source)
-    if destination.is_file() and _checksum(destination) == expected:
-        source.unlink()
-        return
-    try:
-        source.replace(destination)
-    except OSError as error:
-        if error.errno != errno.EXDEV and getattr(error, "winerror", None) != 17:
-            raise
-        # Redirected Windows folders can reject even sibling replacements.
-        # The manifest is installed last and runtime loading verifies its hash.
-        shutil.copyfile(source, destination)
-        if _checksum(destination) != expected:
-            raise RuntimeError("Published scene artifact checksum mismatch") from error
-        source.unlink()
+from openraw_studio.models.artifacts import publish_model_artifact as _publish
 
 
 def main():

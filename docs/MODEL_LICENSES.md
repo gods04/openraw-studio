@@ -47,6 +47,29 @@ and license, plus Protobuf's installed license, FlatBuffers' Apache-2.0 license
 and Google attribution, and packaging's installed licenses. ONNX Runtime
 telemetry events are disabled before creating the inference session.
 
+### Local Person-Mask Experiment
+
+The optional person model is the unmodified float ONNX
+[PPHumanSeg artifact from OpenCV Zoo](https://github.com/opencv/opencv_zoo/tree/47534e27c9851bb1128ccc0102f1145e27f23f98/models/human_segmentation_pphumanseg).
+That directory publishes an Apache-2.0 license with PaddlePaddle attribution;
+the setup script retains its full `LICENSE` beside the model. The model is
+6,163,938 bytes, SHA-256
+`552d8a984054e59b5d773d24b9b12022b22046ceb2bbc4c9aaeaceb36a9ddf24`, matching
+the pinned Git LFS pointer. The source revision is
+`47534e27c9851bb1128ccc0102f1145e27f23f98`. Runtime checks the pinned hash, not
+just a user-editable manifest. It uses the existing CPU ONNX Runtime; OpenCV
+and Paddle are not app runtime dependencies.
+
+OpenRAW's preprocessing uses RGB normalization and full-frame 192x192 resizing;
+Pillow bilinear downsampling differs from the upstream OpenCV implementation.
+This is evaluated locally, not a claim to reproduce upstream accuracy numbers.
+The model can mark non-person shapes and miss small people. High-score area
+gates plus CLIP crop corroboration limit which masks reach Auto. No identity,
+face recognition, demographic inference, or training on user photographs occurs.
+Public model distribution and broad photographic suitability remain under
+review; weights, masks, and private validation photos are not published. The
+training dataset is not redistributed or independently licensed by this app.
+
 These are candidates from the product brief. They are not approved for bundling
 until the review fields above are completed with source evidence.
 

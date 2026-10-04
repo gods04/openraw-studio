@@ -28,10 +28,27 @@ def _ratios(rgb):
     return np.log(np.maximum(rgb[:, (0, 2)], 1 / 255) / np.maximum(rgb[:, 1:2], 1 / 255))
 
 
-class ColorObjective:
-    """Color selections are measured material hints, not semantic pixel masks."""
+def _subject_regions(mask, shape):
+    """Keep small subject colors from being averaged away by large clothing."""
+    spatial = mask.reshape(shape)
+    ys, xs = np.nonzero(spatial)
+    y_edges = np.linspace(ys.min(), ys.max() + 1, 5, dtype=int)
+    x_edges = np.linspace(xs.min(), xs.max() + 1, 5, dtype=int)
+    minimum = max(8, np.count_nonzero(mask) * .015)
+    groups = []
+    for y0, y1 in zip(y_edges, y_edges[1:]):
+        for x0, x1 in zip(x_edges, x_edges[1:]):
+            region = np.zeros_like(spatial)
+            region[y0:y1, x0:x1] = spatial[y0:y1, x0:x1]
+            if np.count_nonzero(region) >= minimum:
+                groups.append(np.flatnonzero(region))
+    return groups or [np.flatnonzero(mask)]
 
-    def __init__(self, original, baseline, evidence):
+
+class ColorObjective:
+    """Material color hints, optionally separated from a corroborated person mask."""
+
+    def __init__(self, original, baseline, evidence, person=None):
         self.original = _pixels(original)
         self.baseline = _pixels(baseline)
         self.shape = self.original.shape
@@ -51,6 +68,17 @@ class ColorObjective:
         ambient = max(float(np.clip((ambient_vote - .5) / .4, 0, 1)), scenes.get("Aquarium", 0)) * reliability
         daylight = sum(lights.get(key, 0) for key in ("Daylight", "Overcast")) * reliability
         minimum = max(32, len(rgb) * .025)
+        self.person = None
+        self.person_regions = []
+        subject_mask = None
+        if person is not None:
+            subject_mask = person.core_mask(_rgb(original).shape[:2])
+            if subject_mask is not None:
+                self.person = subject_mask.reshape(-1) & usable & (_saturation(rgb) > .10)
+                if np.count_nonzero(self.person) < max(16, len(rgb) * .002):
+                    self.person = None
+                else:
+                    self.person_regions = _subject_regions(self.person, _rgb(original).shape[:2])
 
         def add(kind, mask, target, weight):
             self.parts.append((kind, np.flatnonzero(mask)))
@@ -59,6 +87,9 @@ class ColorObjective:
 
         greens = usable & (green > red * 1.06) & (green > blue * 1.04)
         blues = usable & (blue > red * 1.08) & (blue > green * .98)
+        if subject_mask is not None:
+            greens &= ~subject_mask.reshape(-1)
+            blues &= ~subject_mask.reshape(-1)
         for mask, relevance in (
             (greens, sum(scenes.get(key, 0) for key in ("Grassland", "Forest"))),
             (blues, sum(scenes.get(key, 0) for key in ("Coast", "Sky", "Mountains"))),
@@ -81,6 +112,13 @@ class ColorObjective:
             mask = neutral.mask.reshape(-1)
             current = np.median(_ratios(self.baseline[mask]), axis=0)
             add("ratios", mask, current * (1 - .25 * daylight), .8)
+        if self.person is not None:
+            # Keep measured subject color while solving scenery objectives;
+            # no preferred skin hue or ethnicity is assumed.
+            for indices in self.person_regions:
+                self.parts.append(("ratios", indices))
+                self.targets.extend(np.median(_ratios(self.baseline[indices]), axis=0))
+                self.weights.extend([1 / np.sqrt(len(self.person_regions))] * 2)
 
         # Warm material candidates protect possible skin without asserting a
         # face, ethnicity, or a target skin tone. Never brighten/whiten by label.
@@ -107,13 +145,18 @@ class ColorObjective:
         baseline = self.baseline if baseline is None else _pixels(baseline)
         if baseline.shape != self.shape:
             return False
-        if self.protect_warm:
-            before, after = baseline[self.warm], rgb[self.warm]
+        protected = ([self.warm] if self.protect_warm else []) + self.person_regions
+        for mask in protected:
+            before, after = baseline[mask], rgb[mask]
             if np.median(_saturation(after)) > np.median(_saturation(before)) + .012:
                 return False
             # Opponent-chroma direction excludes brightness and limits hue drift.
             a = before[:, (0, 2)] - before[:, 1:2]
             b = after[:, (0, 2)] - after[:, 1:2]
+            chromatic = np.linalg.norm(a, axis=1) > 1e-3
+            if not chromatic.any():
+                continue
+            a, b = a[chromatic], b[chromatic]
             cosine = np.sum(a * b, axis=1) / np.maximum(np.linalg.norm(a, axis=1) * np.linalg.norm(b, axis=1), 1e-6)
             if np.quantile(cosine, .1) < np.cos(np.deg2rad(4)):
                 return False
@@ -126,7 +169,7 @@ class ColorObjective:
 
 
 def refine_scene_color(original, render, values, evidence, validate, *, detail_preview=None,
-                       render_detail=None, validation_strengths=()):
+                       render_detail=None, validation_strengths=(), person=None):
     metrics = {"scene_color_refined": 0.0, "scene_color_renders": 0.0}
     if evidence is None or evidence.status != "ready":
         return values, metrics
@@ -141,7 +184,10 @@ def refine_scene_color(original, render, values, evidence, validate, *, detail_p
             metrics["scene_color_renders"] += 1
             return original_detail(values)
     baseline = render(values)
-    objective = ColorObjective(original, baseline, evidence)
+    objective = ColorObjective(original, baseline, evidence, person)
+    if objective.person is not None:
+        metrics["person_color_samples"] = float(np.count_nonzero(objective.person))
+        metrics["person_color_regions"] = float(len(objective.person_regions))
     if not len(objective.target):
         return values, metrics
     base = objective.measure(baseline)
@@ -162,7 +208,7 @@ def refine_scene_color(original, render, values, evidence, validate, *, detail_p
     delta = np.clip(delta, [-.12, -.10, -.10], [.12, .10, .10]) * evidence.reliability
     detail = None
     if render_detail is not None:
-        detail = ColorObjective(detail_preview, render_detail(values), evidence)
+        detail = ColorObjective(detail_preview, render_detail(values), evidence, person)
     for amount in (1.0, .5):
         candidate = {**values, **{
             key: round(float(np.clip(values[key] + amount * change, -limit, limit)), 4)

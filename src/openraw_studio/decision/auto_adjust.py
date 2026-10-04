@@ -11,6 +11,7 @@ import numpy as np
 from openraw_studio.decision.white_balance import NeutralCast, refine_white_balance
 from openraw_studio.decision.scene_color import refine_scene_color
 from openraw_studio.vision.scene import SceneEvidence, analyze_scene
+from openraw_studio.vision.person import PersonEvidence, analyze_person
 from openraw_studio.raw.native.interactive import InteractivePhoto
 from openraw_studio.raw.native.preview import render_preview_image
 from openraw_studio.raw.native.tone import PreviewRgbImage
@@ -49,6 +50,7 @@ class AutoAdjustSuggestion:
     scene: str = "Balanced"
     metrics: dict[str, float] = field(default_factory=dict)
     scene_evidence: SceneEvidence | None = None
+    person_evidence: PersonEvidence | None = None
 
     def as_overrides(self) -> dict[str, float]:
         return {
@@ -202,10 +204,11 @@ def suggest_auto_adjustments_for_photo(photo: InteractivePhoto) -> AutoAdjustSug
             native_preview=native.render({}),
             render_native=native.render,
         )
+    scene_image = detail.get("detail_preview", original)
     return suggest_auto_adjustments_from_preview(
         original, render=lambda values: analysis.render(values)[0],
         validation_strengths=(.7, .5, .25, *_SHOULDER_STRENGTHS),
-        scene_evidence=analyze_scene(detail.get("detail_preview", original)), **detail
+        scene_evidence=analyze_scene(scene_image), person=analyze_person(scene_image), **detail
     )
 
 
@@ -224,6 +227,7 @@ def suggest_auto_adjustments_from_preview(
     render_native: Callable | None = None,
     validation_strengths: tuple[float, ...] = (),
     scene_evidence: SceneEvidence | None = None,
+    person=None,
 ) -> AutoAdjustSuggestion:
     """Analyze an unedited preview, optionally validating against the same renderer.
 
@@ -366,6 +370,7 @@ def suggest_auto_adjustments_from_preview(
         rationale=tuple(notes),
         scene=scene,
         scene_evidence=scene_evidence,
+        person_evidence=person.evidence if person is not None else None,
         metrics={
             "median_luma": float(median),
             "shadow_fraction": dark_fraction,
@@ -580,6 +585,7 @@ def suggest_auto_adjustments_from_preview(
                 lambda candidate: highlights_preserved(candidate, all_strengths=True, strengths=final_strengths) and tones_preserved(candidate),
                 detail_preview=detail_preview, render_detail=render_detail,
                 validation_strengths=final_strengths,
+                person=person,
             )
             notes = suggestion.rationale + (
                 ("Reduced contrast to preserve dark subjects.",) if contrast_guarded else ()

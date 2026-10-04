@@ -1951,3 +1951,81 @@ validation, bounded content caching, exact preprocessing for odd aspect ratios,
 scene-dependent and pixel-dependent objectives, vivid-color abstention,
 ambient-color preservation, possible warm-subject hue guards, finer-preview
 vetoes, and optional-model publishing failures.
+
+### Corroborated Person Color In Auto
+
+Auto can now use a second optional, separately installed local PPHumanSeg model
+to distinguish subject pixels from scenery targets. It reuses the CPU ONNX
+runtime, verifies the pinned 6.16 MB model hash, and never downloads during app
+use. `OPENRAW_PERSON=off` disables this layer; disabling scene analysis disables
+both. Missing/corrupt runtimes or models retain the preceding behavior.
+`models/README.md` and `MODEL_LICENSES.md` document setup and provenance.
+
+This model is not trusted by itself: a substantial high-scoring core must pass
+area/mean-score gates and independent CLIP crop corroboration. When a combined
+group crop is ambiguous, at most three substantial disconnected regions can be
+checked separately; only corroborated regions are retained. Model scores are
+not calibrated probabilities of correctness. Small crowds, separated fragments,
+occlusion, and difficult illumination can still fail; no identity, demographics,
+face recognition, or skin tone target is inferred. The summary's region count
+is not a count of people. The sidebar reports `Person detected` for accepted
+evidence, not precise boundaries or complete detection of everybody present.
+
+The decision layer resizes the coarse probability map into each oriented
+analysis/finer-preview coordinate system and uses its high-score core. Confirmed
+person pixels do not supply grass/sea saturation targets. Measured subject-color
+ratios constrain the same global Temperature/Tint/Saturation solver. A spatial
+4x4 partition balances large clothing against smaller color regions; hue and
+saturation limits are rechecked at intermediate Auto strengths as well as the
+endpoint. These checks act alongside existing native-sample/tone guards. The
+mask changes decision measurements only: no local pixel compositing, edge
+feathering, face edits, or new recipe fields are implemented. Masks remain
+in memory; persisted recipes still contain the final global parameters and do
+not require either model at render/export time. Selective subject exposure and
+editable full-resolution masks remain unfinished product work.
+
+The local 33-photo Nikon regression accepts person evidence in nine photos;
+CPU/GPU-rendered inputs agree on all acceptance decisions. A group photo only
+retains one corroborated region, and small crowds remain missed. Inspecting
+the raw segmentation exposed false positives on fireworks, clouds, architecture,
+and objects; the combined gates reject those candidates in this set. This is
+not a general precision/recall benchmark. Thirty-two recipes retain their prior
+Auto parameters. The aquarium example retracts its additional scene-only color
+proposal while retaining tonal Auto; no unverified aesthetic improvement is
+claimed for every photo. CPU/GPU parameter differences remain at most 0.0001.
+
+The changed photo passes four full-resolution strength checks against original
+and prior outputs. Separate native-rendered, every-third-pixel subject checks
+show the prior 100% result fails the new small-region color guard; the updated
+result passes at 25/50/70/100%. Those are sampled mask-based color checks, not
+full-resolution ground-truth segmentation. Visual comparisons preserve ambient
+blue light rather than whitening skin. All original hashes remain unchanged.
+
+The person encoder takes roughly 10 ms on this machine in an initial 33-image
+diagnostic, before crop corroboration and Auto rendering. The final local total
+Auto medians are 0.89 s GPU and 2.63 s CPU; run-to-run/cache variation means this
+is not evidence of a speedup over scene-only Auto. A bounded 16-entry mask cache
+retains about 2.25 MiB of probability arrays. Neither model runs during sliders,
+native detail inspection, or export. Gray reference pixels with undefined hue
+no longer cause spurious color-guard failures; saturation protection remains.
+
+Two actual desktop workflows pass 48 checks each, including person-state labels
+at 900x640 and 1080x720, Auto/history/strength, manual and advised noise, comparison,
+session retention, JPEG, and TIFF16. Eight rebuilt-EXE cases agree with source
+scene/person evidence, parameters/metrics, noise advice, and native-detail pixels;
+all five TIFF16 arrays agree exactly. Two older saved recipes remain exact.
+Three EXE fallbacks (person off, person model missing, and scene off) reproduce
+the corresponding prior Auto and TIFF bytes. The final gray-reference fix also
+retains all 33 audited parameter sets and person-evidence records exactly.
+
+The benchmark now accepts `--auto-before` to measure editing after both models
+have actually run. On the D500 aquarium example, GPU/CPU slider-to-display
+medians are 46/62 ms, with 49/47 visible updates during the drag test. JPEG
+exports take 1.30/1.70 s in these runs with noise reduction disabled and
+highlights at -0.5. These warm-cache timings exclude process startup and are
+not comparable to denoised TIFF export times. Both paths retain original hashes.
+
+All 649 tests pass in the Windows build environment and source GPU-off run
+(six expected GPU skips in the latter). Focused static checks, dependency checks,
+and whitespace validation pass. The local EXE is refreshed; model weights and
+private images remain outside Git and the app bundle. No public release is made.

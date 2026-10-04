@@ -198,9 +198,10 @@ Then import `sample-data\openraw-synthetic.DNG` or
   evidence. This is an experimental hybrid, not a trained aesthetic editor or
   sensor highlight recovery. It cannot reconstruct clipped detail.
 - Scene analysis can mistake content or miss small people in mixed scenes.
-  Low-confidence/model-unavailable cases retain tonal Auto. Color selections
-  are pixel heuristics, not face detection or semantic segmentation. No skin
-  whitening, identity inference, or automatic model training is performed.
+  Low-confidence/model-unavailable cases retain tonal Auto. Optional person
+  segmentation adds corroborated color protection, not face detection or
+  precise skin masks. It can miss people and mask boundaries can be wrong.
+  No skin whitening, identity inference, or automatic model training is performed.
 - Auto white-balance refinement is not gray-card calibration or illuminant
   recognition. Pale colored materials can resemble neutrals; manual Temperature
   and Tint remain available. Existing saved settings do not change until Auto is run.
@@ -340,6 +341,14 @@ This analysis runs only for Auto, never during slider rendering. Existing saved
 edits and export recipes do not change until Auto is run again.
 See [local model setup](models/README.md); the app never downloads weights or
 uploads photos. `OPENRAW_SCENE=off` retains tonal Auto without scene refinement.
+
+An additional optional person model can separate confirmed subject pixels from
+blue/green scenery targets. Measured subject color is included in the solver,
+with checks across small subject regions so a large shirt cannot hide a smaller
+color shift. The sidebar reports `Person detected` only when segmentation and
+crop classification agree. This is person-aware **global** Auto, not a local
+brush, face/skin editing, or identification. `OPENRAW_PERSON=off` keeps scene
+Auto without person analysis. Missing/uncertain masks leave scene Auto unchanged.
 
 The compact histogram follows the displayed Before, Camera Preview, or After
 image and reports near-black and near-white clipping percentages. It analyzes

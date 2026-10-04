@@ -174,6 +174,14 @@ def main():
             report["auto_seconds"] = perf_counter() - state["auto_started"]
             report["auto"] = app.last_auto_suggestion.as_overrides()
             report["auto_metrics"] = app.last_auto_suggestion.metrics
+            if app.last_auto_suggestion.person_evidence is not None:
+                from dataclasses import asdict
+                report["person_analysis"] = asdict(app.last_auto_suggestion.person_evidence)
+                require(
+                    ("Person detected" in app.auto_summary_var.get())
+                    == (app.last_auto_suggestion.person_evidence.status == "ready"),
+                    "Person summary agrees with corroborated evidence",
+                )
             if app.last_auto_suggestion.scene_evidence is not None:
                 from dataclasses import asdict
                 report["scene_analysis"] = asdict(app.last_auto_suggestion.scene_evidence)
