@@ -1812,3 +1812,60 @@ An additional Z5 CPU restart hits all used kernel caches with zero misses,
 exporting TIFF16 in 5.31 s versus 7.90 s on the first new-kernel run. That is a
 cold/warm distinction, not a denoise/export speedup. No original photos, public
 ZIP, or installer are distributed; the local Windows EXE is refreshed.
+
+### Faster Container Reads And First Pictures
+
+TIFF metadata and embedded-JPEG extraction now use a short-lived, explicitly
+read-only file mapping. This avoids copying the whole sensor payload just to
+read a small set of tags or the camera JPEG. Parsed opaque fields and JPEG data
+remain owned immutable bytes, with no mapped views, open handles, or stale metadata
+cache retained after a call. Empty/malformed input keeps the existing parser
+errors. If mapping is unavailable, the reader falls back to the previous
+buffered read behavior. Uncompressed sensor extraction and RAW decoding math
+are unchanged. Python documents the mapping's [read-only access and context-managed lifetime](https://docs.python.org/3/library/mmap.html).
+
+Embedded previews carry the same container orientation used before, removing
+the live worker's second metadata read. The temporary camera reference requests
+a reduced JPEG decode before allocating RGB pixels, then retains the existing
+960-pixel Fit bound and orientation. This changes only the resampled camera
+reference, not original JPEG bytes, RAW editing, Auto, or export pixels. It is
+labeled `Camera` until a genuine native frame replaces it. Slider edits during
+loading no longer discard an otherwise useful camera reference; source/view
+changes still reject it. A known-stale or closed request is skipped before
+starting RAW preparation. Malformed/oversized camera JPEGs do not prevent a
+valid native RAW path from being attempted.
+
+All 33 selected real Nikon files retain exact metadata, JPEG bytes, support
+reports, and decoded sensor data against the preceding committed reader, with
+unchanged source hashes. The separate 6,847-file read-only inventory also agrees
+exactly, including its six rejected containers. This inventory checks metadata,
+not sensor decoding support for every listed file. Alternating warm reads across
+the 33-file set reduce median metadata time from 9.5 to 0.9 ms and embedded-JPEG
+extraction from 10.7 to 2.4 ms. Median Python allocation peak during metadata
+read falls from 24.2 to 0.48 MB; mapped OS pages and total app memory are not
+included in that Python-only measurement.
+
+Three alternating actual-desktop runs per version and photo distinguish the
+first visible camera picture from the editable native preview. D500 CPU medians
+change from 296 to 192 ms for the first picture and 1.37 to 1.24 s for RAW;
+Z f GPU changes from 429 to 359 ms and 2.78 to 2.66 s, respectively. Continuous
+slider response remains approximately 115/46 ms CPU/GPU in these runs. These
+local warm-cache observations exclude Python/EXE startup; they do not eliminate
+RAW decoding, GPU initialization, or first-ever compilation. The benchmark now
+records both milestones and can capture the temporary camera view separately.
+
+All 610 tests pass in source and packaging environments; GPU-off also passes
+with six expected GPU skips. Two actual desktop workflows pass 46 checks each,
+covering adjustments, noise advice, history, comparison, native detail, retained
+edits, and JPEG/TIFF16 exports. Small-window captures verify the temporary
+`Camera` state and subsequent `Edited` handoff without overlaying the photo or
+controls. All six paired desktop JPEG exports remain byte-identical.
+
+Eight rebuilt-EXE checks agree exactly with source Auto metrics, noise advice,
+and native-detail pixels, including all five TIFF16 arrays. All eight derivative
+files are byte-identical to the preceding build; two older saved recipes retain
+their native pixels. Original hashes remain unchanged. A further Z5 CPU restart
+hits every used kernel cache with zero misses and produces the same TIFF16 in
+5.14 s, versus 8.29 s on the first run of the changed native sources. This is
+compilation reuse, not a new export algorithm speedup. The local Windows EXE
+has been rebuilt; no photos, public ZIP, or installer are distributed.

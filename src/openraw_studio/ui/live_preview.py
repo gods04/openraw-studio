@@ -120,8 +120,11 @@ class LivePreviewWorker:
                 if current_key != key:
                     if source.suffix.lower() in {".nef", ".nrw"}:
                         self._show_camera_reference(
-                            revision, source, adjustments, requested_at
+                            revision, source, adjustments, requested_at, generation
                         )
+                    with self._condition:
+                        if generation != self._generation or self._closed:
+                            continue
                     photo = self.prepare(self.processor, source)
                     original, _backend = photo.render({})
                     key = current_key
@@ -165,7 +168,7 @@ class LivePreviewWorker:
                 if generation == self._generation and not self._closed:
                     self._completed = frame
 
-    def _show_camera_reference(self, revision, source, adjustments, requested_at):
+    def _show_camera_reference(self, revision, source, adjustments, requested_at, generation):
         from io import BytesIO
 
         from PIL import Image
@@ -176,14 +179,17 @@ class LivePreviewWorker:
         try:
             embedded = DngMetadataReader().read_embedded_jpeg_preview(source)
             with Image.open(BytesIO(embedded.data)) as opened:
+                # This temporary Fit reference only needs roughly twice the
+                # display resolution before allocating decoded RGB pixels.
+                scale = min(1, 1920 / max(opened.size))
+                opened.draft("RGB", tuple(max(1, round(side * scale)) for side in opened.size))
                 image = opened.convert("RGB")
-            orientation = DngMetadataReader().read(source).summary.get("orientation", 1)
-            image = _apply_exif_orientation(image, orientation)
+            image = _apply_exif_orientation(image, embedded.orientation)
             image.thumbnail((960, 960))
-        except (OSError, ValueError):
+        except (OSError, ValueError, Image.DecompressionBombError):
             return
         with self._condition:
-            if revision == self._revision and not self._closed:
+            if generation == self._generation and not self._closed:
                 self._completed = LiveFrame(
                     revision,
                     source,

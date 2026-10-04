@@ -3,12 +3,208 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
+from PIL import Image
+from fixtures_nikon import embedded_jpeg_bytes, synthetic_nikon_nef_metadata_bytes
+from openraw_studio.raw.native.dng import DngMetadataReader
 
 from openraw_studio.ui.live_preview import LivePreviewWorker
 from openraw_studio.ui.viewport import DetailView
 
 
 class LivePreviewWorkerTests(unittest.TestCase):
+    def test_large_camera_reference_uses_reduced_jpeg_decode_and_correct_orientation(self):
+        entered, release = threading.Event(), threading.Event()
+        converted_sizes = []
+        convert = Image.Image.convert
+
+        class Photo:
+            def render(self, values):
+                return "native", "CPU"
+
+        def prepare(*_):
+            entered.set()
+            release.wait(3)
+            return Photo()
+
+        def tracked(image, *args, **kwargs):
+            if image.format == "JPEG":
+                converted_sizes.append(image.size)
+            return convert(image, *args, **kwargs)
+
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "sample.NEF"
+            original = synthetic_nikon_nef_metadata_bytes(
+                embedded_jpeg=embedded_jpeg_bytes(4800, 3200), orientation=6,
+            )
+            source.write_bytes(original)
+            with patch.object(Image.Image, "convert", tracked):
+                worker = LivePreviewWorker(None, prepare=prepare)
+                try:
+                    worker.submit(source, {})
+                    self.assertTrue(entered.wait(2))
+                    frame = self.wait_for_frame(worker)
+                    self.assertTrue(frame.reference)
+                    self.assertEqual(frame.image.size, (640, 960))
+                    self.assertEqual(converted_sizes, [(2400, 1600)])
+                    self.assertEqual(source.read_bytes(), original)
+                    release.set()
+                    self.assertEqual(self.wait_for_frame(worker).image, "native")
+                finally:
+                    release.set()
+                    worker.close()
+                    worker._thread.join(3)
+
+    def test_unreadable_or_oversized_camera_jpeg_does_not_block_native_raw(self):
+        class Photo:
+            def render(self, values):
+                return "native", "CPU"
+
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "sample.NEF"
+            for jpeg, pixel_limit in ((b"\xff\xd8invalid", None), (embedded_jpeg_bytes(), 1)):
+                source.write_bytes(synthetic_nikon_nef_metadata_bytes(embedded_jpeg=jpeg))
+                with patch.object(Image, "MAX_IMAGE_PIXELS", pixel_limit):
+                    worker = LivePreviewWorker(None, prepare=lambda *_: Photo())
+                    try:
+                        worker.submit(source, {})
+                        frame = self.wait_for_frame(worker)
+                        self.assertEqual(frame.image, "native")
+                        self.assertIsNone(frame.error)
+                        self.assertFalse(frame.reference)
+                    finally:
+                        worker.close()
+                        worker._thread.join(3)
+
+    def test_slider_edit_during_camera_read_does_not_discard_first_picture(self):
+        reading, allow_read = threading.Event(), threading.Event()
+        preparing, allow_prepare = threading.Event(), threading.Event()
+        reader = DngMetadataReader.read_embedded_jpeg_preview
+
+        def read(instance, source):
+            reading.set()
+            allow_read.wait(3)
+            return reader(instance, source)
+
+        class Photo:
+            def render(self, values):
+                return Image.new("RGB", (3, 2)), "CPU"
+
+        def prepare(*_):
+            preparing.set()
+            allow_prepare.wait(3)
+            return Photo()
+
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "sample.NEF"
+            source.write_bytes(synthetic_nikon_nef_metadata_bytes(embedded_jpeg=embedded_jpeg_bytes()))
+            with patch.object(DngMetadataReader, "read_embedded_jpeg_preview", read):
+                worker = LivePreviewWorker(None, prepare=prepare)
+                try:
+                    first_revision = worker.submit(source, {})
+                    self.assertTrue(reading.wait(2))
+                    latest = worker.submit(source, {"exposure": 1})
+                    allow_read.set()
+                    self.assertTrue(preparing.wait(2))
+                    first = self.wait_for_frame(worker)
+                    self.assertTrue(first.reference)
+                    self.assertEqual(first.revision, first_revision)
+                    allow_prepare.set()
+                    final = self.wait_for_frame(worker)
+                    self.assertFalse(final.reference)
+                    self.assertEqual(final.revision, latest)
+                finally:
+                    allow_read.set()
+                    allow_prepare.set()
+                    worker.close()
+                    worker._thread.join(3)
+
+    def test_source_switch_during_camera_read_skips_stale_raw_preparation(self):
+        reading, allow_read = threading.Event(), threading.Event()
+        preparing, allow_prepare = threading.Event(), threading.Event()
+        reader = DngMetadataReader.read_embedded_jpeg_preview
+        prepared = []
+
+        def read(instance, source):
+            if source.name == "first.NEF":
+                reading.set()
+                allow_read.wait(3)
+            return reader(instance, source)
+
+        class Photo:
+            def render(self, values):
+                return Image.new("RGB", (3, 2)), "CPU"
+
+        def prepare(processor, source):
+            prepared.append(source)
+            preparing.set()
+            allow_prepare.wait(3)
+            return Photo()
+
+        with tempfile.TemporaryDirectory() as folder:
+            first, second = (Path(folder) / name for name in ("first.NEF", "second.NEF"))
+            for source in (first, second):
+                source.write_bytes(synthetic_nikon_nef_metadata_bytes(embedded_jpeg=embedded_jpeg_bytes()))
+            with patch.object(DngMetadataReader, "read_embedded_jpeg_preview", read):
+                worker = LivePreviewWorker(None, prepare=prepare)
+                try:
+                    worker.submit(first, {})
+                    self.assertTrue(reading.wait(2))
+                    latest = worker.submit(second, {})
+                    allow_read.set()
+                    self.assertTrue(preparing.wait(2))
+                    frame = self.wait_for_frame(worker)
+                    self.assertTrue(frame.reference)
+                    self.assertEqual(frame.source, second)
+                    self.assertEqual(frame.revision, latest)
+                    self.assertEqual(prepared, [second])
+                    allow_prepare.set()
+                    self.assertEqual(self.wait_for_frame(worker).source, second)
+                finally:
+                    allow_read.set()
+                    allow_prepare.set()
+                    worker.close()
+                    worker._thread.join(3)
+
+    def test_camera_reference_precedes_raw_and_uses_one_oriented_preview_read(self):
+        entered, release = threading.Event(), threading.Event()
+
+        class Photo:
+            def render(self, edits):
+                return Image.new("RGB", (2, 3), "red"), "CPU"
+
+        def prepare(*_):
+            entered.set()
+            release.wait(3)
+            return Photo()
+
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "sample.NEF"
+            source.write_bytes(synthetic_nikon_nef_metadata_bytes(
+                embedded_jpeg=embedded_jpeg_bytes(), orientation=6,
+            ))
+            with patch("openraw_studio.raw.native.dng.DngMetadataReader.read", side_effect=AssertionError("Repeated metadata read")):
+                worker = LivePreviewWorker(None, prepare=prepare)
+                try:
+                    revision = worker.submit(source, {"exposure": 1})
+                    self.assertTrue(entered.wait(2))
+                    first = self.wait_for_frame(worker)
+                    self.assertTrue(first.reference)
+                    self.assertEqual(first.backend, "Camera Preview")
+                    self.assertEqual(first.image.size, (2, 3))
+                    self.assertEqual(first.revision, revision)
+                    self.assertIsNone(worker.get_prepared_photo(source))
+                    release.set()
+                    final = self.wait_for_frame(worker)
+                    self.assertFalse(final.reference)
+                    self.assertEqual(final.image.getpixel((0, 0)), (255, 0, 0))
+                    self.assertEqual(final.adjustments, {"exposure": 1})
+                finally:
+                    release.set()
+                    worker.close()
+                    worker._thread.join(3)
+
     def test_inflight_detail_cannot_replace_new_fit_view(self):
         entered, release = threading.Event(), threading.Event()
 

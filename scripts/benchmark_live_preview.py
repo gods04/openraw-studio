@@ -50,6 +50,8 @@ def main():
         "color_noise": args.color_noise,
         "luminance_noise": args.luminance_noise,
         "mode": "CPU" if args.cpu else "auto",
+        "first_display_ms": None,
+        "camera_preview_ms": None,
         "slider_to_display_ms": [],
         "errors": [],
     }
@@ -120,6 +122,15 @@ def main():
             finish()
             return
         ready = app.last_preview_overrides is not None
+        if phase == "loading" and app.preview_photo is not None:
+            if report["first_display_ms"] is None:
+                report["first_display_ms"] = (perf_counter() - started) * 1000
+            if not ready and app.before_view_name == "Camera Preview":
+                if report["camera_preview_ms"] is None:
+                    report["camera_preview_ms"] = (perf_counter() - started) * 1000
+                    report["camera_preview_label"] = app.view_var.get()
+                    if args.screenshot and os.name == "nt":
+                        capture_window(app.root, args.output / "camera-preview.png")
         if phase == "loading" and ready:
             report["first_raw_preview_ms"] = (perf_counter() - started) * 1000
             report["backend"] = app.preview_state_var.get()

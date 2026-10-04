@@ -1563,6 +1563,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                         self.reference_image = image
                         self._fit_live_image()
                         self.before_view_name = "Camera Preview"
+                        self.view_var.set("Camera")
                         self.compare_button.configure(state="disabled", text="")
                         self.preview_state_var.set("Camera preview | Preparing RAW...")
                         self.live_poll_id = self.root.after(8, self._poll_live_preview)
@@ -1573,6 +1574,7 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                             self.reference_image = frame.original_image
                             self.before_histogram = None
                         self.before_view_name = "Original"
+                        self.view_var.set("Edited" if self.showing_after else "Original")
                         self.compare_button.configure(state="normal", text="")
                     self.last_live_latency_ms = frame.elapsed_ms
                     self.preview_state_var.set(
@@ -2045,6 +2047,10 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
         def _refresh_preview_state(self) -> str:
             if self.current_can_preview and self.current_can_render is False:
                 preview_state = f"{self.preview_only_name} | Preview only"
+                self.preview_state_var.set(preview_state)
+                return preview_state
+            if self.last_preview_overrides is None and self.before_view_name == "Camera Preview":
+                preview_state = "Camera preview | Preparing RAW..."
                 self.preview_state_var.set(preview_state)
                 return preview_state
             preview_state = _preview_state_text(

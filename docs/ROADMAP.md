@@ -18,6 +18,20 @@ and sensor-domain denoise with calibrated luminance-noise advice. Further first-
 also remain open.
 Semantic portrait/scene AI and mobile remain later phases.
 
+Latest import increment avoids whole-RAW copies during metadata/JPEG reads and
+uses reduced JPEG decoding for the temporary camera reference. It retains
+read-only originals, exact metadata/decoded pixels, and explicit camera-versus-
+RAW state. In three paired desktop runs, first pictures improve from 296 to
+192 ms (D500 CPU) and 429 to 359 ms (Z f GPU); native readiness remains about
+1.24/2.66 s. The 33-photo decode audit and 6,847-file metadata inventory agree
+with the preceding version. See `DEVELOPMENT.md` for memory scope, fallback,
+and remaining initialization costs.
+All 610 source/packaging tests and two 46-check desktop workflows pass. Eight
+rebuilt-EXE checks retain exact Auto, noise advice, native detail, and all five
+TIFF16 arrays; all eight derivative files match the preceding build byte for
+byte. A cached restart confirms no repeat compilation. The local Windows EXE
+is refreshed without publishing photos or an installer.
+
 Latest noise-advice increment retries insufficient native evidence on a denser,
 non-overlapping grid while separately retaining the original tone/texture guards.
 Across 33 real Nikon photos and 132 edit combinations, CPU/GPU decisions agree;

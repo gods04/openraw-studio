@@ -321,6 +321,8 @@ The comparison icon uses a cached unedited RAW render after native loading
 finishes, including the matching native-pixel region at 100%/200%. A camera JPEG
 may appear while the RAW loads or when sensor rendering is unsupported; it is
 a reference only and is never used as the source for OpenRAW export.
+During native loading, this temporary image is labeled `Camera`, then replaced
+automatically by the editable RAW frame. It does not contain your saved edits.
 The compact histogram follows the displayed Before, Camera Preview, or After
 image and reports near-black and near-white clipping percentages. It analyzes
 the displayed rendered 8-bit image, not untouched sensor values.

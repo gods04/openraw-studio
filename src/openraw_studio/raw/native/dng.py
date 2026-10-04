@@ -5,7 +5,10 @@ This product includes DNG technology under license by Adobe.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
+import mmap
+import os
 from pathlib import Path
 import struct
 from typing import Any
@@ -119,6 +122,7 @@ class EmbeddedPreview:
     mime_type: str
     data: bytes
     source_ifd_offset: int
+    orientation: int = 1
 
 
 TIFF_TYPES: dict[int, tuple[str, int, str]] = {
@@ -251,12 +255,30 @@ SUMMARY_TAGS = {
 }
 
 
+@contextmanager
+def _read_container(path):
+    """Read sparse TIFF ranges without copying the sensor payload into Python."""
+    with Path(path).open("rb") as handle:
+        if os.fstat(handle.fileno()).st_size == 0:
+            yield b""
+            return
+        try:
+            mapped = mmap.mmap(handle.fileno(), 0, access=mmap.ACCESS_READ)
+        except (OSError, ValueError, OverflowError):
+            # Some filesystems cannot map files. Preserve the existing read path.
+            handle.seek(0)
+            yield handle.read()
+        else:
+            with mapped:
+                yield mapped
+
+
 class DngMetadataReader:
     """Read a useful subset of TIFF/DNG metadata without external dependencies."""
 
     def read(self, path: str | Path) -> DngMetadata:
-        data = Path(path).read_bytes()
-        byte_order, endian, ifds = self._read_structure(data)
+        with _read_container(path) as data:
+            byte_order, _endian, ifds = self._read_structure(data)
         return DngMetadata(
             byte_order=byte_order,
             ifds=tuple(ifds),
@@ -266,15 +288,15 @@ class DngMetadataReader:
     def read_embedded_jpeg_preview(self, path: str | Path) -> EmbeddedPreview:
         """Extract an embedded JPEG preview from a TIFF/DNG-style RAW file."""
 
-        data = Path(path).read_bytes()
-        _byte_order, _endian, ifds = self._read_structure(data)
-        ifd = _select_embedded_jpeg_ifd(ifds)
-        offset = _tag_scalar_int(ifd, 513, "JPEGInterchangeFormat")
-        length = _tag_scalar_int(ifd, 514, "JPEGInterchangeFormatLength")
-        if offset <= 0 or length <= 0:
-            raise DngMetadataError("embedded JPEG preview tags are empty")
+        with _read_container(path) as data:
+            _byte_order, _endian, ifds = self._read_structure(data)
+            ifd = _select_embedded_jpeg_ifd(ifds)
+            offset = _tag_scalar_int(ifd, 513, "JPEGInterchangeFormat")
+            length = _tag_scalar_int(ifd, 514, "JPEGInterchangeFormatLength")
+            if offset <= 0 or length <= 0:
+                raise DngMetadataError("embedded JPEG preview tags are empty")
 
-        preview = _slice_checked(data, offset, length)
+            preview = _slice_checked(data, offset, length)
         if not preview.startswith(b"\xff\xd8"):
             raise DngMetadataError("embedded JPEG preview is not valid JPEG data")
 
@@ -284,6 +306,7 @@ class DngMetadataReader:
             mime_type="image/jpeg",
             data=preview,
             source_ifd_offset=ifd.offset,
+            orientation=_build_summary(ifds).get("orientation", 1),
         )
 
     def read_pixel_data(self, path: str | Path) -> DngPixelData:
