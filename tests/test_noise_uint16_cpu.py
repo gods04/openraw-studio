@@ -179,8 +179,11 @@ class Uint16CpuNoiseTests(unittest.TestCase):
                     actual = compiled._filter(pixels, 5, 8, amount, *tables)
                 np.testing.assert_array_equal(actual, module._reference_chunk(pixels, 5, 8, 0.75))
                 scratch = (7, 11) if name == "luminance" else (7, 11, 3)
-                self.assertEqual([call.args[0] for call in allocate.call_args_list], [(3, 7, 3), scratch])
+                expected_shapes = [(3, 7, 3), scratch] + ([scratch] if name == "luminance" else [])
+                self.assertEqual([call.args[0] for call in allocate.call_args_list], expected_shapes)
                 self.assertEqual(allocate.call_args_list[1].args[1], np.int32)
+                if name == "luminance":
+                    self.assertEqual(allocate.call_args_list[2].args[1], np.uint8)
 
     def test_compiler_failure_and_unavailable_kernel_keep_uint16_reference(self):
         pixels = np.random.default_rng(1623).integers(0, 65536, (7, 9, 3), dtype=np.uint16)

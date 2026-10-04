@@ -1694,3 +1694,57 @@ JPEG/TIFF16 export, and saved edits/bit depth. Screenshots retain visible
 controls and an unobstructed photo viewport. These source-mode checks exercise
 workflow regression, not frozen startup timing; the separate EXE checks above
 verify the changed cache/packaging behavior.
+
+### Reusing CPU Luminance Guides
+
+CPU luminance filtering now computes its rounded 0..255 guide once per halo
+pixel, retaining it in a bounded uint8 strip instead of repeating integer
+division in every overlapping 5x5 neighborhood. The full-precision weighted
+luminance, signed differences, Q16 weights/strength, ties-to-even rounding,
+and gamut-bounded equal-channel shift are unchanged. The extra scratch uses
+one byte per halo pixel, remains inside the existing per-strip memory budget,
+and is never retained as a whole-photo cache. GPU math and the NumPy reference
+are unchanged, as are Auto decisions, metadata, export encoding, and recipes.
+
+Four additional tests cover all 65,536 uint16 gray values, extreme guide
+distances, narrow/strided/read-only arrays, and direct compiled strip bounds
+at both bit depths. Existing scratch tests now include the byte guide and
+continue to reject full-frame allocations.
+
+A separate four-photo TIFF experiment checked the existing library's lossless
+horizontal predictor. Files shrank, but paired compression times did not
+improve consistently and three examples slowed down. The export compression
+policy therefore remains unchanged; smaller files alone did not meet the
+responsiveness target. Private experiment outputs are not repository assets.
+
+Paired prior/current-kernel measurements on fixed D500/Z5 rendered pixels keep
+every value exact. Full-size uint16 luminance filtering improves from
+0.57/0.83 s to 0.26/0.38 s, respectively; RGB8 gains are small and preview
+timings can be effectively unchanged. First compilation is excluded from these
+warm medians. Alternating complete pipeline runs with color/luminance noise
+at 0.65/0.60 retain byte-identical JPEG/TIFF outputs and original RAW hashes.
+Including regenerated previews, QC, and file writes, CPU TIFF16 improves from
+4.34 to 3.93 s on the high-ISO D500 and 5.54 to 5.12 s on the Z5 D40 example.
+JPEG medians remain approximately 3.05/3.94 s. These are local i5-12500H
+observations with unchanged quality, not a claim that whole exports are twice
+as fast or that JPEG/GPU encoding has accelerated.
+
+All 589 tests pass in source and packaging environments, including CPU-only
+execution with six expected GPU skips. A separate paired check with the
+packaging compiler (Numba 0.68) reproduces exact pixels and full-size uint16
+filter improvements of 0.58 to 0.26 s (D500) and 0.81 to 0.38 s (Z5).
+The refreshed EXE passes eight main checks plus a CPU TIFF16 restart: source
+Auto/metrics, noise advice, native-detail pixels, and all five main TIFF16
+pixel arrays agree. All eight exports remain byte-identical to the preceding
+EXE, and two older recipes retain exact native detail. On the Z5, the first
+new-kernel export takes 8.98 s and a restart takes 5.08 s with all used JIT
+signatures cached; this cold/warm difference is not the optimization speedup.
+Original RAWs are unchanged, with no compiler/cache fallback or public release.
+
+Actual desktop workflows pass 44 checks on the high-ISO D500 CPU case (noise
+advice abstains) and 46 on Z f GPU, retaining history, comparison, JPEG/TIFF16,
+and saved edits/bit depth. With both filters enabled and highlights at -0.5,
+the same D500 live test retains 46/108 ms median GPU/CPU slider response and
+48/16 visible frames during 50 drag events. JPEG export takes 1.40/2.38 s.
+These are regression observations, not new GPU/JPEG speed gains. Compact
+screenshots retain visible controls without overlapping the photo.

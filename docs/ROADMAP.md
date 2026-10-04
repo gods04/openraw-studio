@@ -18,6 +18,18 @@ and sensor-domain denoise with calibrated luminance-noise advice. Further first-
 also remain open.
 Semantic portrait/scene AI and mobile remain later phases.
 
+Latest CPU export increment reuses per-strip luminance guides without changing
+pixels, filter strength, or metadata. With both noise filters enabled, paired
+complete CPU TIFF16 exports improve from 4.34 to 3.93 s (D500) and 5.54 to
+5.12 s (Z5 D40), retaining byte-identical derivatives and unchanged originals.
+The uint16 luminance stage is about twice as fast; full export gains are much
+smaller, and JPEG/GPU behavior is essentially unchanged. See `DEVELOPMENT.md`
+for warm-run scope and remaining encoding/initialization costs.
+All 589 source/packaging tests pass, alongside 44/46-check CPU/GPU desktop
+workflows and nine EXE runs retaining exact Auto and export pixels. Live
+GPU/CPU medians remain 46/108 ms on the checked D500; the local Windows app is
+refreshed without a public installer or private-photo bundle.
+
 Latest startup increment preserves compiled native kernels across EXE rebuilds
 when the processing sources and runtime remain compatible. Content, compiler
 configuration, and CPU checks still invalidate incompatible code. All 585

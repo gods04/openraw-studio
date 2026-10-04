@@ -25,20 +25,24 @@ def _filter(pixels, start, end, amount, weights, unit=None):
     height, width, _ = pixels.shape
     output = np.empty((end - start, width, 3), pixels.dtype)
     prepared = np.empty((end - start + 4, width + 4), np.int32)
+    # Rounded 0..255 guides are shared by all overlapping 5x5 neighborhoods.
+    guides = np.empty(prepared.shape, np.uint8)
     for row in range(end - start + 4):
         yy = min(height - 1, max(0, start + row - 2))
         for col in range(width + 4):
             xx = min(width - 1, max(0, col - 2))
             prepared[row, col] = 54 * np.int32(pixels[yy, xx, 0]) + 183 * np.int32(pixels[yy, xx, 1]) + 19 * np.int32(pixels[yy, xx, 2])
+            guides[row, col] = (prepared[row, col] + divisor // 2) // divisor
     for y in range(start, end):
         for x in range(width):
             weighted = prepared[y - start + 2, x + 2]
-            guide = (weighted + divisor // 2) // divisor
+            guide = np.int32(guides[y - start + 2, x + 2])
             sy = sw = np.int64(0)
             for dy in range(-2, 3):
                 for dx in range(-2, 3):
                     nw = prepared[y - start + dy + 2, x + dx + 2]
-                    weight = np.int64(weights[dy + 2, dx + 2, abs((nw + divisor // 2) // divisor - guide)])
+                    distance = abs(np.int32(guides[y - start + dy + 2, x + dx + 2]) - guide)
+                    weight = np.int64(weights[dy + 2, dx + 2, distance])
                     sw += weight
                     sy += weight * (np.int64(nw) - weighted)
             numerator, denominator = sy * amount, sw * (256 * 65536)
