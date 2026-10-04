@@ -28,6 +28,8 @@ def main():
     parser.add_argument("--subject-exposure", type=float, default=0)
     parser.add_argument("--select-subject", action="store_true")
     parser.add_argument("--auto-subject", action="store_true")
+    parser.add_argument("--auto-subject-color", action="store_true")
+    parser.add_argument("--subject-color", action="store_true", help="Exercise both local color sliders")
     args = parser.parse_args()
     if not 0 <= args.color_noise <= 1:
         parser.error("--color-noise must be within [0, 1]")
@@ -358,6 +360,36 @@ def main():
             app._commit_edit()
             state["phase"] = "compare"
         elif phase == "compare" and frame_current():
+            if args.auto_subject_color and not state.get('auto_subject_color_tested'):
+                require(app.subject is not None, 'Local color Auto has a portable selection')
+                state['before_color_auto'] = app._current_overrides()
+                app.subject_color_auto_button.invoke()
+                require(app.is_busy, 'Local color Auto starts asynchronously')
+                state['phase'] = 'local_color_auto'
+                app.root.after(15, tick)
+                return
+            if args.subject_color and not state.get('subject_color_tested'):
+                require(app.subject is not None, 'Manual local color has a portable selection')
+                state['before_color_drag'] = app._current_overrides()
+                state['before_color_pixels'] = app.live_image.tobytes()
+                state['color_drag_started'] = perf_counter()
+                for key, value in (('warmth', -.65), ('tint', .55)):
+                    scale = getattr(app, f'subject_{key}_scale')
+                    canvas = app.controls_canvas
+                    app.root.update_idletasks()
+                    y = canvas.canvasy(scale.winfo_rooty() - canvas.winfo_rooty())
+                    canvas.yview_moveto(max(0, (y - canvas.winfo_height() / 2) / canvas.bbox('all')[3]))
+                    app.root.update_idletasks()
+                    require(canvas.winfo_rooty() <= scale.winfo_rooty()
+                            and scale.winfo_rooty() + scale.winfo_height() <= canvas.winfo_rooty() + canvas.winfo_height(),
+                            f'Local {key} is accessible in compact window')
+                    drag_scale(scale, value)
+                    require(abs(app._current_overrides()['subject'][key] - value) < .02,
+                            f'Pointer dragging changes local {key}')
+                state['after_color_drag'] = app._current_overrides()
+                state['phase'] = 'local_color_drag'
+                app.root.after(15, tick)
+                return
             if args.auto_subject and not state.get("auto_subject_tested"):
                 require(app.subject is not None, "Local Auto has a portable selection")
                 app.subject_exposure_var.set(-.25)
@@ -473,6 +505,8 @@ def main():
             before, after = state["before_local_auto"], app._current_overrides()
             require(global_adjustments(before) == global_adjustments(after), "Subject Auto preserves every global adjustment")
             require(after['subject']['exposure'] > 0, "Subject Auto replaces prior exposure with a fresh metered result")
+            require(all(after['subject'].get(key, 0) == before['subject'].get(key, 0) for key in ('warmth', 'tint')),
+                    'Subject exposure Auto preserves local color')
             report['subject_auto_exposure'] = after['subject']['exposure']
             app.undo_button.invoke()
             require(app._current_overrides() == before, "Undo restores edits before local Auto")
@@ -481,6 +515,32 @@ def main():
             capture_window(app.root, args.output / "subject-auto.png")
             state["auto_subject_tested"] = True
             state["phase"] = "compare"
+        elif phase == 'local_color_auto' and not app.is_busy and frame_current():
+            before, after = state['before_color_auto'], app._current_overrides()
+            report['subject_auto_color'] = {key: after['subject'].get(key, 0) for key in ('warmth', 'tint')}
+            require(any(report['subject_auto_color'].values()), 'Color Auto derives a nonzero local correction')
+            require({k: v for k, v in before.items() if k != 'subject'} == {k: v for k, v in after.items() if k != 'subject'},
+                    'Local color Auto preserves global adjustments')
+            require(before['subject']['exposure'] == after['subject']['exposure'], 'Local color Auto preserves exposure')
+            if before != after:
+                app.undo_button.invoke()
+                require(app._current_overrides() == before, 'Undo restores prior local color')
+                app.redo_button.invoke()
+                require(app._current_overrides() == after, 'Redo restores automatic local color')
+            state['auto_subject_color_tested'] = True
+            state['phase'] = 'compare'
+        elif phase == 'local_color_drag' and frame_current():
+            report['color_drag_to_frame_seconds'] = perf_counter() - state['color_drag_started']
+            require(app.live_image.tobytes() != state['before_color_pixels'], 'Local color sliders change rendered pixels')
+            app.undo_button.invoke()
+            app.undo_button.invoke()
+            require(app._current_overrides() == state['before_color_drag'], 'Undo restores both local color controls')
+            app.redo_button.invoke()
+            app.redo_button.invoke()
+            require(app._current_overrides() == state['after_color_drag'], 'Redo restores both local color controls')
+            capture_window(app.root, args.output / 'subject-color.png')
+            state['subject_color_tested'] = True
+            state['phase'] = 'compare'
         elif phase == "subject_edit" and frame_current():
             require(app.live_image.tobytes() != state["subject_pixels"], "Local exposure changes real rendered pixels")
             app.undo_button.invoke()

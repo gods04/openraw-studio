@@ -43,6 +43,14 @@ def _gain_table(exposure, maximum):
 
 
 def apply_subject(pixels, subject, *, full_size=None, region=None):
+    result = _apply_exposure(pixels, subject, full_size=full_size, region=region)
+    if subject is not None and subject["enabled"] and (subject.get("warmth", 0) or subject.get("tint", 0)):
+        from openraw_studio.raw.native.subject_color import apply_subject_color
+        result = apply_subject_color(result, subject, full_size=full_size, region=region)
+    return result
+
+
+def _apply_exposure(pixels, subject, *, full_size=None, region=None):
     if subject is None:
         return pixels
     subject = clean_subject(subject)
@@ -75,4 +83,5 @@ def apply_subject(pixels, subject, *, full_size=None, region=None):
 def prepare_subject_renderer(subject):
     """Prime the optional RGB8 kernel in a worker, before the first slider drag."""
     if subject is not None:
-        apply_subject(np.zeros((1, 1, 3), np.uint8), {**subject, "enabled": True, "exposure": .1})
+        from openraw_studio.core.subject import subject_with_color
+        apply_subject(np.zeros((1, 1, 3), np.uint8), subject_with_color({**subject, "enabled": True, "exposure": .1}, .1, 0))

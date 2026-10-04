@@ -2220,3 +2220,87 @@ rendering. Two older saved recipes retain exact native-detail pixels. The Z f
 HE CPU Auto is separately checked against its CPU baseline, not the slightly
 different GPU baseline. No RAW decoder, global color solver, or saved-layer
 render transform changes in this increment.
+
+## Measured Local Subject Color
+
+Subject layers now support independent rendered Temperature/Tint as
+`subject.v2`, with strictly bounded numeric fields and the existing source-bound
+compressed mask. v1 is not rewritten when no color is used; both contracts
+replay without models. Local exposure is applied first, followed by RGB gains
+normalized to preserve display luma. A common gamut backoff retains color
+direction without independently clipping channels. This is not sensor white
+balance, Kelvin calibration, or reconstruction of clipped sensor samples.
+The fused optional CPU kernel and chunked NumPy fallback agree exactly for
+RGB8/16, including rotated buffers and full-frame/ROI mask projection. RGB8
+signatures are primed in the worker after selection/Auto and when reopening a
+saved layer; frozen cache identity includes the new kernel.
+
+`decision/subject_color.py` derives corrections from the current rendered image.
+Reliable face overlap and optional neutral-clothing corroboration are required.
+It excludes faces from candidate neutral references, collects spatial tile
+measurements, and requires common bias, brightness diversity, and differing
+background light. The background is corroboration, not a target shirt or skin
+color. Two trial renders measure the local Temperature/Tint response; a bounded
+fit must reduce the measured common cast without worsening any reference tile,
+excessively shifting any metered face, or introducing near-clipped channels.
+Night, sunset, colored light, aquarium content, and ambiguous evidence abstain.
+The method remains deterministic, evaluated heuristics, not a trained aesthetic
+optimizer or a promise of correct intrinsic material color.
+
+Pure near-neutral pixel selection initially proposed removing color from a
+pale-pink shirt. The optional material head now corroborates white/gray clothing
+before such a proposal is considered. It shares the same local CLIP image
+encoder/session; 14 garment descriptions add a separate projection without
+changing scene text embeddings. Exported ONNX/PyTorch outputs differ by at most
+1.64e-7 on the export probe. All 33 cached regression images retain bit-identical
+scene scores and evidence. This coarse crop-level check can still be confused
+by surrounding objects, mixed wardrobes, and lighting; its similarities are
+not confidence probabilities. The pink-clothing example is rejected as
+uncertain, not claimed to be correctly classified. Scene-only model exports
+remain supported, and missing/disabled material evidence preserves edits.
+See `models/README.md` for explicit setup, hashes, and deployment limitations.
+
+The 33-photo CPU/GPU RAW regression preserves every prior global Auto setting.
+Only the white-clothing mixed-light sample receives local color advice, at
+both 70% and 100% global strength; 32 abstain. Equal spatial voting prevents
+the oppositely lit shirt/trouser areas from hiding each other. The measured
+common cast norm falls from .1191 to .0766 at 70% and .1064 to .0699 at 100%.
+These are internal reference metrics, not general picture-quality scores.
+Eight full-native cases (CPU/GPU, both strengths, RGB8/16) retain exact
+zero-mask background pixels, introduce no fully clipped channels, and change
+display luma by less than .51 sample codes. Native crops match full renders.
+All original RAW checksums remain unchanged; private images/reports stay local.
+
+Two 79-check Tk workflows at 800x560 and 1440x900 cover first Auto, separate
+color/exposure Auto, real pointer drags, undo/redo, bypass, global strength,
+native inspection, JPEG/TIFF16 export, and reopening. Each wand preserves the
+other local controls and all globals. Existing layers are never overwritten by
+top-level Auto. Batch Auto derives each photo's own layer; Current adjustments
+still strips source-bound edits. Screenshots were inspected for clipped controls.
+
+On the sampled D500 image, cached local-color render medians are 24-25 ms on
+the GPU path and 66-71 ms on CPU. End-to-end Tk slider medians are 75/95 ms,
+maxima 78/110 ms, with 47/30 displayed changes during 50-step continuous drags.
+JPEG export with local exposure/color takes 2.00/2.39 s; initial Auto including
+model loading takes 2.64/3.23 s. These are local warm-kernel observations, not
+cold-start or universal performance guarantees. The benchmark's
+`--slider subject_warmth` / `--slider subject_tint` modes exercise local color directly.
+
+The refreshed local Windows EXE passes eight new source-equivalence checks:
+CPU/GPU color advice, JPEG/TIFF16, uncertain colored clothing, material disabled,
+the old scene-only model, models-off v2 replay, and v1 replay. Advice, metrics,
+exported pixels, and native detail agree with source execution. The v1 replay
+and disabled-versus-old-head TIFF files remain byte-identical to their references.
+Both new RGB8/16 kernel signatures hit the persistent frozen cache in later
+processes, with no compilation fallback. The sampled warm EXE JPEG export is
+2.33 s; TIFF16 timings are separate and include compression/first-use costs.
+Eight earlier D500/Z5/Z f/DNG frozen regression cases preserve all prior global
+Auto parameters, metrics, noise advice, and output file bytes. Five TIFF16 arrays
+also match source rendering, and two older recipes retain exact native detail.
+
+Source and packaging environments each pass 729 tests. Fourteen batch UI checks additionally
+cover distinct saved v2 layers, per-photo Auto, removal of local layers from
+Current adjustments, cancellation, and compact-panel scrolling. Static checks
+and dependency checks pass. The optional material head is installed locally;
+its predecessor is retained privately for regression. No model weights, private
+photos, public ZIP, or installer are published.

@@ -115,6 +115,7 @@ class LocalSceneClassifier:
         self.folder = Path(folder)
         self.session = None
         self.cache = {}
+        self.material_available = False
 
     def _load(self):
         import onnxruntime as ort
@@ -132,6 +133,9 @@ class LocalSceneClassifier:
         options.intra_op_num_threads = 2
         options.inter_op_num_threads = 1
         self.session = ort.InferenceSession(str(path), sess_options=options, providers=["CPUExecutionProvider"])
+        from openraw_studio.vision.material import prompt_digest as material_digest
+        self.material_available = (manifest.get("material_prompt_sha256") == material_digest()
+                                   and "material_scores" in {output.name for output in self.session.get_outputs()})
 
     def classify(self, image):
         pixels = prepare_scene_input(image)
@@ -146,6 +150,22 @@ class LocalSceneClassifier:
             self.cache.pop(next(iter(self.cache)))
         self.cache[key] = evidence
         return evidence
+
+    def classify_material(self, image):
+        from openraw_studio.vision.material import MaterialEvidence, evidence_from_scores as material_evidence
+        if self.session is None:
+            self._load()
+        if not self.material_available:
+            return MaterialEvidence("not-installed")
+        pixels = prepare_scene_input(image)
+        key = ("material", hashlib.sha256(pixels.tobytes()).digest())
+        if key not in self.cache:
+            scores = self.session.run(["material_scores"], {"image": pixels})[0]
+            evidence = material_evidence(scores)
+            if len(self.cache) >= 16:
+                self.cache.pop(next(iter(self.cache)))
+            self.cache[key] = evidence
+        return self.cache[key]
 
 
 _lock = threading.Lock()

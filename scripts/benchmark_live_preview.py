@@ -27,11 +27,14 @@ def main():
     parser.add_argument("--color-noise", type=float, default=0.0)
     parser.add_argument("--luminance-noise", type=float, default=0.0)
     parser.add_argument("--subject-exposure", type=float, default=0.0)
+    parser.add_argument('--slider', choices=('exposure', 'subject_warmth', 'subject_tint'), default='exposure')
     args = parser.parse_args()
     if args.person_mask and not args.auto_before:
         parser.error("--person-mask requires --auto-before")
     if args.subject_exposure and not args.auto_before:
         parser.error("--subject-exposure requires --auto-before")
+    if args.slider.startswith('subject_') and not args.auto_before:
+        parser.error('Local color timing requires --auto-before')
     if not -1 <= args.subject_exposure <= 1:
         parser.error("--subject-exposure must be within [-1, 1]")
     if args.highlights is not None and not -1 <= args.highlights <= 1:
@@ -62,6 +65,7 @@ def main():
         "auto_before": args.auto_before,
         "person_mask": args.person_mask,
         "subject_exposure": args.subject_exposure,
+        'slider': args.slider,
         "first_display_ms": None,
         "camera_preview_ms": None,
         "slider_to_display_ms": [],
@@ -102,6 +106,11 @@ def main():
         for child in widget.winfo_children():
             yield child
             yield from descendants(child)
+
+    def displayed_value():
+        if args.slider.startswith('subject_'):
+            return app.last_preview_overrides.get('subject', {}).get(args.slider.removeprefix('subject_'))
+        return app.last_preview_overrides.get(args.slider)
 
     def finish():
         from openraw_studio.raw.native import compiled_bayer, compiled_chroma, compiled_tone
@@ -166,6 +175,10 @@ def main():
                     app.person_mask_button.invoke()
                 phase = "prepare-adjust"
         if phase == "prepare-adjust":
+            if args.slider.startswith('subject_') and app.subject is None:
+                report['errors'].append('No subject selection available for color timing')
+                finish()
+                return
             if args.subject_exposure:
                 if app.subject is None:
                     report["errors"].append("No subject selection available")
@@ -180,13 +193,13 @@ def main():
                 w
                 for w in descendants(app.root)
                 if w.winfo_class() == "TScale"
-                and str(w.cget("variable")) == str(app.exposure_var)
+                and str(w.cget("variable")) == str(getattr(app, args.slider + '_var'))
             )
             phase = "adjust"
         if phase == "adjust":
             if (
                 target is not None
-                and app.last_preview_overrides.get("exposure") == target
+                and displayed_value() == target
             ):
                 report["slider_to_display_ms"].append(
                     (perf_counter() - changed_at) * 1000
@@ -207,7 +220,7 @@ def main():
                     changed_at = perf_counter()
                     slider.set(target)
         elif phase == "drag":
-            displayed = app.last_preview_overrides.get("exposure")
+            displayed = displayed_value()
             if displayed != last_drag_frame and drag_finished_at is None:
                 drag_frames += 1
                 last_drag_frame = displayed

@@ -38,23 +38,38 @@ def clean_subject(value):
     if value is None:
         return None
     keys = {"version", "source_sha256", "width", "height", "mask_zlib", "exposure", "enabled"}
-    if not isinstance(value, Mapping) or set(value) != keys or value.get("version") != "subject.v1":
+    if not isinstance(value, Mapping) or value.get("version") not in ("subject.v1", "subject.v2"):
+        raise ValueError("Unsupported subject edit")
+    fields = ("exposure", "warmth", "tint") if value["version"] == "subject.v2" else ("exposure",)
+    if set(value) != keys | set(fields):
         raise ValueError("Unsupported subject edit")
     checksum = value["source_sha256"]
     if not isinstance(checksum, str) or len(checksum) != 64 or any(c not in "0123456789abcdef" for c in checksum):
         raise ValueError("Subject edit requires a source SHA256")
     if type(value["enabled"]) is not bool:
         raise ValueError("Subject enabled flag must be boolean")
-    if type(value["exposure"]) not in (int, float):
-        raise ValueError("Subject exposure must be a number")
-    try:
-        exposure = float(value["exposure"])
-    except (TypeError, ValueError, OverflowError) as error:
-        raise ValueError("Invalid subject exposure") from error
-    if not math.isfinite(exposure) or not -1 <= exposure <= 1:
-        raise ValueError("Subject exposure must be within [-1, 1]")
+    numbers = {}
+    for key in fields:
+        if type(value[key]) not in (int, float):
+            raise ValueError(f"Subject {key} must be a number")
+        try:
+            number = float(value[key])
+        except (TypeError, ValueError, OverflowError) as error:
+            raise ValueError(f"Invalid subject {key}") from error
+        if not math.isfinite(number) or not -1 <= number <= 1:
+            raise ValueError(f"Subject {key} must be within [-1, 1]")
+        numbers[key] = round(number, 4)
     decode_mask(value["mask_zlib"], value["width"], value["height"])
-    return {**value, "exposure": round(exposure, 4)}
+    return {**value, **numbers}
+
+
+def subject_with_color(subject, warmth, tint):
+    """Upgrade only when color is used; existing v1 recipes keep their shape."""
+    subject = clean_subject(subject)
+    if subject is None:
+        raise ValueError("Subject color requires a selection")
+    colored = clean_subject({**subject, "version": "subject.v2", "warmth": warmth, "tint": tint})
+    return subject if subject["version"] == "subject.v1" and warmth == tint == 0 else colored
 
 
 @lru_cache(maxsize=16)

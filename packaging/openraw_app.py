@@ -27,6 +27,7 @@ def smoke_test(source: Path, output: Path, *, color_noise=0.0, luminance_noise=0
         compiled_he_transform,
         compiled_luminance,
         compiled_subject,
+        compiled_subject_color,
         compiled_tone,
         he_cpu,
     )
@@ -79,8 +80,9 @@ def smoke_test(source: Path, output: Path, *, color_noise=0.0, luminance_noise=0
         edits = {**suggestion.as_overrides(), "color_noise": color_noise, "luminance_noise": luminance_noise}
         if auto_subject:
             from dataclasses import asdict
-            from openraw_studio.core.subject import subject_for_person
+            from openraw_studio.core.subject import subject_for_person, subject_with_color
             from openraw_studio.decision.subject_exposure import suggest_subject_exposure_for_photo
+            from openraw_studio.decision.subject_color import suggest_subject_color_for_photo
             from openraw_studio.vision.person import analyze_person
 
             started = perf_counter()
@@ -91,6 +93,10 @@ def smoke_test(source: Path, output: Path, *, color_noise=0.0, luminance_noise=0
             if advice.exposure is not None:
                 subject["exposure"] = advice.exposure
             report["auto_subject"] = asdict(advice)
+            color = suggest_subject_color_for_photo(photo, edits, scene=suggestion.scene_evidence)
+            if color.warmth is not None:
+                edits['subject'] = subject_with_color(subject, color.warmth, color.tint)
+            report['auto_subject_color'] = asdict(color)
             report["auto_subject_seconds"] = perf_counter() - started
         if subject_recipe is not None:
             from openraw_studio.core.recipe import validate_recipe_shape
@@ -105,6 +111,8 @@ def smoke_test(source: Path, output: Path, *, color_noise=0.0, luminance_noise=0
             edits["subject"] = subject
             report["subject_exposure"] = subject["exposure"]
             report["subject_enabled"] = subject["enabled"]
+            report['subject_warmth'] = subject.get('warmth', 0)
+            report['subject_tint'] = subject.get('tint', 0)
         if auto_color_noise:
             started = perf_counter()
             noise = suggest_color_noise_for_photo(photo, edits)
@@ -160,6 +168,9 @@ def smoke_test(source: Path, output: Path, *, color_noise=0.0, luminance_noise=0
         report["compiled_cpu_subject"] = bool(getattr(compiled_subject.expose, "signatures", []))
         report["cpu_subject_fallback_reason"] = compiled_subject.last_error
         report["cpu_subject_cache_disabled_reason"] = compiled_subject.cache_disabled_reason
+        report['compiled_cpu_subject_color'] = bool(getattr(compiled_subject_color.balance, 'signatures', []))
+        report['cpu_subject_color_fallback_reason'] = compiled_subject_color.last_error
+        report['cpu_subject_color_cache_disabled_reason'] = compiled_subject_color.cache_disabled_reason
         report["kernel_cache"] = {}
         kernels = {
             "decode": compiled_decode.decode, "he_decode": compiled_he.decode,
@@ -167,6 +178,7 @@ def smoke_test(source: Path, output: Path, *, color_noise=0.0, luminance_noise=0
             "bayer": compiled_bayer.malvar_demosaic,
             "chroma": compiled_chroma.chroma, "luminance": compiled_luminance.luminance,
             "subject": compiled_subject.expose,
+            "subject_color": compiled_subject_color.balance,
             **compiled_he_transform.kernels,
         }
         for name, kernel in kernels.items():
@@ -202,7 +214,7 @@ def main() -> int:
     parser.add_argument("--luminance-noise", type=float, default=0.0)
     parser.add_argument("--auto-color-noise", action="store_true", help="Select color-noise strength during --smoke-test.")
     parser.add_argument("--subject-recipe", type=Path, help="Replay a saved subject layer during --smoke-test.")
-    parser.add_argument("--auto-subject", action="store_true", help="Meter local subject exposure during --smoke-test.")
+    parser.add_argument("--auto-subject", action="store_true", help="Meter local subject exposure and color during --smoke-test.")
     parser.add_argument("--format", dest="export_format", choices=("jpeg", "tiff"), default="jpeg")
     parser.add_argument("--bit-depth", type=int, choices=(8, 16), default=8)
     args = parser.parse_args()

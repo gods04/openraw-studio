@@ -144,9 +144,9 @@ for bits, kernel in ((8, compiled_tone.tone), (16, compiled_tone.tone16)):
     result[str(bits)] = dict(pixel=image[0,0].tolist(),
         hits=sum(kernel.stats.cache_hits.values()), misses=sum(kernel.stats.cache_misses.values()),
         locator=type(kernel._cache._impl.locator).__name__)
-from openraw_studio.core.subject import make_subject
+from openraw_studio.core.subject import make_subject, subject_with_color
 from openraw_studio.raw.native.subject import apply_subject
-from openraw_studio.raw.native import compiled_subject
+from openraw_studio.raw.native import compiled_subject, compiled_subject_color
 subject = {**make_subject(np.ones((2, 2), np.float32), Path(sys.argv[2])), 'exposure': .5}
 for bits, dtype in ((8, np.uint8), (16, np.uint16)):
     kernel = compiled_subject.expose
@@ -154,6 +154,16 @@ for bits, dtype in ((8, np.uint8), (16, np.uint16)):
     image = apply_subject(np.full((4, 4, 3), 100, dtype), subject)
     assert compiled_subject.last_error is None, compiled_subject.last_error
     result['subject' + str(bits)] = dict(pixel=image[0,0].tolist(),
+        hits=sum(kernel.stats.cache_hits.values()) - hits,
+        misses=sum(kernel.stats.cache_misses.values()) - misses,
+        locator=type(kernel._cache._impl.locator).__name__)
+subject = subject_with_color(subject, .2, -.3)
+for bits, dtype in ((8, np.uint8), (16, np.uint16)):
+    kernel = compiled_subject_color.balance
+    hits, misses = sum(kernel.stats.cache_hits.values()), sum(kernel.stats.cache_misses.values())
+    image = apply_subject(np.full((4, 4, 3), 100, dtype), subject)
+    assert compiled_subject_color.last_error is None, compiled_subject_color.last_error
+    result['color' + str(bits)] = dict(pixel=image[0,0].tolist(),
         hits=sum(kernel.stats.cache_hits.values()) - hits,
         misses=sum(kernel.stats.cache_misses.values()) - misses,
         locator=type(kernel._cache._impl.locator).__name__)

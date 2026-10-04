@@ -57,6 +57,37 @@ ONNX 1.23.1, and ONNX Runtime 1.30.0. The model is pretrained by OpenAI, not
 trained on the user's photographs. Future model/prompt revisions need new
 photography validation and a new exported manifest.
 
+### Optional Local Color Corroboration
+
+To enable experimental subject-color Auto, re-export the same checkpoint with
+the optional garment-color head, after the scene setup above:
+
+```powershell
+.\output\scene-tools\Scripts\python.exe scripts\prepare_scene_model.py --checkpoint-cache output\scene-checkpoints --with-materials
+```
+
+Restart the app afterward. This adds 14 coarse garment-description comparisons
+to the same encoder, not another model or a new training run. Scene scores use
+the original separate projection; all 33 local regression inputs retain exact
+scene scores and evidence. `OPENRAW_MATERIAL=off` disables only this head.
+`OPENRAW_SCENE=off` or `OPENRAW_PERSON=off` also disables its use. The original
+scene-only export remains supported; its absence affects only local color Auto.
+
+White/gray similarity and margin must corroborate spatial neutral pixels before
+OpenRAW tries local color correction. These are not calibrated probabilities,
+skin labels, or ground-truth material colors. Colored clothes, surrounding objects,
+mixed wardrobes, and lighting can confuse this coarse crop-level comparison.
+Uncertain evidence leaves edits unchanged. The measured solver additionally
+requires visible face overlap, background reference, non-ambient light, and
+per-region improvement. Manual color sliders and saved recipes need no head.
+
+The checked optional export is 351,820,318 bytes, SHA-256
+`3813e10c680732d1b709736bdf3886113e24373d883a2abe71a2009cf08286d2`.
+Its material prompt digest is
+`b51076b50fb086b233e38d88ce254d69ae39eba915e36be5ce0248a19e28bcb2`;
+the original scene prompt digest is unchanged. The existing CLIP provenance,
+license retention, local-beta scope, and public-distribution review still apply.
+
 ## Experimental Person-Aware Color
 
 The optional person model supplies a coarse mask for Auto's color objectives

@@ -4,8 +4,10 @@ import argparse
 import json
 from pathlib import Path
 from time import perf_counter
+import numpy as np
 
 from openraw_studio.core.artifacts import ArtifactPlan
+from openraw_studio.core.subject import make_subject, subject_with_color
 from openraw_studio.raw.native.synthetic import write_synthetic_dng
 from openraw_studio.ui.desktop import launch_desktop_app, _load_recipe_adjustments
 from benchmark_live_preview import capture_window
@@ -20,6 +22,8 @@ def main():
         write_synthetic_dng(args.output / f"sample-{i}.DNG", width=40, height=30)
         for i in range(3)
     ]
+    subjects = [subject_with_color(make_subject(np.array([[0, 1], [.3, .7]], np.float32), source),
+                                   .2 * (index + 1), -.1) for index, source in enumerate(sources)]
     app = launch_desktop_app(run_mainloop=False, session_dir=args.output / "sessions")
     app.root.geometry("800x600")
     app.output_dir = args.output
@@ -70,8 +74,8 @@ def main():
                 raise TimeoutError(phase)
             if phase == "load" and app.last_preview_overrides is not None:
                 app.library_items = [(p, p.name, True) for p in sources]
-                app.session_store.save(sources[1], {"exposure": 0.6, "color_noise": .4, "luminance_noise": .3})
-                app.session_store.save(sources[2], {"exposure": -0.3})
+                app.session_store.save(sources[1], {"exposure": 0.6, "color_noise": .4, "luminance_noise": .3, 'subject': subjects[1]})
+                app.session_store.save(sources[2], {"exposure": -0.3, 'subject': subjects[2]})
                 app._set_busy(False)
                 app.inspector_tabs.select(2)
                 start("Saved edits")
@@ -88,6 +92,8 @@ def main():
                 )
                 require(_load_recipe_adjustments(recipe, sources[1])["color_noise"] == .4, "Saved-edits batch retains individual color-noise strength")
                 require(_load_recipe_adjustments(recipe, sources[1])["luminance_noise"] == .3, "Saved-edits batch retains individual luminance-noise strength")
+                require(all(_load_recipe_adjustments(ArtifactPlan.for_source(p, args.output).recipe_path, p)['subject'] == subject
+                            for p, subject in zip(sources[1:], subjects[1:])), 'Saved batch retains each source-bound local color layer')
                 app.color_noise_var.set(.65)
                 app.luminance_noise_var.set(.45)
                 start("Auto each photo")
@@ -99,6 +105,13 @@ def main():
                 )
                 require(all(_load_recipe_adjustments(ArtifactPlan.for_source(p, args.output).recipe_path, p)["color_noise"] == .65 for p in sources), "Auto batch preserves explicit color-noise strength")
                 require(all(_load_recipe_adjustments(ArtifactPlan.for_source(p, args.output).recipe_path, p)["luminance_noise"] == .45 for p in sources), "Auto batch preserves explicit luminance-noise strength")
+                app._set_adjustment_values({'exposure': .2, 'subject': subjects[0]})
+                start('Current adjustments')
+                state['phase'] = 'current'
+            elif phase == 'current' and result:
+                require(result.exported == 3 and result.failed == 0, 'Current-adjustments batch exports each photo')
+                require(all('subject' not in _load_recipe_adjustments(ArtifactPlan.for_source(p, args.output).recipe_path, p)
+                            for p in sources), 'Current batch never copies an image-bound color layer to another photo')
                 start("Current adjustments")
                 app.cancel_batch_button.invoke()
                 state["phase"] = "cancel"

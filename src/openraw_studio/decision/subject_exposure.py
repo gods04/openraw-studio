@@ -52,7 +52,8 @@ def suggest_subject_exposure(image, subject, faces, scene):
     groups = _face_samples(faces.faces, weights, pixels.shape[:2])
     if not groups:
         return SubjectExposureSuggestion(None, "face-outside-selection")
-    rgb = pixels.reshape(-1, 3).astype(np.float32) / 255
+    baseline = apply_subject(pixels, {**subject, "exposure": 0, "enabled": True})
+    rgb = baseline.reshape(-1, 3).astype(np.float32) / 255
     luma = rgb @ np.array([.2126, .7152, .0722], np.float32)
     background = (weights.ravel() < .01) & (luma > .04) & (luma < .95)
     if background.sum() < max(100, luma.size * .10):

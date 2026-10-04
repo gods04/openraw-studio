@@ -9,7 +9,7 @@ from unittest.mock import patch
 import numpy as np
 from PIL import Image
 
-from openraw_studio.core.subject import make_subject
+from openraw_studio.core.subject import make_subject, subject_with_color
 from openraw_studio.decision.subject_exposure import suggest_subject_exposure, suggest_subject_exposure_for_photo
 from openraw_studio.raw.native.subject import apply_subject
 from openraw_studio.vision.face import Face, FaceAnalysis
@@ -120,7 +120,9 @@ class SubjectAutoTests(unittest.TestCase):
     def test_subject_highlights_outside_face_are_also_guarded(self):
         def unsafe_render(pixels, subject):
             edited = apply_subject(pixels, subject)
-            edited[80:140, 90:150] = 255
+            if subject['exposure'] != 0:
+                edited = edited.copy()
+                edited[80:140, 90:150] = 255
             return edited
         with patch('openraw_studio.decision.subject_exposure.apply_subject', side_effect=unsafe_render):
             result = self.suggest()
@@ -152,3 +154,13 @@ class SubjectAutoTests(unittest.TestCase):
             render.assert_not_called()
             self.assertEqual(suggest_subject_exposure_for_photo(photo, {'subject': self.subject}).status, 'face-disabled')
             self.assertEqual(render.call_count, 1)
+
+    def test_metering_keeps_color_in_baseline_and_every_candidate(self):
+        colored = subject_with_color(self.subject, .4, -.3)
+        with patch('openraw_studio.decision.subject_exposure.apply_subject', wraps=apply_subject) as render:
+            result = self.suggest(subject=colored)
+        self.assertEqual(result.status, 'suggested')
+        self.assertEqual(render.call_args_list[0].args[1]['exposure'], 0)
+        self.assertEqual(len(render.call_args_list), 13)
+        for call in render.call_args_list:
+            self.assertEqual((call.args[1]['warmth'], call.args[1]['tint']), (.4, -.3))

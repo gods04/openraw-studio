@@ -424,14 +424,15 @@ def build_workspace(app, filedialog, messagebox):
     )
     app.subject_select_button.configure(width=0)
     app.subject_select_button.pack(side="right")
-    app.subject_auto_button = button(
-        subject_row, "wand-sparkles", "Auto subject exposure: meter face and surrounding light",
-        app._auto_subject, disabled=True,
-    )
-    app.subject_auto_button.pack(side="right", padx=(0, 5))
     row = ttk.Frame(subject)
     row.pack(fill="x")
     ttk.Label(row, text="Exposure", style="Panel.TLabel").pack(side="left")
+    app.subject_auto_button = button(
+        row, "wand-sparkles", "Auto subject exposure: meter face and surrounding light",
+        app._auto_subject, disabled=True,
+    )
+    app.subject_auto_button.configure(padding=3, width=0)
+    app.subject_auto_button.pack(side="right", padx=(5, 0))
     ttk.Label(row, textvariable=app.subject_exposure_label_var, style="Muted.TLabel").pack(side="right")
     app.subject_exposure_scale = ttk.Scale(
         subject, from_=-1, to=1, variable=app.subject_exposure_var,
@@ -441,6 +442,25 @@ def build_workspace(app, filedialog, messagebox):
     app.subject_exposure_scale.bind("<ButtonRelease-1>", lambda _e: app._commit_edit())
     app.subject_exposure_scale.bind("<Double-Button-1>", lambda _e: app._reset_one("subject_exposure"))
     Tooltip(app.subject_exposure_scale, "Local rendered-image exposure; preserves white, cannot recover clipped RAW detail")
+    for key, title in (("warmth", "Temperature"), ("tint", "Tint")):
+        row = ttk.Frame(subject)
+        row.pack(fill="x")
+        ttk.Label(row, text=title, style="Panel.TLabel").pack(side="left")
+        if key == "warmth":
+            app.subject_color_auto_button = button(
+                row, "wand-sparkles", "Auto subject color: check clothing and local neutral references",
+                app._auto_subject_color, disabled=True,
+            )
+            app.subject_color_auto_button.configure(padding=3, width=0)
+            app.subject_color_auto_button.pack(side="right", padx=(5, 0))
+        ttk.Label(row, textvariable=getattr(app, f"subject_{key}_label_var"), style="Muted.TLabel").pack(side="right")
+        scale = ttk.Scale(subject, from_=-1, to=1, variable=getattr(app, f"subject_{key}_var"),
+                          command=app._subject_changed, state="disabled")
+        setattr(app, f"subject_{key}_scale", scale)
+        scale.pack(fill="x", pady=(4, 11))
+        scale.bind("<ButtonRelease-1>", lambda _e: app._commit_edit())
+        scale.bind("<Double-Button-1>", lambda _e, key=key: app._reset_one(f"subject_{key}"))
+        Tooltip(scale, "Local rendered color balance, separate from RAW white balance")
     color = section("Color", expanded=False)
     detail = section("Detail", expanded=False)
     for parent, key, title, minimum, maximum in (

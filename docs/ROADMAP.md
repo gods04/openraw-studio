@@ -16,9 +16,21 @@ Next quality work: Auto under difficult lighting, broader camera calibration
 and gamut handling, edge-aware demosaic, actual sensor highlight reconstruction,
 and sensor-domain denoise with calibrated luminance-noise advice. Further first-use initialization and broader verified HE profiles
 also remain open.
-Manual mask refinement, local color, and mobile remain later
+Manual mask refinement, richer local masks, and mobile remain later
 phases. Coarse scene/lighting analysis and corroborated person masks are now
 optional local experiments.
+
+Local subject Temperature/Tint now accompany exposure, with source-bound v2
+recipes and unchanged v1 replay. Optional clothing-color corroboration shares
+the existing scene encoder. Auto fits a bounded correction to spatial neutral
+references, checks each region and face, and abstains without reliable evidence.
+In the 33-photo CPU/GPU regression, one mixed-light white-clothing photo receives
+a small local correction and 32 retain their local colors. All prior global
+Auto settings remain exact. Eight full-native checks preserve zero-mask pixels,
+add no fully clipped channels, and keep luma changes below .51 sample codes.
+These limited checks do not establish general clothing recognition or aesthetic
+accuracy. Pale intrinsic material colors, mixed wardrobes, segmentation errors,
+and complex lighting remain open; manual local controls remain available.
 
 Person selections now support a separate local-exposure layer. Subject > Select
 prepares a conservative soft selection at zero exposure. First Auto can meter
@@ -40,8 +52,8 @@ score, and CLIP crop checks limit which candidates can influence Auto. Ambiguous
 groups can retry up to three distinct substantial components. A 4x4 subject
 grid limits small-region hue/saturation changes. These are evaluated heuristics,
 not calibrated confidence or accurate skin segmentation. Auto's proposed
-color parameters remain global; face metering now addresses the separate local
-exposure layer without changing those color settings.
+scenery color parameters remain global; the separate local exposure/color layer
+does not change those global settings.
 
 In the current 33-photo local regression, nine photos gain corroborated person
 regions; one aquarium color proposal changes and 32 retain prior parameters.

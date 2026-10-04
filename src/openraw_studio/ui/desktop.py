@@ -16,8 +16,9 @@ from typing import Any, Mapping, Sequence
 from openraw_studio.core.artifacts import ArtifactPlan
 from openraw_studio.core.files import is_supported_raw_path
 from openraw_studio.core.recipe import validate_recipe_shape
-from openraw_studio.core.subject import clean_subject, global_adjustments, subject_for_person, validate_subject_source
+from openraw_studio.core.subject import clean_subject, global_adjustments, subject_for_person, subject_with_color, validate_subject_source
 from openraw_studio.decision.subject_exposure import suggest_subject_exposure_for_photo
+from openraw_studio.decision.subject_color import suggest_subject_color_for_photo
 from openraw_studio.decision.auto_adjust import (
     AutoAdjustSuggestion,
     suggest_auto_adjustments_for_photo,
@@ -753,6 +754,10 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.subject_enabled_var = tk.BooleanVar(value=True)
             self.subject_exposure_var = tk.DoubleVar(value=0)
             self.subject_exposure_label_var = tk.StringVar(value="0.0 EV")
+            self.subject_warmth_var = tk.DoubleVar(value=0)
+            self.subject_tint_var = tk.DoubleVar(value=0)
+            self.subject_warmth_label_var = tk.StringVar(value="0")
+            self.subject_tint_label_var = tk.StringVar(value="0")
             self.support_notice_var = tk.StringVar(value="")
             self.batch_mode_var = tk.StringVar(value="Current adjustments")
             self.status_var = tk.StringVar(value="Choose a RAW photo to begin")
@@ -1107,6 +1112,8 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.subject = clean_subject(overrides.get("subject"))
             self.subject_enabled_var.set(self.subject["enabled"] if self.subject else True)
             self.subject_exposure_var.set(self.subject["exposure"] if self.subject else 0)
+            self.subject_warmth_var.set(self.subject.get("warmth", 0) if self.subject else 0)
+            self.subject_tint_var.set(self.subject.get("tint", 0) if self.subject else 0)
             self._refresh_subject_controls()
             self._sync_adjustment_labels(update_status=False)
 
@@ -1203,6 +1210,8 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.color_noise_label_var.set(f"{self.color_noise_var.get() * 100:.0f}")
             self.luminance_noise_label_var.set(f"{self.luminance_noise_var.get() * 100:.0f}")
             self.subject_exposure_label_var.set(_format_exposure_label(self.subject_exposure_var.get()))
+            self.subject_warmth_label_var.set(_format_adjustment_label(self.subject_warmth_var.get()))
+            self.subject_tint_label_var.set(_format_adjustment_label(self.subject_tint_var.get()))
             if update_status and self.source_path is not None and not self.is_busy:
                 preview_state = self._refresh_preview_state()
                 self.status_var.set(
@@ -1410,6 +1419,8 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self.luminance_noise_var.set(0.0)
             self.subject = None
             self.subject_exposure_var.set(0)
+            self.subject_warmth_var.set(0)
+            self.subject_tint_var.set(0)
             self.subject_enabled_var.set(True)
             self._refresh_subject_controls()
             self._sync_adjustment_labels()
@@ -1494,6 +1505,9 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                     )
                     if advice.exposure is not None:
                         subject["exposure"] = advice.exposure
+                    color = suggest_subject_color_for_photo(photo, {**overrides, "subject": subject}, scene=suggestion.scene_evidence)
+                    if color.warmth is not None:
+                        subject = subject_with_color(subject, color.warmth, color.tint)
                 from openraw_studio.raw.native.subject import prepare_subject_renderer
                 prepare_subject_renderer(subject)
             except (
@@ -1518,6 +1532,8 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             if self.subject is None and subject is not None:
                 self.subject = clean_subject(subject)
                 self.subject_exposure_var.set(self.subject["exposure"])
+                self.subject_warmth_var.set(self.subject.get("warmth", 0))
+                self.subject_tint_var.set(self.subject.get("tint", 0))
                 self.subject_enabled_var.set(True)
             self.person_mask_var.set(False)
             evidence = suggestion.scene_evidence
@@ -1548,10 +1564,10 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             selected = self.subject is not None
             self.subject_select_button.configure(state="normal" if editable else "disabled")
             self.subject_auto_button.configure(state="normal" if editable and selected else "disabled")
+            self.subject_color_auto_button.configure(state="normal" if editable and selected else "disabled")
             self.subject_enabled_button.configure(state="normal" if editable and selected else "disabled")
-            self.subject_exposure_scale.configure(state=(
-                "normal" if editable and selected and self.subject_enabled_var.get() else "disabled"
-            ))
+            for scale in (self.subject_exposure_scale, self.subject_warmth_scale, self.subject_tint_scale):
+                scale.configure(state=("normal" if editable and selected and self.subject_enabled_var.get() else "disabled"))
             has_mask = selected or (self.last_person_analysis is not None
                                     and self.last_person_analysis.evidence.status == "ready")
             self.person_mask_button.configure(state="normal" if has_mask and not self.is_busy else "disabled")
@@ -1561,26 +1577,54 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self._sync_adjustment_labels()
 
         def _auto_subject(self) -> None:
+            self._start_subject_auto(color=False)
+
+        def _auto_subject_color(self) -> None:
+            self._start_subject_auto(color=True)
+
+        def _start_subject_auto(self, *, color) -> None:
             if self.is_busy or not self.current_can_render or self.source_path is None or self.subject is None:
                 return
             self._commit_edit()
             self.run_counter += 1
             self._set_busy(True)
-            self.status_var.set("Metering subject...")
+            self.status_var.set("Analyzing subject color..." if color else "Metering subject...")
             threading.Thread(target=self._auto_subject_worker,
-                             args=(self.run_counter, self.source_path, self._current_overrides()), daemon=True).start()
+                             args=(self.run_counter, self.source_path, self._current_overrides(), color), daemon=True).start()
 
-        def _auto_subject_worker(self, run_id, source, overrides) -> None:
+        def _auto_subject_worker(self, run_id, source, overrides, color=False) -> None:
             try:
                 photo = self.live_worker.get_prepared_photo(source)
                 if photo is None:
                     photo = prepare_interactive_photo(self.pipeline.raw_processor, source)
-                advice = suggest_subject_exposure_for_photo(photo, overrides)
+                advice = (suggest_subject_color_for_photo(photo, overrides) if color
+                          else suggest_subject_exposure_for_photo(photo, overrides))
             except (PipelineError, OSError, ValueError, RuntimeError, NotImplementedError) as exc:
                 message = _friendly_error_message(exc)
                 self._post(lambda: self._show_error(message, run_id=run_id))
                 return
-            self._post(lambda: self._apply_subject_auto(advice, run_id=run_id))
+            self._post(lambda: self._apply_subject_color_auto(advice, run_id=run_id) if color
+                       else self._apply_subject_auto(advice, run_id=run_id))
+
+        def _apply_subject_color_auto(self, advice, *, run_id) -> None:
+            if run_id != self.run_counter:
+                return
+            self._set_busy(False)
+            if advice.warmth is None:
+                self.status_var.set({
+                    "balanced": "Subject color balanced; edits unchanged",
+                    "ambient-light": "Ambient color retained; edits unchanged",
+                    "material-uncertain": "Clothing color uncertain; edits unchanged",
+                    "material-not-installed": "Material model not installed; edits unchanged",
+                }.get(advice.status, "No reliable local color correction; edits unchanged"))
+                return
+            self.subject_warmth_var.set(advice.warmth)
+            self.subject_tint_var.set(advice.tint)
+            self.subject_enabled_var.set(True)
+            self._subject_changed()
+            self._commit_edit()
+            self.status_var.set("Subject color adjusted")
+            self._schedule_live_preview()
 
         def _apply_subject_auto(self, advice, *, run_id) -> None:
             if run_id != self.run_counter:
@@ -1637,6 +1681,8 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             if subject is not None:
                 self.subject = clean_subject(subject)
                 self.subject_exposure_var.set(0)
+                self.subject_warmth_var.set(0)
+                self.subject_tint_var.set(0)
                 self.subject_enabled_var.set(True)
                 self.person_mask_var.set(True)
             self._set_busy(False)
@@ -1991,6 +2037,9 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                         advice = suggest_subject_exposure_for_photo(photo, result, scene=suggested.scene_evidence)
                         if advice.exposure is not None:
                             subject["exposure"] = advice.exposure
+                        color = suggest_subject_color_for_photo(photo, result, scene=suggested.scene_evidence)
+                        if color.warmth is not None:
+                            result["subject"] = subject_with_color(subject, color.warmth, color.tint)
                     return result
                 return global_adjustments(overrides)
 
@@ -2226,10 +2275,10 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
                 )
             )
             if self.subject is not None:
-                result["subject"] = clean_subject({
+                result["subject"] = subject_with_color({
                     **self.subject, "exposure": self.subject_exposure_var.get(),
                     "enabled": self.subject_enabled_var.get(),
-                })
+                }, self.subject_warmth_var.get(), self.subject_tint_var.get())
             return result
 
         def _refresh_preview_state(self) -> str:

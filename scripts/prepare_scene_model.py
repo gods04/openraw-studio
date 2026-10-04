@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from openraw_studio.vision.scene import LIGHTING, MODEL_ID, SCENES, model_directory, prompt_digest
+from openraw_studio.vision.material import MATERIALS, prompt_digest as material_digest
 from openraw_studio.models.artifacts import publish_model_artifact as _publish
 
 
@@ -21,6 +22,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=model_directory())
     parser.add_argument("--checkpoint-cache", type=Path, required=True)
+    parser.add_argument("--with-materials", action="store_true", help="Add optional garment-color corroboration without replacing scene scores")
     args = parser.parse_args()
     import clip
     import numpy as np
@@ -44,17 +46,32 @@ def main():
             start = len(vectors)
             vectors.extend(vector.unbind())
             ranges.append((start, len(vectors)))
+        material_vectors, material_ranges = [], []
+        if args.with_materials:
+            for prompts in MATERIALS.values():
+                vector = model.encode_text(clip.tokenize(list(prompts)))
+                vector = vector / vector.norm(dim=-1, keepdim=True)
+                start = len(material_vectors)
+                material_vectors.extend(vector.unbind())
+                material_ranges.append((start, len(material_vectors)))
 
     class SceneModel(torch.nn.Module):
         def __init__(self):
             super().__init__()
             self.visual = model.visual
             self.register_buffer("texts", torch.stack(vectors).T)
+            if args.with_materials:
+                self.register_buffer("material_texts", torch.stack(material_vectors).T)
 
         def forward(self, image):
             features = self.visual(image)
-            scores = (features / features.norm(dim=-1, keepdim=True)) @ self.texts
-            return torch.stack([scores[:, start:end].max(dim=1).values for start, end in ranges], dim=1)
+            normalized = features / features.norm(dim=-1, keepdim=True)
+            scores = normalized @ self.texts
+            scenes = torch.stack([scores[:, start:end].max(dim=1).values for start, end in ranges], dim=1)
+            if not args.with_materials:
+                return scenes
+            material = normalized @ self.material_texts
+            return scenes, torch.stack([material[:, start:end].max(dim=1).values for start, end in material_ranges], dim=1)
 
     output = args.output
     output.mkdir(parents=True, exist_ok=True)
@@ -63,14 +80,17 @@ def main():
     sample = torch.randn(1, 3, 224, 224)
     path = output / "scene.onnx.pending"
     with torch.no_grad():
-        expected = scene(sample).numpy()
-        torch.onnx.export(scene, sample, str(path), input_names=["image"], output_names=["scores"],
+        expected = scene(sample)
+        expected = [value.numpy() for value in expected] if args.with_materials else [expected.numpy()]
+        output_names = ["scores", "material_scores"] if args.with_materials else ["scores"]
+        torch.onnx.export(scene, sample, str(path), input_names=["image"], output_names=output_names,
                           opset_version=17, dynamo=False)
     options = ort.SessionOptions()
     options.intra_op_num_threads = 2
     runtime = ort.InferenceSession(str(path), sess_options=options, providers=["CPUExecutionProvider"])
-    actual = runtime.run(["scores"], {"image": sample.numpy()})[0]
-    np.testing.assert_allclose(actual, expected, atol=2e-5, rtol=2e-5)
+    actual = runtime.run(output_names, {"image": sample.numpy()})
+    for actual_output, reference in zip(actual, expected):
+        np.testing.assert_allclose(actual_output, reference, atol=2e-5, rtol=2e-5)
     with path.open("rb") as handle:
         digest = hashlib.file_digest(handle, "sha256").hexdigest()
     license_path = Path(clip.__file__).resolve().parents[1] / "LICENSE"
@@ -84,8 +104,10 @@ def main():
         "checkpoint_sha256": "40d365715913c9da98579312b702a82c18be219cc2a73407c4526f58eba950af",
         "scene_labels": list(SCENES), "lighting_labels": list(LIGHTING),
         "license": "MIT", "scope": "Local evaluated photography beta; no identity or demographic inference",
-        "bytes": path.stat().st_size, "export_max_error": float(np.abs(actual - expected).max()),
+        "bytes": path.stat().st_size, "export_max_error": max(float(np.abs(a - b).max()) for a, b in zip(actual, expected)),
     }
+    if args.with_materials:
+        manifest.update(material_prompt_sha256=material_digest(), material_labels=list(MATERIALS))
     pending = output / "manifest.json.pending"
     pending.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     _publish(path, output / "scene.onnx")

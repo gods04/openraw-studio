@@ -31,6 +31,14 @@ SHA-256 and prompt hash are stored in its generated manifest. The MIT text is
 retained beside it. No model or private image is committed or bundled with the
 Windows app, and the source model's training data is not distributed here.
 
+An optional garment-color head uses that same encoder/checkpoint and license,
+with project-authored photographic clothing descriptions. The checked combined
+export is 351,820,318 bytes, SHA-256
+`3813e10c680732d1b709736bdf3886113e24373d883a2abe71a2009cf08286d2`.
+It adds no new model weights, training data, or runtime dependency. It remains
+an uncalibrated local experiment; coarse clothing-color corroboration is not
+identity/skin recognition or a general material classification guarantee.
+
 **Public/commercial model distribution remains under review.** The upstream
 [model card](https://github.com/openai/CLIP/blob/main/model-card.md) describes
 research use, warns against untested deployment, and calls for domain-specific

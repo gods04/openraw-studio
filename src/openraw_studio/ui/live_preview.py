@@ -130,6 +130,9 @@ class LivePreviewWorker:
                             continue
                     photo = self.prepare(self.processor, source)
                     original, _backend = photo.render({})
+                    if adjustments.get("subject") is not None:
+                        from openraw_studio.raw.native.subject import prepare_subject_renderer
+                        prepare_subject_renderer(adjustments["subject"])
                     key = current_key
                     detail_photo = detail_original = detail_region = None
                 with self._condition:

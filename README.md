@@ -361,10 +361,21 @@ faces to a fixed brightness. Conflicting faces or insufficient evidence leave
 local exposure unchanged. This is experimental metering, not recognition,
 skin-color correction, or calibrated portrait retouching.
 
-The wand beside **Subject > Enabled** recalculates local exposure independently
+The wand beside **Subject > Exposure** recalculates local exposure independently
 against current global settings. Top-level Auto preserves an existing local
 layer; **Global Auto strength** changes only global settings. Local Auto runs on
 request, never while dragging sliders or replaying a saved recipe.
+**Subject > Temperature / Tint** provide independent local color balance while
+preserving rendered brightness. The wand beside **Temperature** can suggest a
+small correction when optional clothing-color evidence, visible faces, and
+spatial neutral references agree. It measures the current image, tests actual
+renders, and rejects corrections that worsen another reference region. Night,
+sunset, ambiguous clothing, and insufficient evidence retain the current edit.
+This requires the optional material head described in [model setup](models/README.md);
+it is not calibrated skin correction or a universal mixed-light solution.
+First Auto and **Auto each photo** can propose this color layer; an existing
+manual layer remains unchanged by top-level Auto. Exposure and color wands
+preserve each other's settings. Manual sliders and saved layers need no model.
 **Person mask** inspects the saved soft selection at Fit, zoom, and
 native detail. Check it before editing: refinement cannot recover missed people
 or correct wrongly included objects. There is no manual mask brush yet.
@@ -376,7 +387,9 @@ untouched. Batch **Current adjustments** copies only global controls; **Saved
 edits** retains each photo's own subject layer; **Auto each photo** meters each
 photo independently. The magenta inspection overlay
 never enters exports. This is rendered-image exposure with a white-preserving
-shoulder, not RAW highlight recovery or calibrated face/skin retouching.
+shoulder and local RGB balance with gamut backoff, not RAW highlight recovery,
+sensor white balance, or calibrated face/skin retouching. New colored layers
+use `subject.v2`; earlier `subject.v1` recipes remain supported unchanged.
 
 The compact histogram follows the displayed Before, Camera Preview, or After
 image and reports near-black and near-white clipping percentages. It analyzes
