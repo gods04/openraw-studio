@@ -83,6 +83,7 @@ class _RenderedMetrics:
     lost_highlight_channels: int
     shadow_midtone_mean: float
     neutral_bias: np.ndarray | None
+    neutral_regions: np.ndarray | None = None
 
 
 def _pixels(preview):
@@ -191,9 +192,10 @@ class _RenderGuard:
             shadow_mean = self._shadow_mean(candidate_luma)
             # This luma buffer is private; partition only after mask-based work.
             median = float(np.median(candidate_luma, overwrite_input=True))
+            neutral, regions = self.neutral.measure_with_regions(candidate) if self.neutral is not None else (None, None)
             self.cache[key] = _RenderedMetrics(
                 clipping, median, crushed, risk, new_clipping, lost, shadow_mean,
-                self.neutral.measure(candidate) if self.neutral is not None else None,
+                neutral, regions,
             )
         return self.cache[key]
 
@@ -708,6 +710,8 @@ def suggest_auto_adjustments_from_preview(
                         detail_evidence=guards[-1].neutral if render_detail is not None else None,
                         measure_detail=(lambda candidate: guards[-1].measure(candidate).neutral_bias) if render_detail is not None else None,
                         validation_strengths=color_strengths,
+                        measure_regions=lambda candidate: primary.measure(candidate).neutral_regions,
+                        measure_detail_regions=(lambda candidate: guards[-1].measure(candidate).neutral_regions) if render_detail is not None else None,
                     )
                 values, scene_metrics = refine_scene_color(
                     preview, render, values, scene_evidence, validated,

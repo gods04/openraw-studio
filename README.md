@@ -142,8 +142,10 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - Auto checks substantial shadow midtones so a brighter background cannot hide
   contrast-darkened subjects, and can reduce added saturation to retain useful exposure
 - Auto can refine a spatially consistent near-neutral color cast using measured
-  renderer response. Color benefit, highlights, and shadows are rechecked before
-  accepting it; uncertain or dim color-dominated scenes retain the prior correction.
+  renderer response. Spatial agreement sets the correction strength; conflicting
+  regions can reduce or veto it. Bounded Temperature/Tint candidates are compared
+  using actual renders, with regional color, highlight, and shadow checks before
+  acceptance. Uncertain or dim color-dominated scenes retain the prior correction.
 - Highlight-limited Auto can add a bounded shadow lift, checking visible benefit
   and clipping at both preview sizes; low-key and predominantly dark scenes are excluded
 - Still-dim Auto results fit exposure to the photo's measured response instead
@@ -151,7 +153,7 @@ Then import `sample-data\openraw-synthetic.DNG` or
   together at every integer Auto strength before accepting a fitted correction;
   analysis/display proxies and available native samples retain clipping guards
 - Auto guard statistics use an optional fused CPU kernel with a NumPy fallback.
-  Candidate selection, color reasoning, thresholds, and strength checks are unchanged;
+  Both paths share candidate selection, color reasoning, thresholds, and strength checks;
   cached slider rendering and export use their existing paths.
 - Optional `Detail > Color noise` and `Luminance noise` controls, with GPU/CPU
   fallback, live preview, undo/redo, saved edits, and JPEG/TIFF export. Both default
@@ -230,7 +232,9 @@ Then import `sample-data\openraw-synthetic.DNG` or
   separated from green/magenta correction; night and colored-light directions
   come from the image. This is not gray-card calibration or reliable illuminant
   recovery: pale materials and mixed light remain ambiguous. Manual Temperature
-  and Tint remain available. Existing saved settings do not change until Auto is run.
+  and Tint remain available. Regional near-neutral votes are heuristic evidence,
+  not calibrated color accuracy or a learned aesthetic score. Existing saved
+  settings do not change until Auto is run.
 - MHC is linear gradient-corrected interpolation, not edge-adaptive demosaic or
   denoise. Existing Nikon recipes now render differently at full/native resolution;
   fast Fit previews and original RAW files are unchanged.

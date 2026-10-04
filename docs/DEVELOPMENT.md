@@ -3021,6 +3021,84 @@ content-checked locator. Original hashes remain unchanged. Evidence:
 `output/metrics-frozen-*`, `output/metrics-frozen-summary.json`, and
 `output/metrics-frozen-verification.json`.
 
+### Spatially Adaptive White Balance
+
+White-balance refinement now reuses the same bounded 4,096 original near-neutral
+samples for up to 16 spatial votes. Global measurement and initial correction
+are unchanged. Regional dispersion determines a target fraction between 25% and
+75%, rather than always targeting half the residual cast. Both analysis and
+display domains must agree; a conflicting region can require a smaller step or
+abstention. The retained ambient reference remains fixed to the original image.
+
+A two-control box-constrained fit handles Temperature/Tint limits jointly.
+At most five distinct rounded proposals are compared through actual renders,
+including the prior half-step when evidence permits it. Ranking balances global
+and regional residuals. Every accepted domain must improve its mean regional
+residual, while no region may worsen by more than .01 log-ratio norm units.
+The recorded applied fraction identifies the selected proposal target before
+control bounds, not the amount of cast actually removed.
+Intermediate-strength regional checks supplement the existing global color and
+tonal guards. A stronger color fit cannot bypass clipping/shadow validation.
+Regional statistics share the rendered-metric cache; sliders, export math,
+decoder support, model weights, and saved recipes are unchanged.
+
+The 83-photo regression on each backend changes nine global color suggestions:
+five receive stronger refinement, three receive smaller corrections, and the
+colored-aquarium example abstains before the existing semantic color stage.
+The other 74 retain exact same-backend parameters, local advice, and preview
+pixels at 70/100%. Scene/person evidence and every original hash are unchanged;
+the known unreadable additional copy retains its prior decoder error. Contact
+sheets and enlarged portrait/coast comparisons were inspected. Private evidence:
+`output/{existing,unseen,mixed}-spatial[-cpu]/report.json` and `comparison.json`.
+
+Interleaved warmed comparisons load the previous white-balance and guard methods
+from `f21a6a8`, with shared current scene-objective setup. Three measured runs per
+implementation use each prepared photo. Global Auto medians in seconds are:
+
+| Sample | GPU previous / spatial | CPU previous / spatial |
+| --- | --- | --- |
+| Street | 3.35 / 3.69 | 8.79 / 9.14 |
+| Coast | 1.07 / 1.18 | 1.70 / 1.81 |
+| Mixed-light portrait | 3.56 / 4.04 | 9.34 / 9.68 |
+| Street without neutral evidence | 3.61 / 3.66 | 9.90 / 10.01 |
+
+This is a quality increment with added Auto work, not a speedup. Separate cohort
+runs showed substantial timing variation, including a 20.36-second CPU outlier;
+these are not latency guarantees. Evidence: `output/spatial-paired-{gpu,cpu}.json`.
+Spatial near-neutral consistency is heuristic, not proof of gray materials,
+calibrated illuminant recovery, a learned aesthetic score, or local relighting.
+Mixed light and uncertain material colors remain important limitations.
+
+Nineteen new tests cover fixed/bounded samples, ambient retention, spatial
+conflict/backoff, finer-domain and intermediate-strength vetoes, invalid evidence,
+joint control bounds, nonlinear actual-render ranking, and final tonal rejection.
+The packaging environment passes all 867 tests. Forced CPU with all optional
+models off passes 861 tests, with six GPU-specific skips and 2,181 subtests.
+
+All nine changed photos pass 51 full-native tone-budget/ROI checks per backend,
+including 25/50/70/83/100% global strength and available combined local edits.
+Original hashes remain unchanged. This is not zero clipping: the coast's
+bright-channel losses fall from 1,210 to 857 at full strength, and from 2,878
+to 2,664 at 70%, on both backends; all remain within existing budgets. Evidence:
+`output/spatial-native[-cpu]/report.json` and `output/spatial-coast-highlights.json`.
+
+Real Tk workflows pass 70 checks each at 800x560 GPU and 1440x900 CPU; the batch
+workflow passes 14. Settled Auto screenshots were inspected. On the checked
+5,568 x 3,712 D500, cached median slider latency is 59.4 / 111.3 ms, a 50-move
+drag produces 45 / 29 intermediate frames, and JPEG export takes 2.20 / 2.73 s
+for GPU / CPU. Auto including process-local setup takes 4.46 / 9.03 s. These
+single-run observations are not evidence of a preview/export speedup. Evidence:
+`output/spatial-gui-{gpu,cpu}`, `output/spatial-live-{gpu,cpu}`, `output/spatial-batch`.
+
+The rebuilt EXE passes eight D500/Z f HE/HE* cases covering CPU/GPU, disabled
+models, local advice, JPEG/TIFF8/TIFF16, and native detail. Auto parameters match
+source exactly, metrics within 1e-6, and export/native-crop pixels exactly. All
+eight load the compiled Auto-count cache without fallback. Source/build
+dependency checks, compileall, and diff checks pass. The existing optional TBB
+packaging warning remains; tested CPU paths work. No public ZIP was produced.
+Evidence: `output/spatial-frozen-*`, `output/spatial-frozen-summary.json`, and
+`output/spatial-frozen-verification.json`.
+
 The existing optional TBB DLL packaging warning remains; tested CPU paths work.
 Both environments pass dependency checks. No public ZIP, model weights, private
 photos, or generated derivatives were published.

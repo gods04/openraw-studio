@@ -36,6 +36,17 @@ The source suite passes 848 tests; an additional all-CPU/model-free run passes
 842 with six GPU-specific skips. Real desktop/batch checks and eight rebuilt-EXE
 source-equivalence cases also pass, including the new compiled kernel's cache.
 
+White-balance refinement now adapts its target to spatial color agreement,
+jointly fits bounded Temperature/Tint controls, and checks actual candidate
+renders for local regressions. In an 83-photo CPU/GPU regression, five photos
+receive stronger refinement, three receive less, one abstains, and 74 retain
+their previous adjustments and preview pixels. The nine changed photos pass
+102 full-native tone/ROI checks. This adds Auto analysis work, not slider/export
+work; near-neutral material ambiguity and mixed illumination remain unresolved
+in general. Existing recipes change only when Auto is run again.
+The packaging suite passes 867 tests; desktop/batch workflows and eight rebuilt
+EXE source-equivalence cases pass. Original photos remain unchanged and private.
+
 Unreadable RAW imports now retain an explicitly labeled camera reference when
 available, preserve edits, disable unavailable RAW actions, and offer a retry
 beside zoom. Recovering the source restores native editing without resetting
