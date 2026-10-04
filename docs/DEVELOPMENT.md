@@ -1748,3 +1748,67 @@ the same D500 live test retains 46/108 ms median GPU/CPU slider response and
 48/16 visible frames during 50 drag events. JPEG export takes 1.40/2.38 s.
 These are regression observations, not new GPU/JPEG speed gains. Compact
 screenshots retain visible controls without overlapping the photo.
+
+### Denser Evidence For Auto Color Noise
+
+Noise advice now retries an insufficient native sample result on a separate
+16x16 uniform grid. Existing successful, low-noise, and no-safe-benefit results
+are unchanged. The original 8x8 tone atlas and all tonal Auto parameters/metrics
+remain identical. The denser grid caps its axis counts to avoid overlapping
+32-pixel cores, retains even CFA alignment and real-edge halos, and reuses up
+to 64 bright locations without rescanning the RAW. Small images cannot create
+extra votes by duplicating the same pixels. Only a bounded atlas is retained,
+not the full decoded sensor buffer; resized interactive proxies share it.
+
+The minimum of 12 blocks from six independent regions, periodic/structured
+texture rejection, noise-benefit threshold, and color/luminance budgets remain
+unchanged. Each proposed retry must also pass the original sparse atlas's
+tone, clipping, texture, and mean-color guards independently. Additional
+samples therefore cannot dilute its protection of a small light or texture.
+There are at most two retry candidates; the smaller candidate remains available
+when the stronger one fails either guard. Failed retries preserve manual edits.
+This is still explicit rendered-chroma advice, not calibrated sensor denoise,
+automatic luminance filtering, or semantic recognition of intentional color.
+
+On 33 real Nikon captures, 132 original/Auto and luminance-0/0.6 combinations
+produce matching CPU/GPU suggestion strengths and statuses. All 106 cases that
+did not need a retry retain their prior decisions and metrics on each backend.
+Of 26 retries, 13 gain positive suggestions, nine find no safe benefit, and four
+still lack evidence. All original RAW hashes and tonal Auto results are unchanged.
+Thirteen full-resolution RGB8 checks plus independent, offset native patches pass
+tone/color budgets and measure reduced color dispersion. In the high-ISO
+portrait, red-lit portrait, and blue aquarium Auto/luminance-0.6 examples,
+hold-out chroma dispersion drops by approximately 14%, 21%, and 11%, respectively.
+Visual comparisons retain the intentional lighting and visible texture; grain
+remains. These are sampled quality checks, not clean-reference noise scores.
+
+Extra atlas preparation takes about 9 ms median in this local corpus and retains
+at most 1.18 MiB of RAW samples. Retried advice takes about 0.41 s GPU / 0.72 s CPU
+median after preparation, with individual CPU retries near one second. It runs
+in the existing background analysis worker, never in the per-slider render path.
+The change does not accelerate rendering or exports. All reports and photo
+comparisons remain private local outputs rather than repository assets.
+
+All 597 source tests pass, including CPU-only execution with six expected GPU
+skips. Tests cover bounded/disjoint sample storage, native pixel/edge parity,
+shared resized atlases, unchanged existing advice, dense fallback/backoff,
+independent sparse-guard vetoes, malformed candidates, and tiny-image abstention.
+Actual D500 CPU and aquarium GPU desktop workflows each pass 46 checks for
+asynchronous advice, visible controls, undo/redo, comparison, JPEG/TIFF16,
+and restoring saved edits/bit depth. Both previously skipped cases now apply
+their advised color amounts. Compact screenshots retain an unobstructed photo.
+Live GPU/CPU slider medians remain about 46/108 ms with both filters enabled;
+the checked 50-event drag displays 48/15 frames. JPEG exports in these separate
+regression runs take 1.50/2.73 s. These are local observations, not new speedups.
+
+All 597 packaging-environment tests also pass. Ten rebuilt-EXE checks cover
+D500, Z5 D40, Z f, synthetic DNG, CPU/GPU, and the three newly advised difficult
+scenes. Source Auto/metrics, advice, native-detail pixels, and all seven TIFF16
+arrays agree exactly; two older recipes retain their original native pixels.
+Seven of the eight paired exports remain byte-identical to the preceding EXE.
+The aquarium export changes because advice now selects color strength 0.28
+instead of retaining the manual 0.65, not because render math changed.
+An additional Z5 CPU restart hits all used kernel caches with zero misses,
+exporting TIFF16 in 5.31 s versus 7.90 s on the first new-kernel run. That is a
+cold/warm distinction, not a denoise/export speedup. No original photos, public
+ZIP, or installer are distributed; the local Windows EXE is refreshed.

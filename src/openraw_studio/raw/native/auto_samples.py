@@ -1,4 +1,4 @@
-"""Bounded native-resolution samples for Auto's export-tone checks."""
+"""Bounded native-resolution samples for Auto tone guards and noise advice."""
 
 from dataclasses import dataclass, replace
 from itertools import pairwise
@@ -107,6 +107,36 @@ def prepare_native_auto_samples(decoded):
                     block = plane[y0:y1, x0:x1]
                     dy, dx = np.unravel_index(np.argmax(block), block.shape)
                     add(2 * (x0 + dx) + col, 2 * (y0 + dy) + row)
+    return _pack_samples(decoded, cropped, locations, core, grid_count)
+
+
+def prepare_native_noise_samples(decoded, tone_samples):
+    """Keep a denser, non-overlapping grid for sparse noise-evidence retries.
+
+    Reuse the tone guard's bright locations instead of scanning the RAW twice.
+    Only a bounded atlas survives preparation, never the full decoded image.
+    """
+    left, top, width, height = _render_crop(decoded)
+    core = tone_samples.core_size
+    nx, ny = min(16, width // core), min(16, height // core)
+    if core < 16 or nx * ny <= tone_samples.grid_count:
+        return None
+    locations = {
+        (int(x) & ~1, int(y) & ~1): None
+        for y in np.linspace(0, height - core, ny)
+        for x in np.linspace(0, width - core, nx)
+    }
+    grid_count = len(locations)
+    locations.update(dict.fromkeys(tone_samples.locations[tone_samples.grid_count :]))
+    raw = np.frombuffer(decoded.raw_bytes, dtype="<u2").reshape(
+        decoded.height, decoded.width
+    )
+    cropped = raw[top : top + height, left : left + width]
+    return _pack_samples(decoded, cropped, locations, core, grid_count)
+
+
+def _pack_samples(decoded, cropped, locations, core, grid_count):
+    height, width = cropped.shape
     offsets = np.arange(-6, core + 6)
     tiles = [
         cropped[

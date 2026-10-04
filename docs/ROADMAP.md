@@ -18,6 +18,19 @@ and sensor-domain denoise with calibrated luminance-noise advice. Further first-
 also remain open.
 Semantic portrait/scene AI and mobile remain later phases.
 
+Latest noise-advice increment retries insufficient native evidence on a denser,
+non-overlapping grid while separately retaining the original tone/texture guards.
+Across 33 real Nikon photos and 132 edit combinations, CPU/GPU decisions agree;
+13 previously skipped combinations gain verified advice, while other uncertain
+cases still abstain. All tonal Auto results and original RAWs remain unchanged.
+Thirteen full-resolution/hold-out checks pass. The extra atlas takes about 9 ms
+to prepare and at most 1.18 MiB; retries take about 0.41/0.72 s GPU/CPU median,
+outside the live slider path. See `DEVELOPMENT.md` for limitations and checks.
+All 597 source/packaging tests and two 46-check desktop workflows pass. Ten
+rebuilt-EXE checks plus a cached restart retain exact source results, including
+seven TIFF16 arrays and older saved recipes. Live GPU/CPU medians remain
+46/108 ms; the local Windows EXE is updated without a public release.
+
 Latest CPU export increment reuses per-strip luminance guides without changing
 pixels, filter strength, or metadata. With both noise filters enabled, paired
 complete CPU TIFF16 exports improve from 4.34 to 3.93 s (D500) and 5.54 to

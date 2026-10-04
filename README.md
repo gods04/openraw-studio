@@ -353,6 +353,10 @@ color filtering temporarily off,
 then changes only the color-noise amount. A low-noise result sets zero; missing
 samples or unverified benefit leave the current amount unchanged. Accepted values
 participate in undo/redo, saved edits, and export just like a manual slider edit.
+When the initial native grid provides too little evidence, Nikon analysis checks
+a denser non-overlapping grid, retaining the original tone/texture protections.
+This still measures sampled rendered color variation, not calibrated sensor noise;
+it can leave difficult photos unchanged rather than force a stronger filter.
 The toolbar Auto and batch Auto preserve both chosen noise amounts. Luminance
 noise is manual; automatic luminance-noise estimation is not implemented yet.
 Nikon embedded

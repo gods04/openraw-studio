@@ -109,12 +109,49 @@ def _region_median(values, groups, mask):
     )
 
 
-def suggest_color_noise_from_tiles(tiles, render, *, grid_count):
+def _preservation_metrics(signal, after_signal, mask, tiles, filtered):
+    drift = np.sqrt(
+        np.mean((_coarse(after_signal)[..., :2] - _coarse(signal)[..., :2]) ** 2, axis=-1)
+    )
+    # Noise removal may change flat 4x4 averages; protect structure elsewhere
+    # and mean color in every 16x16 block.
+    drift95, drift99 = (
+        np.quantile(drift[~mask], (0.95, 0.99)) if np.any(~mask) else (0, 0)
+    )
+    return {
+        "coarse_color_drift_p95": float(drift95),
+        "coarse_color_drift_p99": float(drift99),
+        "mean_color_drift_p99": float(
+            np.quantile(
+                np.abs(np.mean(after_signal[..., :2] - signal[..., :2], axis=(1, 2))),
+                0.99,
+            )
+        ),
+        "max_luma_error": float(
+            np.max(np.abs(
+                _signals(filtered.astype(np.float32))[..., 2]
+                - _signals(tiles.astype(np.float32))[..., 2]
+            ))
+        ),
+    }
+
+
+def _color_preserved(metrics):
+    return (
+        metrics["coarse_color_drift_p95"] <= 1.5
+        and metrics["coarse_color_drift_p99"] <= 3
+        and metrics["mean_color_drift_p99"] <= 1
+        and metrics["max_luma_error"] <= 0.5
+    )
+
+
+def suggest_color_noise_from_tiles(tiles, render, *, grid_count, validate=None):
     """Select a bounded global amount using native grid tiles and tone guards.
 
     ``render(amount)`` must return the same native tiles at the requested color
     filtering strength, retaining the caller's other adjustments. Extra bright
     tiles are used only for clipping checks, not the noise/texture vote.
+    An optional ``validate(amount)`` must also accept a candidate before use.
     """
     if (
         not isinstance(tiles, np.ndarray)
@@ -122,8 +159,8 @@ def suggest_color_noise_from_tiles(tiles, render, *, grid_count):
         or tiles.ndim != 4
         or tiles.shape[-1] != 3
         or not isinstance(grid_count, (int, np.integer))
-        or not 0 < grid_count <= min(64, len(tiles))
-        or len(tiles) > 128
+        or not 0 < grid_count <= min(256, len(tiles))
+        or len(tiles) > 320
         or min(tiles.shape[1:3]) < 1
         or max(tiles.shape[1:3]) > 32
     ):
@@ -163,8 +200,6 @@ def suggest_color_noise_from_tiles(tiles, render, *, grid_count):
 
     guard = _RenderGuard(tiles.reshape(-1, 3), filtered, preserve_midtones=False)
     requested = round(float(np.clip((before - 2.5) / 12, 0.2, 0.7)) / 0.05) * 0.05
-    baseline_coarse = _coarse(signal)[..., :2]
-    baseline_luma = _signals(tiles.astype(np.float32))[..., 2]
     for amount in (round(requested, 2), round(requested / 2, 2)):
         values = {"color_noise": amount}
         if not guard.highlights_preserved(values) or not guard.tones_preserved(values):
@@ -172,28 +207,13 @@ def suggest_color_noise_from_tiles(tiles, render, *, grid_count):
         after_signal = _signals(_blocks(cache[amount][:grid_count]))
         after_dispersion, _ = _dispersion(_residuals(after_signal))
         after = _region_median(after_dispersion, groups, mask)
-        drift = np.sqrt(
-            np.mean((_coarse(after_signal)[..., :2] - baseline_coarse) ** 2, axis=-1)
+        preservation = _preservation_metrics(
+            signal, after_signal, mask, tiles, cache[amount]
         )
-        # In accepted flat regions, reducing noisy 4x4 color averages is useful.
-        # Guard structure elsewhere, and mean color in every 16x16 block.
-        drift95, drift99 = (
-            np.quantile(drift[~mask], (0.95, 0.99)) if np.any(~mask) else (0, 0)
-        )
-        mean_drift = float(
-            np.quantile(
-                np.abs(np.mean(after_signal[..., :2] - signal[..., :2], axis=(1, 2))),
-                0.99,
-            )
-        )
-        filtered_signal = _signals(cache[amount].astype(np.float32))
-        luma_error = float(np.max(np.abs(filtered_signal[..., 2] - baseline_luma)))
         if (
             after <= before * 0.95
-            and drift95 <= 1.5
-            and drift99 <= 3
-            and mean_drift <= 1
-            and luma_error <= 0.5
+            and _color_preserved(preservation)
+            and (validate is None or validate(amount))
         ):
             return ColorNoiseSuggestion(
                 amount,
@@ -201,10 +221,7 @@ def suggest_color_noise_from_tiles(tiles, render, *, grid_count):
                 {
                     **metrics,
                     "chroma_dispersion_after": after,
-                    "coarse_color_drift_p95": float(drift95),
-                    "coarse_color_drift_p99": float(drift99),
-                    "mean_color_drift_p99": mean_drift,
-                    "max_luma_error": luma_error,
+                    **preservation,
                     **guard.metrics(values),
                 },
             )
@@ -217,8 +234,66 @@ def suggest_color_noise_for_photo(photo, adjustments):
     if samples is None:
         return ColorNoiseSuggestion(None, "native-samples-unavailable")
     values = {**adjustments, "color_noise": 0}
-    return suggest_color_noise_from_tiles(
-        samples.render_tiles(values),
+    tiles = samples.render_tiles(values)
+    result = suggest_color_noise_from_tiles(
+        tiles,
         lambda amount: samples.render_tiles({**values, "color_noise": amount}),
         grid_count=samples.grid_count,
+    )
+    dense = getattr(photo, "native_noise_samples", None)
+    if (
+        result.status != "insufficient-samples"
+        or dense is None
+        or min(tiles.shape[1:3]) < 16
+    ):
+        return result
+
+    # Keep the original sparse guard independent: a larger atlas must not dilute
+    # its clipping/texture budgets or hide damage to a previously sampled light.
+    blocks = _blocks(tiles[:samples.grid_count])
+    signal = _signals(blocks)
+    residual = _residuals(signal)
+    mask = _sample_mask(blocks, signal, residual, *_dispersion(residual))
+    cache = {}
+
+    def render_sparse(edits):
+        amount = edits["color_noise"]
+        if amount not in cache:
+            candidate = np.asarray(samples.render_tiles({**values, "color_noise": amount}))
+            if candidate.shape != tiles.shape or candidate.dtype != np.uint8:
+                raise ValueError(
+                    "Color-noise validation must preserve native tile shape and RGB8 type"
+                )
+            cache[amount] = candidate
+        return cache[amount].reshape(-1, 3)
+
+    guard = _RenderGuard(tiles.reshape(-1, 3), render_sparse, preserve_midtones=False)
+    validation = {}
+
+    def validate(amount):
+        edits = {"color_noise": amount}
+        if not guard.highlights_preserved(edits) or not guard.tones_preserved(edits):
+            return False
+        preservation = _preservation_metrics(
+            signal,
+            _signals(_blocks(cache[amount][:samples.grid_count])),
+            mask, tiles, cache[amount],
+        )
+        validation[amount] = {**preservation, **guard.metrics(edits)}
+        return _color_preserved(preservation)
+
+    retry = suggest_color_noise_from_tiles(
+        dense.render_tiles(values),
+        lambda amount: dense.render_tiles({**values, "color_noise": amount}),
+        grid_count=dense.grid_count,
+        validate=validate,
+    )
+    sparse_metrics = {**result.metrics, **validation.get(retry.strength, {})}
+    return ColorNoiseSuggestion(
+        retry.strength, retry.status,
+        {
+            **retry.metrics,
+            "dense_retry": 1.0,
+            **{f"sparse_{key}": value for key, value in sparse_metrics.items()},
+        },
     )

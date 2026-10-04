@@ -1,4 +1,6 @@
 import unittest
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import numpy as np
 
@@ -135,18 +137,131 @@ class AutoColorNoiseTests(unittest.TestCase):
             tiles[0],
             tiles[..., :2],
             tiles[:, :0],
-            np.tile(tiles, (9, 1, 1, 1)),
+            np.tile(tiles, (21, 1, 1, 1)),
             np.zeros((2, 33, 32, 3), np.uint8),
         ):
             with self.assertRaises(ValueError):
                 advise(invalid)
-        for count in (0, 17, 65, 1.5, None):
+        for count in (0, 17, 257, 1.5, None):
             with self.assertRaises(ValueError):
                 suggest_color_noise_from_tiles(clean, lambda _: clean, grid_count=count)
         for result in (tiles[:1], tiles.astype(float)):
             with self.assertRaises(ValueError):
                 advise(tiles, render=lambda _, r=result: r)
         self.assertEqual(advise(tiles[:, :8, :8]).status, "insufficient-samples")
+
+    def test_dense_bounds_allow_uniform_grid_and_bright_guards(self):
+        clean, _ = noisy_tiles(count=320)
+        self.assertEqual(advise(clean, grid_count=256).strength, 0)
+        with self.assertRaises(ValueError):
+            advise(clean, grid_count=257)
+
+    def test_additional_validation_can_back_off_or_veto_a_dense_candidate(self):
+        _, tiles = noisy_tiles(12)
+        for accepted in (0.35, None):
+            validate = Mock(side_effect=lambda amount: amount == accepted)
+            result = suggest_color_noise_from_tiles(
+                tiles, lambda amount: filtered_tiles(tiles, amount),
+                grid_count=16, validate=validate,
+            )
+            self.assertEqual(result.strength, accepted)
+            self.assertEqual([call.args[0] for call in validate.call_args_list], [0.7, 0.35])
+
+    @staticmethod
+    def sample_atlas(tiles, render=None):
+        return SimpleNamespace(
+            grid_count=len(tiles),
+            render_tiles=Mock(side_effect=render or (
+                lambda values: filtered_tiles(tiles, values["color_noise"])
+            )),
+        )
+
+    def test_dense_retry_finds_new_evidence_without_raw_decode_or_proxy_votes(self):
+        clean, noisy = noisy_tiles(12, count=256)
+        sparse = noisy[:16].copy()
+        sparse[2:] = 255
+        photo = SimpleNamespace(
+            native_samples=self.sample_atlas(sparse),
+            native_noise_samples=self.sample_atlas(noisy),
+        )
+        edits = {"exposure": .8, "color_noise": .95, "luminance_noise": .6}
+        result = suggest_color_noise_for_photo(photo, edits)
+        self.assertEqual(result.status, "suggested", result)
+        self.assertEqual(result.metrics["dense_retry"], 1)
+        self.assertEqual(result.metrics["sparse_usable_regions"], 2)
+        self.assertGreaterEqual(result.metrics["usable_regions"], 6)
+        self.assertIn("sparse_coarse_color_drift_p95", result.metrics)
+        adjusted = filtered_tiles(noisy, result.strength)
+        self.assertLess(np.mean((adjusted.astype(float) - clean) ** 2), np.mean((noisy.astype(float) - clean) ** 2))
+        for atlas in (photo.native_samples, photo.native_noise_samples):
+            self.assertLessEqual(atlas.render_tiles.call_count, 3)
+            for call in atlas.render_tiles.call_args_list:
+                self.assertEqual(call.args[0]["exposure"], .8)
+                self.assertEqual(call.args[0]["luminance_noise"], .6)
+        self.assertEqual(edits["color_noise"], .95)
+
+    def test_dense_retry_cannot_dilute_sparse_tone_or_color_damage(self):
+        _, noisy = noisy_tiles(12, count=256)
+        _, sparse = noisy_tiles(12)
+        # Repeating color structure is not usable noise evidence.
+        sparse[2:] = 110
+        sparse[2:, :, ::2, 0] = 130
+        for damage in ("clip", "chroma"):
+            def render(values):
+                if values["color_noise"] == 0:
+                    return sparse
+                result = filtered_tiles(sparse, values["color_noise"])
+                if damage == "clip":
+                    result[2:3] = 255
+                else:
+                    result[2:, :, :, 0] += 2
+                    result[2:, :, :, 2] -= 6
+                return result
+
+            photo = SimpleNamespace(
+                native_samples=self.sample_atlas(sparse, render),
+                native_noise_samples=self.sample_atlas(noisy),
+            )
+            result = suggest_color_noise_for_photo(photo, {})
+            self.assertIsNone(result.strength, (damage, result))
+            self.assertEqual(result.status, "no-safe-benefit")
+            self.assertEqual(result.metrics["dense_retry"], 1)
+
+    def test_dense_retry_does_not_override_existing_evidence_or_force_filtering(self):
+        clean, noisy = noisy_tiles()
+        for sparse, render in ((clean, None), (noisy, None), (noisy, lambda _: noisy)):
+            dense = SimpleNamespace(render_tiles=Mock(side_effect=AssertionError("Unneeded retry")))
+            result = suggest_color_noise_for_photo(SimpleNamespace(
+                native_samples=self.sample_atlas(sparse, render), native_noise_samples=dense,
+            ), {})
+            self.assertNotEqual(result.status, "insufficient-samples")
+            dense.render_tiles.assert_not_called()
+        clipped = np.full((256, 32, 32, 3), 255, np.uint8)
+        result = suggest_color_noise_for_photo(SimpleNamespace(
+            native_samples=self.sample_atlas(clipped[:16]), native_noise_samples=self.sample_atlas(clipped),
+        ), {})
+        self.assertEqual(result.status, "insufficient-samples")
+        self.assertIsNone(result.strength)
+
+    def test_dense_retry_rejects_malformed_sparse_validation_and_skips_tiny_tiles(self):
+        _, noisy = noisy_tiles(12, count=256)
+        sparse = noisy[:16].copy()
+        sparse[2:] = 255
+        for invalid in (sparse[:1], sparse.astype(float)):
+            photo = SimpleNamespace(
+                native_samples=self.sample_atlas(
+                    sparse, lambda values: invalid if values["color_noise"] else sparse,
+                ),
+                native_noise_samples=self.sample_atlas(noisy),
+            )
+            with self.assertRaisesRegex(ValueError, "preserve native tile shape"):
+                suggest_color_noise_for_photo(photo, {})
+        dense = SimpleNamespace(render_tiles=Mock(side_effect=AssertionError("Tiny source")))
+        result = suggest_color_noise_for_photo(SimpleNamespace(
+            native_samples=self.sample_atlas(sparse[:, :8, :8]), native_noise_samples=dense,
+        ), {})
+        self.assertEqual(result.status, "insufficient-samples")
+        dense.render_tiles.assert_not_called()
 
     def test_readonly_inputs_work_and_absent_native_data_is_not_proxy_analysis(self):
         _, tiles = noisy_tiles()

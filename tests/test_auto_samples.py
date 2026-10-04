@@ -11,7 +11,10 @@ from openraw_studio.decision.auto_adjust import (
     suggest_auto_adjustments_for_photo,
     suggest_auto_adjustments_from_preview,
 )
-from openraw_studio.raw.native.auto_samples import prepare_native_auto_samples
+from openraw_studio.raw.native.auto_samples import (
+    prepare_native_auto_samples,
+    prepare_native_noise_samples,
+)
 from openraw_studio.raw.native.engine import NativeRawProcessor
 from openraw_studio.raw.native.interactive import prepare_interactive_photo
 from openraw_studio.raw.native.malvar import STANDARD_BAYER
@@ -37,8 +40,11 @@ class NativeAutoSampleTests(unittest.TestCase):
         )
         return source
 
-    def check_pixels(self, decoded):
+    def check_pixels(self, decoded, *, dense=False):
         samples = prepare_native_auto_samples(decoded)
+        if dense:
+            samples = prepare_native_noise_samples(decoded, samples)
+            self.assertIsNotNone(samples)
         core = samples.core_size
         left, top, _, _ = _render_crop(decoded)
         for edits in (
@@ -107,6 +113,44 @@ class NativeAutoSampleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             self.check_pixels(decode_nikon_34713_lossless(self.fixture(folder)))
 
+    def test_dense_samples_match_native_pixels_and_retain_independent_regions(self):
+        with tempfile.TemporaryDirectory() as folder:
+            decoded = decode_nikon_34713_lossless(self.fixture(folder))
+            raw = np.random.default_rng(33).integers(0, 17000, (390, 522), dtype="<u2")
+            value = replace(
+                decoded, width=522, height=390, raw_bytes=raw.tobytes(), orientation=8,
+                compression_setup=replace(decoded.compression_setup, active_area=(2, 4, 516, 382)),
+            )
+            sparse = prepare_native_auto_samples(value)
+            samples = prepare_native_noise_samples(value, sparse)
+            self.assertEqual(samples.grid_count, 16 * 11)
+            grid = samples.locations[:samples.grid_count]
+            for axis in (0, 1):
+                positions = sorted({point[axis] for point in grid})
+                self.assertGreaterEqual(min(np.diff(positions)), samples.core_size)
+                self.assertTrue(all(position % 2 == 0 for position in positions))
+            self.assertTrue(set(sparse.locations[sparse.grid_count:]).issubset(samples.locations))
+            self.assertLessEqual(len(samples.locations), 320)
+            self.assertLessEqual(len(samples.decoded.raw_bytes), 320 * 44 * 44 * 2)
+            self.assertEqual(value.raw_bytes, raw.tobytes())
+            self.assertEqual(sparse, prepare_native_auto_samples(value))
+            processor = NativeRawProcessor()
+            with (
+                patch.object(type(processor), "_read_supported_nikon_34713", return_value=object()),
+                patch.object(type(processor), "_decode_supported_nikon_34713", return_value=value),
+            ):
+                photo = prepare_interactive_photo(processor, Path(folder) / "unread.NEF")
+            self.assertEqual(photo.native_noise_samples, samples)
+            self.assertIs(photo.resized(120).native_noise_samples, photo.native_noise_samples)
+            self.check_pixels(value, dense=True)
+            with patch("openraw_studio.raw.native.acceleration.get_gpu", return_value=None):
+                self.check_pixels(value, dense=True)
+
+    def test_small_photo_cannot_supply_more_independent_noise_regions(self):
+        with tempfile.TemporaryDirectory() as folder:
+            decoded = decode_nikon_34713_lossless(self.fixture(folder))
+            self.assertIsNone(prepare_native_noise_samples(decoded, prepare_native_auto_samples(decoded)))
+
     def test_bright_sites_are_included_and_memory_is_bounded(self):
         with tempfile.TemporaryDirectory() as folder:
             decoded = decode_nikon_34713_lossless(self.fixture(folder))
@@ -150,6 +194,7 @@ class NativeAutoSampleTests(unittest.TestCase):
             photo = prepare_interactive_photo(processor, source)
             self.assertIsNotNone(photo.native_samples)
             self.assertIs(photo.resized(4).native_samples, photo.native_samples)
+            self.assertIs(photo.resized(4).native_noise_samples, photo.native_noise_samples)
             with patch.object(
                 type(processor),
                 "_decode_supported_nikon_34713",

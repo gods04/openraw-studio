@@ -25,6 +25,7 @@ class InteractivePhoto:
     linear_saturation: bool = False
     native_samples: NativeAutoSamples | None = None
     native_size: tuple[int, int] | None = None
+    native_noise_samples: NativeAutoSamples | None = None
 
     def resized(self, max_dimension):
         """Derive an unedited scene-linear proxy, retaining color and orientation."""
@@ -112,12 +113,17 @@ def prepare_interactive_photo(processor, source: Path, *, max_dimension=960):
             else np.eye(3)
         )
         gains = decoded.white_balance.gains if decoded.white_balance else (1, 1, 1)
-        from openraw_studio.raw.native.auto_samples import prepare_native_auto_samples
+        from openraw_studio.raw.native.auto_samples import (
+            prepare_native_auto_samples,
+            prepare_native_noise_samples,
+        )
 
+        samples = prepare_native_auto_samples(decoded)
         return InteractivePhoto(
             pixels, np.asarray(matrix, dtype=np.float32), gains, decoded.orientation,
-            native_samples=prepare_native_auto_samples(decoded),
+            native_samples=samples,
             native_size=(width, height),
+            native_noise_samples=prepare_native_noise_samples(decoded, samples),
         )
 
     from openraw_studio.raw.native.color import (
