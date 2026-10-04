@@ -11,6 +11,7 @@ import numpy as np
 from openraw_studio.decision.white_balance import NeutralCast, refine_white_balance
 from openraw_studio.decision.ambient_color import analyze_ambient_color
 from openraw_studio.decision.scene_color import refine_scene_color
+from openraw_studio.decision.tonal_intent import dark_scene_intent, limit_dark_lift, little_visible_detail
 from openraw_studio.vision.scene import SceneEvidence, analyze_scene
 from openraw_studio.vision.person import PersonAnalysis, PersonEvidence, analyze_person
 from openraw_studio.raw.native.interactive import InteractivePhoto
@@ -123,13 +124,14 @@ def _limit_contrast(values, preserved):
 class _RenderGuard:
     """Cached measurements in one unedited proxy's own sampling domain."""
 
-    def __init__(self, preview, render, *, preserve_midtones, balance=False, ambient=None, shadow_margin=False):
+    def __init__(self, preview, render, *, preserve_midtones, balance=False, ambient=None, shadow_margin=False, lighting=None):
         self.pixels = _pixels(preview)
         self.render = render
         self.neutral = NeutralCast(preview, ambient=ambient) if balance else None
         self.weights = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
         luma = self.pixels @ self.weights
         self.median = float(np.median(luma))
+        self.intent = dark_scene_intent(luma, lighting)
         self.clipping = _clipping(self.pixels)
         self.preserve_midtones = preserve_midtones and self.median < 0.5
         self.usable_shadows = (luma > 8 / 255) & (luma < 0.25)
@@ -184,7 +186,10 @@ class _RenderGuard:
         ) and (
             not self.preserve_shadow_midtones
             or checked.shadow_midtone_mean >= self.shadow_midtone_mean - tolerance
-        )
+        ) and self.intent_preserved(values)
+
+    def intent_preserved(self, values):
+        return self.intent is None or self.measure(values).median <= self.intent.median_ceiling
 
     def highlights_preserved(self, values):
         checked = self.measure(values)
@@ -207,6 +212,8 @@ class _RenderGuard:
             "highlight_fraction_before": self.clipping,
             "highlight_fraction_after": checked.clipping,
             "median_luma_after": checked.median,
+            **({"dark_scene_weight": self.intent.weight,
+                "dark_scene_median_ceiling": self.intent.median_ceiling} if self.intent is not None else {}),
             "new_shadow_clipping_fraction": checked.crushed_shadows,
             **({"shadow_clipping_risk": checked.shadow_risk} if self.shadow_margin else {}),
             "new_highlight_clipping_fraction": checked.new_clipping,
@@ -300,6 +307,15 @@ def suggest_auto_adjustments_from_preview(
     )
     trimmed = luma[(luma >= p10) & (luma <= p90)]
     midtone = float(0.65 * median + 0.35 * np.mean(trimmed))
+    if little_visible_detail(preview) and (detail_preview is None or little_visible_detail(detail_preview)):
+        return AutoAdjustSuggestion(
+            0., 0., 0., 0., 0., 0., 0.,
+            rationale=("Too little visible tonal information for a reliable automatic correction.",),
+            scene="Low visible detail",
+            scene_evidence=replace(scene_evidence, status="insufficient-information") if scene_evidence is not None else None,
+            person_evidence=person.evidence if person is not None else None,
+            metrics={"insufficient_tonal_information": 1., "median_luma": float(median)},
+        )
     spread = float(p95 - p05)
     clipped = _clipping(pixels)
     dark_fraction = float(np.mean(luma < 0.12))
@@ -318,8 +334,13 @@ def suggest_auto_adjustments_from_preview(
         else "Balanced"
     )
     target = 0.30 if low_key else 0.69 if high_key else 0.44
-    exposure = float(np.clip(2.2 * np.log2(target / max(midtone, 0.025)), -0.8, 1.2))
-    if abs(midtone - target) < 0.035:
+    intent = dark_scene_intent(luma, scene_evidence)
+    intent_target = intent is not None and midtone + intent.lift < target
+    if intent is not None:
+        target = min(target, midtone + intent.lift)
+    metering_floor = 1 / 255 if intent_target else .025
+    exposure = float(np.clip(2.2 * np.log2(target / max(midtone, metering_floor)), -0.8, 1.2))
+    if abs(midtone - target) < (2 / 255 if intent_target else .035):
         exposure = 0.0
     requested_exposure = exposure
     if low_key or backlit:
@@ -407,6 +428,8 @@ def suggest_auto_adjustments_from_preview(
     ]
     if ambient is not None:
         notes.append("Spatial color evidence and lighting context limited neutralization of ambient color.")
+    if intent is not None:
+        notes.append("Dark lighting evidence and measured tones limited the intended brightness lift.")
     suggestion = AutoAdjustSuggestion(
         *[
             round(float(v), 4)
@@ -430,7 +453,7 @@ def suggest_auto_adjustments_from_preview(
         return suggestion
 
     primary = _RenderGuard(preview, render, preserve_midtones=exposure >= 0 and not low_key,
-                           balance=not low_key, ambient=ambient, shadow_margin=True)
+                           balance=not low_key, ambient=ambient, shadow_margin=True, lighting=scene_evidence)
     guards = [primary]
     prefixes = [""]
     if render_native is not None:
@@ -442,6 +465,7 @@ def suggest_auto_adjustments_from_preview(
             balance=primary.neutral is not None and primary.neutral.mask is not None,
             ambient=ambient,
             shadow_margin=True,
+            lighting=scene_evidence,
         ))
         prefixes.append("detail_")
 
@@ -451,7 +475,7 @@ def suggest_auto_adjustments_from_preview(
         )
 
     def needs_strength_checks(values):
-        return values["highlights"] < 0 or (
+        return (intent is not None and (values["exposure"] > 0 or values["shadows"] > 0)) or values["highlights"] < 0 or (
             values["contrast"] > 0 and any(
                 guard.preserve_shadow_midtones or guard.usable_shadow_fraction > .005 for guard in guards
             )
@@ -540,9 +564,16 @@ def suggest_auto_adjustments_from_preview(
                     return candidate
         return values
 
+    initial_values = suggestion.as_overrides()
+    intent_values = limit_dark_lift(
+        initial_values, lambda v: all(g.intent_preserved(v) for g in guards),
+    ) if intent is not None else initial_values
+    intent_refined = intent_values != initial_values
+    if intent_refined:
+        suggestion = replace(suggestion, **intent_values)
+        initial_values = intent_values
     # Positive contrast can undo an exposure lift and clip dim subjects. Test
     # that component first, retaining the other corrections where possible.
-    initial_values = suggestion.as_overrides()
     limited = _limit_contrast(initial_values, tones_preserved)
     contrast_guarded = limited["contrast"] != suggestion.contrast
     if contrast_guarded:
@@ -636,6 +667,8 @@ def suggest_auto_adjustments_from_preview(
                 person=person,
             )
             notes = suggestion.rationale + (
+                ("Fitted exposure and shadow lift to the rendered dark-scene reference.",) if intent_refined else ()
+            ) + (
                 ("Reduced contrast to preserve dark subjects.",) if contrast_guarded else ()
             ) + (
                 ("Limited exposure to preserve highlight detail.",) if exposure_guarded else ()
@@ -668,6 +701,7 @@ def suggest_auto_adjustments_from_preview(
                     **balance_metrics,
                     **scene_metrics,
                     "contrast_guarded": float(contrast_guarded),
+                    **({"dark_scene_lift_refined": float(intent_refined)} if intent is not None else {}),
                     "exposure_guarded": float(exposure_guarded),
                     "highlights_guarded": float(highlights_guarded),
                     "saturation_guarded": float(saturation_guarded),

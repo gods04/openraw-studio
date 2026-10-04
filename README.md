@@ -200,6 +200,10 @@ Then import `sample-data\openraw-synthetic.DNG` or
 - Positive contrast is fitted against each image's rendered shadow limits,
   including near-black detail. These remain sampled guards, not a guarantee
   that every original-resolution pixel is protected at every Auto strength.
+- Corroborated dark lighting can set a relative brightness-lift budget from
+  the original tones, checked during actual rendering. Almost-black previews
+  without enough visible structure abstain; the desktop retains manual edits.
+  This is not a learned aesthetic judgment or proof of missing RAW detail.
 - Scene analysis can mistake content or miss small people in mixed scenes.
   Low-confidence/model-unavailable cases retain tonal Auto. Optional person
   segmentation adds corroborated color protection, not face detection or

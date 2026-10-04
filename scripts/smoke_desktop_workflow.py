@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from copy import deepcopy
 import json
 from pathlib import Path
 from time import perf_counter
@@ -30,6 +31,7 @@ def main():
     parser.add_argument("--auto-subject", action="store_true")
     parser.add_argument("--auto-subject-color", action="store_true")
     parser.add_argument("--subject-color", action="store_true", help="Exercise both local color sliders")
+    parser.add_argument("--expect-auto-abstain", action="store_true")
     args = parser.parse_args()
     if not 0 <= args.color_noise <= 1:
         parser.error("--color-noise must be within [0, 1]")
@@ -185,9 +187,32 @@ def main():
             state['noise_index'] += 1
             state['phase'] = 'start_noise'
         elif phase == 'start_auto' and frame_current():
+            if args.expect_auto_abstain:
+                state['before_auto_edits'] = deepcopy(app._current_overrides())
+                state['before_auto_history'] = deepcopy(vars(app.history))
+                state['before_auto_pixels'] = ImageTk.getimage(app.after_photo).tobytes()
             app.auto_adjust_button.invoke()
             state["auto_started"] = perf_counter()
-            state["phase"] = "auto"
+            state["phase"] = "auto_abstain" if args.expect_auto_abstain else "auto"
+        elif phase == 'auto_abstain' and not app.is_busy and frame_current():
+            report['auto_seconds'] = perf_counter() - state['auto_started']
+            report['auto_summary'] = app.auto_summary_var.get()
+            require(app.auto_summary_var.get() == 'Low visible detail', 'Insufficient information is visible without a scene claim')
+            require(app.status_var.get() == 'Auto unchanged: little visible detail', 'Auto explains why no correction was applied')
+            require(app._current_overrides() == state['before_auto_edits'], 'Abstention preserves every manual adjustment')
+            require(vars(app.history) == state['before_auto_history'], 'Abstention does not add or replace history entries')
+            require(ImageTk.getimage(app.after_photo).tobytes() == state['before_auto_pixels'], 'Abstention preserves displayed pixels')
+            require(app.last_auto_suggestion is None, 'Abstention does not install an all-zero strength recipe')
+            app.auto_strength_var.set(0)
+            app._change_auto_strength()
+            require(app._current_overrides() == state['before_auto_edits'], 'Strength cannot erase manual edits after abstention')
+            capture_window(app.root, args.output / 'auto-abstain.png')
+            app.undo_button.invoke()
+            previous = state['before_auto_history']['_states'][max(0,state['before_auto_history']['_index']-1)]
+            require(app.history.current == previous, 'Undo still restores the previous manual edit')
+            app.redo_button.invoke()
+            require(app._current_overrides() == state['before_auto_edits'], 'Redo still restores manual adjustments')
+            state['phase'] = 'compare'
         elif (
             phase == "auto"
             and not app.is_busy

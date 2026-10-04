@@ -562,6 +562,8 @@ def _result_status(result: Any) -> str:
 
 
 def _auto_adjust_status(suggestion: AutoAdjustSuggestion) -> str:
+    if suggestion.metrics.get("insufficient_tonal_information"):
+        return "Auto unchanged: little visible detail"
     return (
         "Auto Adjust applied: "
         f"{_format_exposure_label(suggestion.exposure)}, "
@@ -1526,6 +1528,12 @@ def launch_desktop_app(*, run_mainloop: bool = True, session_dir: Path | None = 
             self, suggestion: AutoAdjustSuggestion, *, run_id: int, person=None, subject=None
         ) -> None:
             if run_id != self.run_counter:
+                return
+            if suggestion.metrics.get("insufficient_tonal_information"):
+                self.last_auto_suggestion = None
+                self.auto_summary_var.set("Low visible detail")
+                self._set_busy(False)
+                self.status_var.set(_auto_adjust_status(suggestion))
                 return
             self.last_auto_suggestion = suggestion
             self.last_person_analysis = person

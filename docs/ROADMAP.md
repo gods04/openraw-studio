@@ -20,6 +20,16 @@ Manual mask refinement, richer local masks, and mobile remain later
 phases. Coarse scene/lighting analysis and corroborated person masks are now
 optional local experiments.
 
+Dark lighting evidence now participates in the tonal target as well as color.
+The observed median/interquartile range sets a relative lift budget, relaxed
+when semantic evidence is weak. Bounded rendered trials fit exposure/shadows;
+the small and display proxies independently check the result and intermediate
+strengths. Biased native samples still protect clipping, not scene brightness.
+Almost-black, nearly uniform previews abstain without asserting a scene or
+overwriting desktop manual edits. Faint structure and sparse bright subjects
+remain eligible. This is a conservative heuristic, not learned aesthetic
+ranking, calibrated confidence, or exhaustive RAW-signal analysis.
+
 Auto now fits positive contrast through bounded rendered trials instead of
 only halving or removing it. A soft two-code near-black margin catches detail
 that can disappear between Fit and full-resolution rendering; intermediate

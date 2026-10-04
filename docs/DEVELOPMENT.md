@@ -2446,10 +2446,110 @@ Numba TBB-pool DLL warning remains in packaging; the tested CPU paths work
 without that optional pool. Local evidence: `output/shadow-frozen-*` and
 `output/shadow-frozen-verification.json`.
 
-Next: distinguish dark-scene intent from missing image information before
-choosing a tonal target. One almost-black development frame still receives a
+That audit identified a next step: distinguish dark-scene intent from missing
+image information before choosing a tonal target. One almost-black frame received a
 Sky/Night label (scene reliability .319) and +1.2 EV, without useful visible
 recovery. A starry sky with foreground detail and an illuminated street are
 different cases. Semantic evidence alone is not sufficient to decide how much
 to lift these images; both information content and rendered appearance need
 to participate. The tiny highlight-loss exception above also remains open.
+
+### Relative Dark-Scene Intent And Abstention
+
+`decision/tonal_intent.py` combines ready Night/Colored-light evidence with
+observed darkness. Confidence is an influence weight, not a calibrated
+probability. Relative fill headroom is derived from the original median and
+interquartile range, with a small RGB8 floor; weak evidence continuously relaxes
+the limit. This changes the intended brightness target, not a preset exposure
+for a scene name. Five bounded trials can jointly reduce positive exposure and
+shadow lift while leaving the other controls intact. Both the small and display
+guards enforce their own measured median ceilings, including requested strength
+samples and subsequent color refinement. Native samples are brightness-biased
+and deliberately do not set this limit.
+
+The earlier exposure metering floor could reverse the correction sign when a
+new relative target lay below .025. The smaller floor/deadband apply only when
+dark-scene evidence actually limits the target; nonlimiting weak evidence keeps
+the previous balanced-exposure deadband. Sparse illuminated subjects remain
+eligible and the established low-key safeguards still apply.
+
+Abstention requires a nearly black, low-range preview with negligible usable
+bright area, no substantial stronger color-channel signal, and less than one
+RGB8 code of coarse spatial variation. Saturated blue is not empty just because
+its luminance is low. Isolated
+hot pixels are bounded for that spatial check. A finer display preview can veto
+the small proxy's abstention. This is not a claim that the RAW lacks recoverable
+signal: faint structure, tiny real subjects below sampling resolution, strong
+noise, or unusual processing can fool this heuristic. Import, manual editing,
+and export stay available. Auto reports insufficient information rather than
+trusting a semantic label from a nearly uniform frame. Desktop application of
+that result preserves all existing edits, pixels, and history; it does not
+install an all-zero Auto-strength recipe.
+
+Fourteen focused tests cover image-dependent headroom, uncertain/daylight
+fallbacks, bounded fitting, noise/hot pixels, faint spatial structure, sparse
+subjects, the metering-floor sign, intermediate strengths, and detail-domain
+vetoes. The actual 800x560 low-information workflow passes 30 checks including
+manual edit retention, undo/redo, comparison, JPEG/TIFF16, and reopening.
+Private development evidence remains in `output/*-auto-intent*` and
+`output/intent-gui-abstain`; these are not independent aesthetic benchmarks.
+
+In the 30/33-photo regression, five global suggestions change: a star field,
+a cloudy night sky, two night streets, and the almost-black abstention example.
+The other 58 retain their global values. All original hashes remain unchanged.
+CPU/GPU global advice is identical on 61/63 photos; the other two differ by at
+most .0001 per control. Existing local-color rounding differs by .0001, masks
+by at most two codes, and previews by at most two codes. Forty full-native RGB8
+checks on the five changed photos cover both backends and 25/50/70/100% Auto.
+All meet the existing clipping/shadow budgets and applicable dark-scene median
+ceilings, and native crops match full renders exactly.
+
+Six additional D500 samples were selected after implementation, outside the
+63-photo set, by high-ISO metadata in other local folders. They were compared
+with `f87a677` without fitting new parameter values to their results. Three
+change, including an illuminated building, a pagoda, and a moonlit landscape.
+All 12 full-native checks at 70/100% preserve the existing clipping/shadow
+budgets and exact crops. One unchanged high-ISO moon image at 100% exceeds the
+new full-native median ceiling by .00034145 (about .087 RGB8 luma codes), despite
+passing preview-domain checks. The strict extra audit remains failing; it is
+not relabeled as a pass or evidence of universal native-target protection.
+
+Another nearly black, red-tinted frame still passes the information gate and
+receives the same earlier correction. Its embedded camera preview is also
+nearly black. Broader signal-versus-noise discrimination, uncertain scene labels,
+and small full-native sampling differences remain open, alongside the prior
+five-channel highlight exception. These inspected extra samples now form part
+of the development evidence, not an independent aesthetic benchmark. Private
+artifacts: `output/intent-native` and `output/extra-auto-intent`.
+
+The source environment passes 765 tests. Actual desktop workflows pass 30
+checks at 800x560 for abstention, 28 at 1280x820 for a night street, and 69 at
+1440x900 for CPU subject exposure/color editing. Screenshots show no overlapping
+controls. The batch workflow passes 14 checks, including per-photo Auto, saved
+edits, cancellation, and compact export-panel access. Private evidence remains
+in `output/intent-gui-*` and `output/intent-batch`.
+
+On the same star-field photograph at 1080x720, initialized GPU/CPU exposure
+slider latency is 58/76 ms median, with 49/43 frames during a continuous drag.
+Release-to-frame latency is 61/116 ms; JPEG exports take 1.18/1.78 s. Auto itself
+takes 2.81/5.63 s, including model setup in each process, so CPU Auto latency is
+still an optimization target. Camera previews appear in about .18 s and initial
+RAW previews take 1.47/1.05 s. These are local initialized-process measurements,
+not cold-machine guarantees or a before/after comparison with the earlier
+commit. Reports: `output/intent-benchmark-gpu` and `output/intent-benchmark-cpu`.
+
+The packaging environment also passes all 765 tests. The rebuilt local EXE
+passes 10 source-equivalence cases spanning CPU/GPU, JPEG/TIFF8/TIFF16, subject
+exposure/color, abstention, and disabled optional models. Auto parameters match
+exactly, metrics agree to 1e-6, and exported pixels/native crops equal source
+execution. Every source hash is unchanged. These equivalence checks do not
+replace the native quality audits or resolve their recorded exceptions.
+Fresh-process frozen star-field Auto takes 4.70 s on GPU and 7.36 s on CPU;
+startup-sensitive timings remain higher than the initialized desktop benchmark.
+Evidence: `output/intent-frozen-*` and `output/intent-frozen-verification.json`.
+
+Dependency, compile, and diff checks pass. Packaging retains the known warning
+about the optional Numba TBB-pool DLL; the tested CPU paths work without that
+pool. No public ZIP, private photograph, or model was published. Further work
+should prioritize information/noise discrimination, native sampling exceptions,
+and Auto latency without weakening the rendered quality checks.
